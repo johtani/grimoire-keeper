@@ -8,10 +8,15 @@
       "extensions": [
         "ms-python.python",
         "charliermarsh.ruff",
-        "ms-python.mypy-type-checker"
+        "ms-python.mypy-type-checker",
+        "amazonwebservices.amazon-q-vscode"
       ]
     }
   },
   "postCreateCommand": "bash .devcontainer/setup.sh",
-  "postStartCommand": "echo 'export HISTFILE=/root/.bash_history' >> /root/.bashrc"
+  "postStartCommand": "echo 'export HISTFILE=~/.bash_history' >> ~/.bashrc",
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localEnv:HOME}/.aws,target=/root/.aws,type=bind,consistency=cached"
+  ]
 }

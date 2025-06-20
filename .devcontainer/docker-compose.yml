@@ -6,6 +6,7 @@ services:
     volumes:
       - ..:/workspace:cached
       - bash_history:/root
+      - ~/.aws:/root/.aws:ro
     working_dir: /workspace
     command: sleep infinity
     environment:
