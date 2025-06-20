@@ -9,7 +9,7 @@ Jina AI Readerからコンテンツをダウンロードし、JSONファイル�
 ```python
 # process_logsテーブルに処理開始を記録
 INSERT INTO process_logs (page_id, url, status) 
-VALUES (?, ?, 'before_download')
+VALUES (?, ?, 'started')
 ```
 
 ### 2. Jina AI Reader API呼び出し
@@ -35,19 +35,23 @@ json_file_path = f"{json_storage_path}/{page_id}.json"
 with open(json_file_path, 'w', encoding='utf-8') as f:
     json.dump(response.json(), f, ensure_ascii=False, indent=2)
 
+# pagesテーブルにメモと一緒に保存
+INSERT INTO pages (url, title, memo, created_at) 
+VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+
 # ステータス更新
 UPDATE process_logs 
-SET status = 'complete_download' 
-WHERE page_id = ? AND status = 'before_download'
+SET status = 'download_complete' 
+WHERE page_id = ? AND status = 'started'
 ```
 
 #### エラー時 (status_code != 200 または例外発生)
 ```python
 # エラー情報を記録
 UPDATE process_logs 
-SET status = 'error_download', 
+SET status = 'download_error', 
     error_message = ? 
-WHERE page_id = ? AND status = 'before_download'
+WHERE page_id = ? AND status = 'started'
 ```
 
 ## ファイル構造
@@ -91,10 +95,11 @@ data/
 
 ### 想定されるエラー
 1. **ネットワークエラー**: 接続タイムアウト、DNS解決失敗
-2. **認証エラー**: 無効なAPIキー
+2. **認証エラー**: 無効なJina APIキー
 3. **レート制限**: API呼び出し制限に達した場合
 4. **コンテンツエラー**: 取得対象URLが無効、アクセス不可
 5. **ファイルシステムエラー**: ディスク容量不足、権限不足
+6. **データベースエラー**: pagesテーブルへの保存失敗
 
 ### エラーメッセージ例
 ```python
@@ -116,11 +121,14 @@ def load_jina_response(page_id: int) -> dict:
     with open(json_file_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-# 使用例
+# 使用例（LLM処理で利用）
 response_data = load_jina_response(page_id)
 content = response_data["data"]["content"]
 title = response_data["data"]["title"]
 ```
+
+### LLM処理への連携
+ダウンロード完了後、保存されたJSONファイルを使用してLLM処理（要約・キーワード抽出）を実行します。詳細は `docs/llm-processing.md` を参照してください。
 
 ### データ抽出例
 ```python
@@ -146,12 +154,12 @@ def extract_page_data(response_data: dict) -> dict:
 -- ダウンロード状況の確認
 SELECT status, COUNT(*) as count 
 FROM process_logs 
-WHERE status IN ('before_download', 'complete_download', 'error_download')
+WHERE status IN ('started', 'download_complete', 'download_error')
 GROUP BY status;
 
 -- エラー詳細の確認
 SELECT url, error_message, created_at 
 FROM process_logs 
-WHERE status = 'error_download' 
+WHERE status = 'download_error' 
 ORDER BY created_at DESC;
 ```

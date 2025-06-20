@@ -77,6 +77,7 @@ CREATE TABLE pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE NOT NULL,
     title TEXT NOT NULL,
+    memo TEXT, -- ユーザーが入力したメモ
     summary TEXT,
     keywords TEXT, -- JSON配列として保存
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -89,7 +90,7 @@ CREATE TABLE process_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     page_id INTEGER,
     url TEXT NOT NULL,
-    status TEXT NOT NULL, -- 'before_download', 'complete_download', 'error_download', 'processing', 'completed', 'failed'
+    status TEXT NOT NULL, -- 'started', 'download_complete', 'download_error', 'llm_complete', 'llm_error', 'vectorize_complete', 'vectorize_error', 'completed', 'failed'
     error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (page_id) REFERENCES pages(id)
@@ -100,19 +101,30 @@ CREATE TABLE process_logs (
 - **保存場所**: `data/json/{page_id}.json`
 - **ファイル名**: pagesテーブルのidを使用
 - **内容**: Jina AI Readerの生レスポンス
-```
 
 ### Weaviate スキーマ
 ```json
 {
-  "class": "GrimoirePage",
+  "class": "GrimoireChunk",
   "properties": [
+    {
+      "name": "pageId",
+      "dataType": ["int"]
+    },
+    {
+      "name": "chunkId",
+      "dataType": ["int"]
+    },
     {
       "name": "url",
       "dataType": ["text"]
     },
     {
       "name": "title", 
+      "dataType": ["text"]
+    },
+    {
+      "name": "memo",
       "dataType": ["text"]
     },
     {
@@ -136,6 +148,11 @@ CREATE TABLE process_logs (
 }
 ```
 
+**チャンキング戦略**:
+- コンテンツを適切なサイズに分割して保存
+- 各チャンクにメタデータ（URL、タイトル、メモ、要約、キーワード）を付与
+- キーワード、要約、URL、取得日付でも検索可能
+
 ## API設計
 
 ### バックエンドAPI エンドポイント
@@ -145,6 +162,7 @@ URLを処理してデータベースに保存
 ```json
 {
   "url": "https://example.com",
+  "memo": "ユーザーが入力したメモ",
   "slack_channel": "#general",
   "slack_user": "user123"
 }
@@ -169,14 +187,24 @@ URLを処理してデータベースに保存
 
 ### URL投稿時の処理
 1. Slackボットがメッセージ内のURLを検出
-2. バックエンドAPI `/process-url` を呼び出し
-3. process_logsに `before_download` ステータスで登録
-4. Jina AI Readerでコンテンツ取得
-   - 成功: JSONファイル保存、ステータス `complete_download`
-   - 失敗: エラーメッセージ保存、ステータス `error_download`
-5. Google Gemini (LiteLLM経由) で要約・キーワード抽出
-6. SQLite3とWeaviate (OpenAI embeddings) に保存
-7. Slackに完了通知
+2. バックエンドAPI `/process-url` を呼び出し（URLとメモを送信）
+3. **処理開始**
+   - process_logsに `started` ステータスで登録
+4. **Jina AI Reader処理**
+   - コンテンツ取得、JSONファイル保存、pagesテーブルにメモと一緒に保存
+   - 成功: ステータス `download_complete`
+   - 失敗: ステータス `download_error`
+5. **LLM処理**
+   - Google Gemini (LiteLLM経由) で要約・キーワード抽出（20個）
+   - 成功: pagesテーブルのsummary/keywords更新、ステータス `llm_complete`
+   - 失敗: ステータス `llm_error`
+6. **ベクトル化処理**
+   - コンテンツをチャンキングしてWeaviateに保存
+   - キーワード、要約、URL、取得日付でも検索可能
+   - 成功: ステータス `vectorize_complete`
+   - 失敗: ステータス `vectorize_error`
+7. **全体完了**: ステータス `completed`
+8. Slackに完了通知
 
 ### 検索時の処理
 1. `/search` コマンドを受信
