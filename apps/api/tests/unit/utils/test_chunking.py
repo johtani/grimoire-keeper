@@ -61,10 +61,11 @@ class TestTextChunker:
         result = chunker._split_by_size(text)
 
         # 適切に分割されることを確認
-        assert len(result) == 3
+        assert len(result) == 4  # 25文字、chunk_size=10、overlap=3の場合は4チャンク
         assert len(result[0]) == 10
         assert len(result[1]) == 10
-        assert len(result[2]) == 5
+        assert len(result[2]) == 10
+        assert len(result[3]) == 4  # 最後のチャンク
 
     def test_chunk_mixed_content(self):
         """混合コンテンツのチャンキングテスト."""
