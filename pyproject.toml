@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grimoire-keeper"
+version = "0.1.0"
+description = "URL content summarization and search system with Slack bot"
+requires-python = ">=3.13"
+dependencies = []
+
+# ワークスペース設定
+[tool.uv.workspace]
+members = [
+    "apps/bot",
+    "apps/api", 
+    "shared"
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["apps/bot/tests", "apps/api/tests", "shared/tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = [
+    "--strict-markers",
+    "--cov=apps",
+    "--cov=shared",
+    "--cov-report=term-missing",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

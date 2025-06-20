@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/python:3.13
+    volumes:
+      - ..:/workspace:cached
+      - bash_history:/root
+    working_dir: /workspace
+    command: sleep infinity
+    environment:
+      - PYTHONPATH=/workspace
+    networks:
+      - grimoire-network
+
+  bot:
+    build:
+      context: ../apps/bot
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+    working_dir: /workspace/apps/bot
+    environment:
+      - PYTHONPATH=/workspace
+      - BACKEND_API_URL=http://api:8000
+    env_file:
+      - ../.env
+    depends_on:
+      - api
+    networks:
+      - grimoire-network
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/workspace:cached
+      - sqlite_data:/data
+    working_dir: /workspace/apps/api
+    environment:
+      - PYTHONPATH=/workspace
+      - WEAVIATE_URL=http://weaviate:8080
+      - DATABASE_PATH=/data/grimoire.db
+    env_file:
+      - ../.env
+    depends_on:
+      - weaviate
+    networks:
+      - grimoire-network
+
+  weaviate:
+    image: semitechnologies/weaviate:1.22.4
+    ports:
+      - "8080:8080"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-openai'
+      ENABLE_MODULES: 'text2vec-openai'
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - grimoire-network
+
+volumes:
+  weaviate_data:
+  sqlite_data:
+  bash_history:
+
+networks:
+  grimoire-network:
+    driver: bridge
