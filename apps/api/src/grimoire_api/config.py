@@ -1,7 +1,7 @@
 """Configuration settings."""
 
-from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     model_config = ConfigDict(
         env_file=".env",
-        extra="ignore"  # 余分な環境変数を無視
+        extra="ignore",  # 余分な環境変数を無視
     )
 
 

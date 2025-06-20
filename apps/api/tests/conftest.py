@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
@@ -19,7 +20,7 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def temp_db():
     """一時データベースフィクスチャ."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
@@ -47,13 +48,13 @@ def file_repo(temp_storage):
     return FileRepository(storage_path=temp_storage)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def page_repo(temp_db, file_repo):
     """ページリポジトリフィクスチャ."""
     return PageRepository(db=temp_db, file_repo=file_repo)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def log_repo(temp_db):
     """ログリポジトリフィクスチャ."""
     return LogRepository(db=temp_db)

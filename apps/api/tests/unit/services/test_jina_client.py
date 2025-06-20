@@ -37,12 +37,12 @@ class TestJinaClient:
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_response = AsyncMock()
-            mock_response.json.return_value = expected_response
-            mock_response.raise_for_status.return_value = None
+            mock_response.json = lambda: expected_response  # 同期メソッドとして設定
+            mock_response.raise_for_status = AsyncMock(return_value=None)
 
-            mock_client.return_value.__aenter__.return_value.get.return_value = (
-                mock_response
-            )
+            mock_async_client = AsyncMock()
+            mock_async_client.get = AsyncMock(return_value=mock_response)
+            mock_client.return_value.__aenter__.return_value = mock_async_client
 
             result = await client.fetch_content(test_url)
             assert result == expected_response
@@ -50,11 +50,13 @@ class TestJinaClient:
     @pytest.mark.asyncio
     async def test_fetch_content_no_api_key(self):
         """APIキー未設定でのコンテンツ取得テスト."""
-        client = JinaClient(api_key="")
-        test_url = "https://example.com"
+        with patch("grimoire_api.services.jina_client.settings") as mock_settings:
+            mock_settings.JINA_API_KEY = None
+            client = JinaClient(api_key=None)
+            test_url = "https://example.com"
 
-        with pytest.raises(JinaClientError, match="Jina API key is not configured"):
-            await client.fetch_content(test_url)
+            with pytest.raises(JinaClientError, match="Jina API key is not configured"):
+                await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
     async def test_fetch_content_http_error(self):
@@ -120,11 +122,13 @@ class TestJinaClient:
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_response = AsyncMock()
-            mock_response.json.return_value = {"data": {}}
-            mock_response.raise_for_status.return_value = None
+            mock_response.json = lambda: {"data": {}}  # 同期メソッドとして設定
+            mock_response.raise_for_status = AsyncMock(return_value=None)
 
-            mock_get = mock_client.return_value.__aenter__.return_value.get
-            mock_get.return_value = mock_response
+            mock_get = AsyncMock(return_value=mock_response)
+            mock_async_client = AsyncMock()
+            mock_async_client.get = mock_get
+            mock_client.return_value.__aenter__.return_value = mock_async_client
 
             await client.fetch_content(test_url)
 

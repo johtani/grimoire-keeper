@@ -65,9 +65,19 @@ class TestLLMService:
     @pytest.mark.asyncio
     async def test_generate_summary_keywords_no_api_key(self, mock_file_repo):
         """APIキー未設定でのテスト."""
-        service = LLMService(file_repo=mock_file_repo, api_key="")
+        with patch("grimoire_api.services.llm_service.settings") as mock_settings:
+            mock_settings.GOOGLE_API_KEY = None
+            service = LLMService(file_repo=mock_file_repo, api_key=None)
 
-        with pytest.raises(LLMServiceError, match="Google API key is not configured"):
+            with pytest.raises(LLMServiceError, match="Google API key is not configured"):
+                await service.generate_summary_keywords(1)
+
+    @pytest.mark.asyncio
+    async def test_generate_summary_keywords_invalid_api_key(self, mock_file_repo):
+        """無効なAPIキーでのテスト."""
+        service = LLMService(file_repo=mock_file_repo, api_key="invalid_key")
+
+        with pytest.raises(LLMServiceError, match="LLM processing error"):
             await service.generate_summary_keywords(1)
 
     @pytest.mark.asyncio

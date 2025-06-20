@@ -32,7 +32,7 @@ class JinaClient:
         Raises:
             JinaClientError: API呼び出しエラー
         """
-        if not self.api_key:
+        if not self.api_key or self.api_key.strip() == "":
             raise JinaClientError("Jina API key is not configured")
 
         headers = {

@@ -35,7 +35,7 @@ class LLMService:
         Raises:
             LLMServiceError: LLM処理エラー
         """
-        if not self.api_key:
+        if not self.api_key or self.api_key.strip() == "":
             raise LLMServiceError("Google API key is not configured")
 
         try:
