@@ -13,8 +13,9 @@ URLを投稿すると、ページ内容を要約・キーワード抽出して�
 ```
 
 ### 2. リポジトリ構成
-- `grimoire-keeper-bot/` - Slackボット
-- `grimoire-keeper-api/` - バックエンドAPI
+- `apps/bot/` - Slackボット
+- `apps/api/` - バックエンドAPI
+- `shared/` - 共通ライブラリ
 
 ## 機能要件
 
@@ -32,11 +33,12 @@ URLを投稿すると、ページ内容を要約・キーワード抽出して�
 
 ### バックエンドAPI機能
 1. **コンテンツ取得・処理**
-   - Jina AI ReaderでURL内容取得
+   - Jina AI ReaderでURL内容取得（Markdown形式）
    - LiteLLMで要約・キーワード抽出
 
 2. **データ保存**
    - SQLite3にメタデータ保存
+   - JSONファイルに生レスポンス保存
    - Weaviateにベクトル保存
 
 3. **検索機能**
@@ -46,7 +48,7 @@ URLを投稿すると、ページ内容を要約・キーワード抽出して�
 ## 技術スタック
 
 ### Slackボット
-- **言語**: Python 3.9+
+- **言語**: Python 3.13
 - **フレームワーク**: slack-bolt-python
 - **依存関係**:
   - slack-bolt
@@ -54,7 +56,7 @@ URLを投稿すると、ページ内容を要約・キーワード抽出して�
   - python-dotenv
 
 ### バックエンドAPI
-- **言語**: Python 3.9+
+- **言語**: Python 3.13
 - **フレームワーク**: FastAPI
 - **依存関係**:
   - fastapi
@@ -63,7 +65,6 @@ URLを投稿すると、ページ内容を要約・キーワード抽出して�
   - weaviate-client
   - sqlite3 (標準ライブラリ)
   - requests
-  - beautifulsoup4 (HTMLパース用)
   - pydantic
   - google-generativeai (Gemini API用)
 
@@ -86,11 +87,19 @@ CREATE TABLE pages (
 -- 処理ログ
 CREATE TABLE process_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id INTEGER,
     url TEXT NOT NULL,
-    status TEXT NOT NULL, -- 'processing', 'completed', 'failed'
+    status TEXT NOT NULL, -- 'before_download', 'complete_download', 'error_download', 'processing', 'completed', 'failed'
     error_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_id) REFERENCES pages(id)
 );
+```
+
+### JSONファイル保存
+- **保存場所**: `data/json/{page_id}.json`
+- **ファイル名**: pagesテーブルのidを使用
+- **内容**: Jina AI Readerの生レスポンス
 ```
 
 ### Weaviate スキーマ
@@ -161,10 +170,13 @@ URLを処理してデータベースに保存
 ### URL投稿時の処理
 1. Slackボットがメッセージ内のURLを検出
 2. バックエンドAPI `/process-url` を呼び出し
-3. バックエンドがJina AI Readerでコンテンツ取得
-4. Google Gemini (LiteLLM経由) で要約・キーワード抽出
-5. SQLite3とWeaviate (OpenAI embeddings) に保存
-6. Slackに完了通知
+3. process_logsに `before_download` ステータスで登録
+4. Jina AI Readerでコンテンツ取得
+   - 成功: JSONファイル保存、ステータス `complete_download`
+   - 失敗: エラーメッセージ保存、ステータス `error_download`
+5. Google Gemini (LiteLLM経由) で要約・キーワード抽出
+6. SQLite3とWeaviate (OpenAI embeddings) に保存
+7. Slackに完了通知
 
 ### 検索時の処理
 1. `/search` コマンドを受信
@@ -188,6 +200,7 @@ GOOGLE_API_KEY=sk-...        # Gemini要約・キーワード抽出用
 JINA_API_KEY=...
 WEAVIATE_URL=http://localhost:8080
 DATABASE_PATH=./grimoire.db
+JSON_STORAGE_PATH=./data/json  # JSONファイル保存先
 ```
 
 ## デプロイ・運用
