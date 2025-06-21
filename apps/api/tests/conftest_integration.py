@@ -1,7 +1,9 @@
 """統合テスト用設定とフィクスチャ."""
 
+import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -30,9 +32,15 @@ async def integration_db():
 @pytest.fixture
 def integration_client(integration_db):
     """統合テスト用クライアントフィクスチャ."""
-    # テスト用データベースパスを設定
-    import os
-    os.environ["DATABASE_PATH"] = integration_db
+    # テスト用環境変数を設定
+    test_env = {
+        "DATABASE_PATH": integration_db,
+        "JINA_API_KEY": "test-jina-key",
+        "GOOGLE_API_KEY": "test-google-key", 
+        "OPENAI_API_KEY": "test-openai-key",
+        "WEAVIATE_URL": "http://localhost:8080",
+    }
     
-    with TestClient(app) as client:
-        yield client
+    with patch.dict(os.environ, test_env):
+        with TestClient(app) as client:
+            yield client

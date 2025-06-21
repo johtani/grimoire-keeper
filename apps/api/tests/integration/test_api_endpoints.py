@@ -32,22 +32,32 @@ class TestAPIEndpoints:
         assert data["status"] == "healthy"
         assert "running" in data["message"]
 
-    @patch("grimoire_api.routers.process.get_url_processor")
-    def test_process_url_endpoint(self, mock_get_processor, client):
+    @patch("grimoire_api.services.jina_client.JinaClient.fetch_content")
+    @patch("grimoire_api.services.llm_service.LLMService.generate_summary_keywords")
+    @patch("grimoire_api.services.vectorizer.VectorizerService.vectorize_content")
+    def test_process_url_endpoint(self, mock_vectorize, mock_llm, mock_jina, client):
         """URL処理エンドポイントテスト."""
+        import uuid
+        test_url = f"https://test-{uuid.uuid4().hex[:8]}.example.com"
+        
         # モック設定
-        mock_processor = AsyncMock()
-        mock_processor.process_url.return_value = {
-            "status": "success",
-            "page_id": 1,
-            "message": "Processing completed",
+        mock_jina.return_value = {
+            "data": {
+                "title": "Test Title",
+                "content": "Test content",
+                "url": test_url
+            }
         }
-        mock_get_processor.return_value = mock_processor
+        mock_llm.return_value = {
+            "summary": "Test summary",
+            "keywords": ["test", "keyword"]
+        }
+        mock_vectorize.return_value = None
 
         # リクエスト実行
         response = client.post(
             "/api/v1/process-url",
-            json={"url": "https://example.com", "memo": "Test memo"},
+            json={"url": test_url, "memo": "Test memo"},
         )
 
         # レスポンス確認
@@ -56,26 +66,26 @@ class TestAPIEndpoints:
         assert data["status"] == "accepted"
         assert "background" in data["message"]
 
-    @patch("grimoire_api.routers.search.get_search_service")
-    def test_search_endpoint(self, mock_get_search_service, client):
+    @patch("grimoire_api.services.search_service.SearchService.vector_search")
+    def test_search_endpoint(self, mock_vector_search, client):
         """検索エンドポイントテスト."""
+        from grimoire_api.models.response import SearchResult
+        
         # モック設定
-        mock_search_service = AsyncMock()
-        mock_search_service.vector_search.return_value = [
-            {
-                "page_id": 1,
-                "chunk_id": 0,
-                "url": "https://example.com",
-                "title": "Test Title",
-                "memo": "Test memo",
-                "content": "Test content",
-                "summary": "Test summary",
-                "keywords": ["test", "keyword"],
-                "created_at": "2024-01-01T00:00:00",
-                "score": 0.9,
-            }
+        mock_vector_search.return_value = [
+            SearchResult(
+                page_id=1,
+                chunk_id=0,
+                url="https://example.com",
+                title="Test Title",
+                memo="Test memo",
+                content="Test content",
+                summary="Test summary",
+                keywords=["test", "keyword"],
+                created_at="2024-01-01T00:00:00",
+                score=0.9,
+            )
         ]
-        mock_get_search_service.return_value = mock_search_service
 
         # リクエスト実行
         response = client.post(
@@ -89,13 +99,11 @@ class TestAPIEndpoints:
         assert data["total"] == 1
         assert len(data["results"]) == 1
 
-    @patch("grimoire_api.routers.search.get_search_service")
-    def test_keyword_search_endpoint(self, mock_get_search_service, client):
+    @patch("grimoire_api.services.search_service.SearchService.keyword_search")
+    def test_keyword_search_endpoint(self, mock_keyword_search, client):
         """キーワード検索エンドポイントテスト."""
         # モック設定
-        mock_search_service = AsyncMock()
-        mock_search_service.keyword_search.return_value = []
-        mock_get_search_service.return_value = mock_search_service
+        mock_keyword_search.return_value = []
 
         # リクエスト実行
         response = client.post("/api/v1/search/keywords", json=["keyword1", "keyword2"])
