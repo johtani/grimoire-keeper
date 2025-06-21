@@ -1,5 +1,7 @@
 """Search service for Weaviate."""
 
+from typing import Any
+
 import weaviate
 from weaviate.classes.query import MetadataQuery
 
@@ -11,7 +13,7 @@ from ..utils.exceptions import VectorizerError
 class SearchService:
     """検索サービス."""
 
-    def __init__(self, weaviate_url: str = None):
+    def __init__(self, weaviate_url: str | None = None):
         """初期化.
 
         Args:
@@ -21,10 +23,11 @@ class SearchService:
         self._client = None
 
     @property
-    def client(self):
+    def client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント."""
         if self._client is None:
-            self._client = weaviate.connect_to_local(host=self.weaviate_url.replace("http://", "").replace(":8080", ""))
+            host = self.weaviate_url.replace("http://", "").replace(":8080", "")
+            self._client = weaviate.connect_to_local(host=host)
         return self._client
 
     async def vector_search(
@@ -45,12 +48,10 @@ class SearchService:
         """
         try:
             collection = self.client.collections.get("GrimoireChunk")
-            
+
             # クエリ実行
             response = collection.query.near_text(
-                query=query,
-                limit=limit,
-                return_metadata=MetadataQuery(certainty=True)
+                query=query, limit=limit, return_metadata=MetadataQuery(certainty=True)
             )
 
             # 結果変換
@@ -76,13 +77,12 @@ class SearchService:
         """
         try:
             from weaviate.classes.query import Filter
-            
+
             collection = self.client.collections.get("GrimoireChunk")
-            
+
             # キーワードフィルタで検索
             response = collection.query.fetch_objects(
-                where=Filter.by_property("keywords").contains_any(keywords),
-                limit=limit
+                where=Filter.by_property("keywords").contains_any(keywords), limit=limit
             )
 
             return self._convert_search_results_v4(response)
@@ -144,7 +144,7 @@ class SearchService:
         else:
             return None
 
-    def _convert_search_results_v4(self, response) -> list[SearchResult]:
+    def _convert_search_results_v4(self, response: Any) -> list[SearchResult]:
         """検索結果変換 (Weaviate v4).
 
         Args:
@@ -158,9 +158,14 @@ class SearchService:
         for obj in response.objects:
             # スコア取得
             score = 0.0
-            if hasattr(obj.metadata, 'certainty') and obj.metadata.certainty is not None:
+            if (
+                hasattr(obj.metadata, "certainty")
+                and obj.metadata.certainty is not None
+            ):
                 score = obj.metadata.certainty
-            elif hasattr(obj.metadata, 'distance') and obj.metadata.distance is not None:
+            elif (
+                hasattr(obj.metadata, "distance") and obj.metadata.distance is not None
+            ):
                 score = 1.0 - obj.metadata.distance
 
             search_result = SearchResult(

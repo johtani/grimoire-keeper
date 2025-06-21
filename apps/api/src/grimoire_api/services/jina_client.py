@@ -11,7 +11,7 @@ from ..utils.exceptions import JinaClientError
 class JinaClient:
     """Jina AI Reader クライアント."""
 
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str | None = None):
         """初期化.
 
         Args:
@@ -48,7 +48,7 @@ class JinaClient:
                     f"{self.base_url}/{url}", headers=headers, timeout=60.0
                 )
                 response.raise_for_status()
-                return response.json()
+                return response.json()  # type: ignore[no-any-return]
 
             except httpx.HTTPStatusError as e:
                 raise JinaClientError(

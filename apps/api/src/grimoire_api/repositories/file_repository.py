@@ -11,7 +11,7 @@ from ..utils.exceptions import FileOperationError
 class FileRepository:
     """ファイル操作リポジトリ."""
 
-    def __init__(self, storage_path: str = None):
+    def __init__(self, storage_path: str | None = None):
         """初期化.
 
         Args:
@@ -49,7 +49,7 @@ class FileRepository:
                 raise FileOperationError(f"JSON file not found: {file_path}")
 
             with open(file_path, encoding="utf-8") as f:
-                return json.load(f)
+                return json.load(f)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             raise FileOperationError(f"Invalid JSON format: {str(e)}")
         except Exception as e:

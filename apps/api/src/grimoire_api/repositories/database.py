@@ -11,7 +11,7 @@ from ..utils.exceptions import DatabaseError
 class DatabaseConnection:
     """データベース接続管理クラス."""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         """初期化.
 
         Args:
@@ -20,7 +20,7 @@ class DatabaseConnection:
         self.db_path = db_path or settings.DATABASE_PATH
 
     @asynccontextmanager
-    async def get_connection(self):
+    async def get_connection(self) -> any:
         """データベース接続を取得."""
         try:
             async with aiosqlite.connect(self.db_path) as conn:
@@ -43,7 +43,7 @@ class DatabaseConnection:
             async with self.get_connection() as conn:
                 cursor = await conn.execute(query, params)
                 await conn.commit()
-                return cursor
+                return cursor  # type: ignore[no-any-return]
         except Exception as e:
             raise DatabaseError(f"Query execution error: {str(e)}")
 
@@ -60,7 +60,7 @@ class DatabaseConnection:
         try:
             async with self.get_connection() as conn:
                 cursor = await conn.execute(query, params)
-                return await cursor.fetchone()
+                return await cursor.fetchone()  # type: ignore[no-any-return]
         except Exception as e:
             raise DatabaseError(f"Fetch one error: {str(e)}")
 
@@ -77,7 +77,7 @@ class DatabaseConnection:
         try:
             async with self.get_connection() as conn:
                 cursor = await conn.execute(query, params)
-                return await cursor.fetchall()
+                return await cursor.fetchall()  # type: ignore[no-any-return]
         except Exception as e:
             raise DatabaseError(f"Fetch all error: {str(e)}")
 

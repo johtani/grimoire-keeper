@@ -19,11 +19,11 @@ class TestVectorizerService:
         mock_collections = MagicMock()
         mock_collections.get.return_value = mock_collection
         mock_collections.exists.return_value = False
-        
+
         mock_client = MagicMock()
         mock_client.collections = mock_collections
         mock_client.is_ready.return_value = True
-        
+
         return {
             "page_repo": AsyncMock(),
             "file_repo": AsyncMock(),
@@ -44,7 +44,9 @@ class TestVectorizerService:
         # Weaviateクライアントをモックに置き換え
         service._client = mock_dependencies["weaviate_client"]
         # コレクションモックを設定
-        mock_dependencies["weaviate_client"].collections.get.return_value = mock_dependencies["mock_collection"]
+        mock_dependencies[
+            "weaviate_client"
+        ].collections.get.return_value = mock_dependencies["mock_collection"]
         return service
 
     @pytest.mark.asyncio
@@ -79,7 +81,9 @@ class TestVectorizerService:
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
         mock_dependencies["text_chunker"].chunk_text.return_value = mock_chunks
-        mock_dependencies["mock_collection"].data.insert.return_value = "weaviate-id-123"
+        mock_dependencies[
+            "mock_collection"
+        ].data.insert.return_value = "weaviate-id-123"
 
         # 処理実行
         await vectorizer_service.vectorize_content(page_id)

@@ -13,7 +13,7 @@ from ..utils.exceptions import LLMServiceError
 class LLMService:
     """LLM処理サービス."""
 
-    def __init__(self, file_repo: FileRepository, api_key: str = None):
+    def __init__(self, file_repo: FileRepository, api_key: str | None = None):
         """初期化.
 
         Args:

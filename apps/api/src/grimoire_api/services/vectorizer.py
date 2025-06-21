@@ -1,9 +1,10 @@
 """Vectorization service for Weaviate."""
 
 import json
+from typing import Any
 
 import weaviate
-from weaviate.classes.config import Configure, Property, DataType
+from weaviate.classes.config import Configure, DataType, Property
 
 from ..config import settings
 from ..repositories.file_repository import FileRepository
@@ -20,7 +21,7 @@ class VectorizerService:
         page_repo: PageRepository,
         file_repo: FileRepository,
         text_chunker: TextChunker,
-        weaviate_url: str = None,
+        weaviate_url: str | None = None,
     ):
         """初期化.
 
@@ -37,10 +38,11 @@ class VectorizerService:
         self._client = None
 
     @property
-    def client(self):
+    def client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント."""
         if self._client is None:
-            self._client = weaviate.connect_to_local(host=self.weaviate_url.replace("http://", "").replace(":8080", ""))
+            host = self.weaviate_url.replace("http://", "").replace(":8080", "")
+            self._client = weaviate.connect_to_local(host=host)
         return self._client
 
     async def vectorize_content(self, page_id: int) -> None:
@@ -75,7 +77,7 @@ class VectorizerService:
         except Exception as e:
             raise VectorizerError(f"Vectorization error: {str(e)}")
 
-    async def _save_chunks_to_weaviate(self, page_data, chunks: list[str]) -> str:
+    async def _save_chunks_to_weaviate(self, page_data: Any, chunks: list[str]) -> str:
         """チャンクをWeaviateに保存.
 
         Args:
@@ -89,7 +91,7 @@ class VectorizerService:
 
         try:
             collection = self.client.collections.get("GrimoireChunk")
-            
+
             for i, chunk in enumerate(chunks):
                 weaviate_object = {
                     "pageId": page_data.id,
@@ -108,7 +110,7 @@ class VectorizerService:
                 if i == 0:
                     first_chunk_id = str(result)
 
-            return first_chunk_id
+            return first_chunk_id or ""
 
         except Exception as e:
             raise VectorizerError(f"Failed to save chunks to Weaviate: {str(e)}")
