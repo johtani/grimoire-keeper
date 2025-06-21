@@ -15,6 +15,6 @@ router = APIRouter(prefix="/api/v1", tags=["health"])
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """ヘルスチェックエンドポイント."""
     return HealthResponse(status="healthy", message="Grimoire Keeper API is running")

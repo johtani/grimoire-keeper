@@ -18,7 +18,7 @@ def get_search_service() -> SearchService:
 async def search(
     request: SearchRequest,
     search_service: SearchService = Depends(get_search_service),
-):
+) -> SearchResponse:
     """ベクトル検索エンドポイント.
 
     Args:
@@ -53,7 +53,7 @@ async def search_by_keywords(
     keywords: list[str],
     limit: int = 5,
     search_service: SearchService = Depends(get_search_service),
-):
+) -> SearchResponse:
     """キーワード検索エンドポイント.
 
     Args:

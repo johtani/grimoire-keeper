@@ -1,6 +1,7 @@
 """FastAPI application main module."""
 
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -9,7 +10,7 @@ from .utils.database_init import ensure_database_initialized
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> Any:
     """アプリケーションライフサイクル管理."""
     # 起動時処理 - データベース初期化
     success = await ensure_database_initialized()
@@ -38,6 +39,6 @@ app.include_router(search.router)
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     """ルートエンドポイント."""
     return {"message": "Grimoire Keeper API is running"}

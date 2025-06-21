@@ -36,7 +36,7 @@ class UrlProcessorService:
         self.page_repo = page_repo
         self.log_repo = log_repo
 
-    async def process_url(self, url: str, memo: str = None) -> dict[str, Any]:
+    async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
         """URL処理のメインフロー.
 
         Args:
@@ -58,7 +58,7 @@ class UrlProcessorService:
 
             # 2. Jina AI Reader処理
             jina_result = await self.jina_client.fetch_content(url)
-            page_id = await self._save_download_result(log_id, url, memo, jina_result)
+            page_id = await self._save_download_result(log_id, url, memo or "", jina_result)
 
             # 3. LLM処理
             llm_result = await self.llm_service.generate_summary_keywords(page_id)

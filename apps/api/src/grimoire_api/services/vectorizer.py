@@ -35,7 +35,7 @@ class VectorizerService:
         self.file_repo = file_repo
         self.text_chunker = text_chunker
         self.weaviate_url = weaviate_url or settings.WEAVIATE_URL
-        self._client = None
+        self._client: weaviate.WeaviateClient | None = None
 
     @property
     def client(self) -> weaviate.WeaviateClient:
