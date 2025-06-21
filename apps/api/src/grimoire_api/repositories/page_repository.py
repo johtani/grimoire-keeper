@@ -22,7 +22,7 @@ class PageRepository:
         self.db = db
         self.file_repo = file_repo
 
-    async def create_page(self, url: str, title: str, memo: str = None) -> int:
+    async def create_page(self, url: str, title: str, memo: str | None = None) -> int:
         """ページ作成.
 
         Args:
@@ -40,7 +40,7 @@ class PageRepository:
             """
             now = datetime.now()
             cursor = await self.db.execute(query, (url, title, memo, now, now))
-            return cursor.lastrowid
+            return cursor.lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create page: {str(e)}")
 

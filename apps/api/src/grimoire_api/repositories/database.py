@@ -1,6 +1,7 @@
 """Database connection management."""
 
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
 import aiosqlite
 
@@ -20,7 +21,7 @@ class DatabaseConnection:
         self.db_path = db_path or settings.DATABASE_PATH
 
     @asynccontextmanager
-    async def get_connection(self) -> any:
+    async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         """データベース接続を取得."""
         try:
             async with aiosqlite.connect(self.db_path) as conn:
@@ -77,7 +78,8 @@ class DatabaseConnection:
         try:
             async with self.get_connection() as conn:
                 cursor = await conn.execute(query, params)
-                return await cursor.fetchall()  # type: ignore[no-any-return]
+                result = await cursor.fetchall()
+                return list(result)  # type: ignore[no-any-return]
         except Exception as e:
             raise DatabaseError(f"Fetch all error: {str(e)}")
 

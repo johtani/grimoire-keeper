@@ -18,7 +18,7 @@ class LogRepository:
         """
         self.db = db
 
-    async def create_log(self, url: str, status: str, page_id: int = None) -> int:
+    async def create_log(self, url: str, status: str, page_id: int | None = None) -> int:
         """ログ作成.
 
         Args:
@@ -37,12 +37,12 @@ class LogRepository:
             cursor = await self.db.execute(
                 query, (page_id, url, status, datetime.now())
             )
-            return cursor.lastrowid
+            return cursor.lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")
 
     async def update_status(
-        self, log_id: int, status: str, error_message: str = None
+        self, log_id: int, status: str, error_message: str | None = None
     ) -> None:
         """ステータス更新.
 

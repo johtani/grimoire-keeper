@@ -20,7 +20,7 @@ class SearchService:
             weaviate_url: Weaviate URL
         """
         self.weaviate_url = weaviate_url or settings.WEAVIATE_URL
-        self._client = None
+        self._client: weaviate.WeaviateClient | None = None
 
     @property
     def client(self) -> weaviate.WeaviateClient:
@@ -81,7 +81,7 @@ class SearchService:
             collection = self.client.collections.get("GrimoireChunk")
 
             # キーワードフィルタで検索
-            response = collection.query.fetch_objects(
+            response = collection.query.fetch_objects(  # type: ignore[call-overload]
                 where=Filter.by_property("keywords").contains_any(keywords), limit=limit
             )
 

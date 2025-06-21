@@ -43,7 +43,7 @@ async def process_url(
     request: ProcessUrlRequest,
     background_tasks: BackgroundTasks,
     processor: UrlProcessorService = Depends(get_url_processor),
-):
+) -> ProcessUrlResponse:
     """URL処理エンドポイント.
 
     Args:
@@ -60,7 +60,7 @@ async def process_url(
     try:
         # バックグラウンドで処理実行
         background_tasks.add_task(
-            processor.process_url, url=str(request.url), memo=request.memo
+            processor.process_url, url=str(request.url), memo=request.memo or ""
         )
 
         return ProcessUrlResponse(
@@ -77,7 +77,7 @@ async def process_url(
 async def get_process_status(
     page_id: int,
     processor: UrlProcessorService = Depends(get_url_processor),
-):
+) -> dict[str, str]:
     """処理状況取得エンドポイント.
 
     Args:
