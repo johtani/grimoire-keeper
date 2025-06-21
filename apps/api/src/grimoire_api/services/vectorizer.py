@@ -3,6 +3,7 @@
 import json
 
 import weaviate
+from weaviate.classes.config import Configure, Property, DataType
 
 from ..config import settings
 from ..repositories.file_repository import FileRepository
@@ -39,7 +40,7 @@ class VectorizerService:
     def client(self):
         """Weaviateクライアント."""
         if self._client is None:
-            self._client = weaviate.Client(self.weaviate_url)
+            self._client = weaviate.connect_to_local(host=self.weaviate_url.replace("http://", "").replace(":8080", ""))
         return self._client
 
     async def vectorize_content(self, page_id: int) -> None:
@@ -87,6 +88,8 @@ class VectorizerService:
         first_chunk_id = None
 
         try:
+            collection = self.client.collections.get("GrimoireChunk")
+            
             for i, chunk in enumerate(chunks):
                 weaviate_object = {
                     "pageId": page_data.id,
@@ -97,15 +100,13 @@ class VectorizerService:
                     "content": chunk,
                     "summary": page_data.summary or "",
                     "keywords": json.loads(page_data.keywords or "[]"),
-                    "createdAt": page_data.created_at.isoformat(),
+                    "createdAt": page_data.created_at,
                 }
 
-                result = self.client.data_object.create(
-                    data_object=weaviate_object, class_name="GrimoireChunk"
-                )
+                result = collection.data.insert(properties=weaviate_object)
 
                 if i == 0:
-                    first_chunk_id = result
+                    first_chunk_id = str(result)
 
             return first_chunk_id
 
@@ -119,7 +120,7 @@ class VectorizerService:
             Weaviateが利用可能かどうか
         """
         try:
-            self.client.schema.get()
+            self.client.is_ready()
             return True
         except Exception:
             return False
@@ -131,29 +132,25 @@ class VectorizerService:
             VectorizerError: スキーマ作成エラー
         """
         try:
-            # 既存スキーマ確認
-            existing_classes = self.client.schema.get()["classes"]
-            class_names = [cls["class"] for cls in existing_classes]
-
-            if "GrimoireChunk" not in class_names:
-                # スキーマ作成
-                schema = {
-                    "class": "GrimoireChunk",
-                    "description": "Grimoire Keeperで管理するWebページのチャンク",
-                    "properties": [
-                        {"name": "pageId", "dataType": ["int"]},
-                        {"name": "chunkId", "dataType": ["int"]},
-                        {"name": "url", "dataType": ["text"]},
-                        {"name": "title", "dataType": ["text"]},
-                        {"name": "memo", "dataType": ["text"]},
-                        {"name": "content", "dataType": ["text"]},
-                        {"name": "summary", "dataType": ["text"]},
-                        {"name": "keywords", "dataType": ["text[]"]},
-                        {"name": "createdAt", "dataType": ["date"]},
+            # 既存コレクション確認
+            if not self.client.collections.exists("GrimoireChunk"):
+                # コレクション作成
+                self.client.collections.create(
+                    name="GrimoireChunk",
+                    description="Grimoire Keeperで管理するWebページのチャンク",
+                    properties=[
+                        Property(name="pageId", data_type=DataType.INT),
+                        Property(name="chunkId", data_type=DataType.INT),
+                        Property(name="url", data_type=DataType.TEXT),
+                        Property(name="title", data_type=DataType.TEXT),
+                        Property(name="memo", data_type=DataType.TEXT),
+                        Property(name="content", data_type=DataType.TEXT),
+                        Property(name="summary", data_type=DataType.TEXT),
+                        Property(name="keywords", data_type=DataType.TEXT_ARRAY),
+                        Property(name="createdAt", data_type=DataType.DATE),
                     ],
-                    "vectorizer": "text2vec-openai",
-                }
-                self.client.schema.create_class(schema)
+                    vectorizer_config=Configure.Vectorizer.text2vec_openai(),
+                )
 
         except Exception as e:
             raise VectorizerError(f"Failed to ensure schema: {str(e)}")

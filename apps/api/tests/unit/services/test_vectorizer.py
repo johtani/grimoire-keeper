@@ -15,11 +15,21 @@ class TestVectorizerService:
     @pytest.fixture
     def mock_dependencies(self):
         """依存関係のモック."""
+        mock_collection = MagicMock()
+        mock_collections = MagicMock()
+        mock_collections.get.return_value = mock_collection
+        mock_collections.exists.return_value = False
+        
+        mock_client = MagicMock()
+        mock_client.collections = mock_collections
+        mock_client.is_ready.return_value = True
+        
         return {
             "page_repo": AsyncMock(),
             "file_repo": AsyncMock(),
             "text_chunker": MagicMock(),
-            "weaviate_client": MagicMock(),
+            "weaviate_client": mock_client,
+            "mock_collection": mock_collection,
         }
 
     @pytest.fixture
@@ -33,6 +43,8 @@ class TestVectorizerService:
         )
         # Weaviateクライアントをモックに置き換え
         service._client = mock_dependencies["weaviate_client"]
+        # コレクションモックを設定
+        mock_dependencies["weaviate_client"].collections.get.return_value = mock_dependencies["mock_collection"]
         return service
 
     @pytest.mark.asyncio
@@ -67,9 +79,7 @@ class TestVectorizerService:
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
         mock_dependencies["text_chunker"].chunk_text.return_value = mock_chunks
-        mock_dependencies[
-            "weaviate_client"
-        ].data_object.create.return_value = "weaviate-id-123"
+        mock_dependencies["mock_collection"].data.insert.return_value = "weaviate-id-123"
 
         # 処理実行
         await vectorizer_service.vectorize_content(page_id)
@@ -82,7 +92,7 @@ class TestVectorizerService:
         )
 
         # Weaviateへの保存が3回呼ばれたことを確認
-        assert mock_dependencies["weaviate_client"].data_object.create.call_count == 3
+        assert mock_dependencies["mock_collection"].data.insert.call_count == 3
 
         # Weaviate ID更新が呼ばれたことを確認
         mock_dependencies["page_repo"].update_weaviate_id.assert_called_once_with(
@@ -153,9 +163,7 @@ class TestVectorizerService:
         chunks = ["chunk1", "chunk2"]
 
         # モック設定
-        mock_dependencies[
-            "weaviate_client"
-        ].data_object.create.return_value = "weaviate-id"
+        mock_dependencies["mock_collection"].data.insert.return_value = "weaviate-id"
 
         # 処理実行
         result = await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
@@ -164,16 +172,14 @@ class TestVectorizerService:
         assert result == "weaviate-id"
 
         # Weaviateへの保存が2回呼ばれたことを確認
-        assert mock_dependencies["weaviate_client"].data_object.create.call_count == 2
+        assert mock_dependencies["mock_collection"].data.insert.call_count == 2
 
         # 保存データの確認
-        call_args_list = mock_dependencies[
-            "weaviate_client"
-        ].data_object.create.call_args_list
+        call_args_list = mock_dependencies["mock_collection"].data.insert.call_args_list
 
         # 最初のチャンク
         first_call = call_args_list[0]
-        first_data = first_call[1]["data_object"]
+        first_data = first_call[1]["properties"]
         assert first_data["pageId"] == 1
         assert first_data["chunkId"] == 0
         assert first_data["content"] == "chunk1"
@@ -182,7 +188,7 @@ class TestVectorizerService:
 
         # 2番目のチャンク
         second_call = call_args_list[1]
-        second_data = second_call[1]["data_object"]
+        second_data = second_call[1]["properties"]
         assert second_data["chunkId"] == 1
         assert second_data["content"] == "chunk2"
 
@@ -190,7 +196,7 @@ class TestVectorizerService:
     async def test_health_check_success(self, vectorizer_service, mock_dependencies):
         """ヘルスチェック成功テスト."""
         # モック設定
-        mock_dependencies["weaviate_client"].schema.get.return_value = {"classes": []}
+        mock_dependencies["weaviate_client"].is_ready.return_value = True
 
         # 処理実行
         result = await vectorizer_service.health_check()
@@ -202,7 +208,7 @@ class TestVectorizerService:
     async def test_health_check_failure(self, vectorizer_service, mock_dependencies):
         """ヘルスチェック失敗テスト."""
         # モック設定
-        mock_dependencies["weaviate_client"].schema.get.side_effect = Exception(
+        mock_dependencies["weaviate_client"].is_ready.side_effect = Exception(
             "Connection error"
         )
 
@@ -217,34 +223,29 @@ class TestVectorizerService:
         self, vectorizer_service, mock_dependencies
     ):
         """新規スキーマ作成テスト."""
-        # モック設定（既存クラスなし）
-        mock_dependencies["weaviate_client"].schema.get.return_value = {"classes": []}
+        # モック設定（既存コレクションなし）
+        mock_dependencies["weaviate_client"].collections.exists.return_value = False
 
         # 処理実行
         await vectorizer_service.ensure_schema()
 
-        # スキーマ作成が呼ばれたことを確認
-        mock_dependencies["weaviate_client"].schema.create_class.assert_called_once()
+        # コレクション作成が呼ばれたことを確認
+        mock_dependencies["weaviate_client"].collections.create.assert_called_once()
 
-        # 作成されたスキーマの確認
-        call_args = mock_dependencies["weaviate_client"].schema.create_class.call_args
-        schema = call_args[0][0]
-        assert schema["class"] == "GrimoireChunk"
-        assert "properties" in schema
-        assert schema["vectorizer"] == "text2vec-openai"
+        # 作成されたコレクションの確認
+        call_args = mock_dependencies["weaviate_client"].collections.create.call_args
+        assert call_args[1]["name"] == "GrimoireChunk"
 
     @pytest.mark.asyncio
     async def test_ensure_schema_already_exists(
         self, vectorizer_service, mock_dependencies
     ):
         """既存スキーマ確認テスト."""
-        # モック設定（既存クラスあり）
-        mock_dependencies["weaviate_client"].schema.get.return_value = {
-            "classes": [{"class": "GrimoireChunk"}]
-        }
+        # モック設定（既存コレクションあり）
+        mock_dependencies["weaviate_client"].collections.exists.return_value = True
 
         # 処理実行
         await vectorizer_service.ensure_schema()
 
-        # スキーマ作成が呼ばれないことを確認
-        mock_dependencies["weaviate_client"].schema.create_class.assert_not_called()
+        # コレクション作成が呼ばれないことを確認
+        mock_dependencies["weaviate_client"].collections.create.assert_not_called()

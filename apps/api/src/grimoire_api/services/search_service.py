@@ -1,6 +1,7 @@
 """Search service for Weaviate."""
 
 import weaviate
+from weaviate.classes.query import MetadataQuery
 
 from ..config import settings
 from ..models.response import SearchResult
@@ -23,7 +24,7 @@ class SearchService:
     def client(self):
         """Weaviateクライアント."""
         if self._client is None:
-            self._client = weaviate.Client(self.weaviate_url)
+            self._client = weaviate.connect_to_local(host=self.weaviate_url.replace("http://", "").replace(":8080", ""))
         return self._client
 
     async def vector_search(
@@ -43,38 +44,17 @@ class SearchService:
             VectorizerError: 検索エラー
         """
         try:
-            # クエリ構築
-            search_query = (
-                self.client.query.get(
-                    "GrimoireChunk",
-                    [
-                        "pageId",
-                        "chunkId",
-                        "url",
-                        "title",
-                        "memo",
-                        "content",
-                        "summary",
-                        "keywords",
-                        "createdAt",
-                    ],
-                )
-                .with_near_text({"concepts": [query]})
-                .with_limit(limit)
-                .with_additional(["certainty"])
+            collection = self.client.collections.get("GrimoireChunk")
+            
+            # クエリ実行
+            response = collection.query.near_text(
+                query=query,
+                limit=limit,
+                return_metadata=MetadataQuery(certainty=True)
             )
 
-            # フィルタ適用
-            if filters:
-                where_filter = self._build_where_filter(filters)
-                if where_filter:
-                    search_query = search_query.with_where(where_filter)
-
-            # 検索実行
-            result = search_query.do()
-
             # 結果変換
-            return self._convert_search_results(result)
+            return self._convert_search_results_v4(response)
 
         except Exception as e:
             raise VectorizerError(f"Vector search error: {str(e)}")
@@ -95,33 +75,17 @@ class SearchService:
             VectorizerError: 検索エラー
         """
         try:
-            where_filter = {
-                "path": ["keywords"],
-                "operator": "ContainsAny",
-                "valueTextArray": keywords,
-            }
-
-            result = (
-                self.client.query.get(
-                    "GrimoireChunk",
-                    [
-                        "pageId",
-                        "chunkId",
-                        "url",
-                        "title",
-                        "memo",
-                        "content",
-                        "summary",
-                        "keywords",
-                        "createdAt",
-                    ],
-                )
-                .with_where(where_filter)
-                .with_limit(limit)
-                .do()
+            from weaviate.classes.query import Filter
+            
+            collection = self.client.collections.get("GrimoireChunk")
+            
+            # キーワードフィルタで検索
+            response = collection.query.fetch_objects(
+                where=Filter.by_property("keywords").contains_any(keywords),
+                limit=limit
             )
 
-            return self._convert_search_results(result)
+            return self._convert_search_results_v4(response)
 
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")
@@ -180,42 +144,37 @@ class SearchService:
         else:
             return None
 
-    def _convert_search_results(self, result: dict) -> list[SearchResult]:
-        """検索結果変換.
+    def _convert_search_results_v4(self, response) -> list[SearchResult]:
+        """検索結果変換 (Weaviate v4).
 
         Args:
-            result: Weaviate検索結果
+            response: Weaviate v4検索結果
 
         Returns:
             SearchResultのリスト
         """
         search_results = []
 
-        if "data" in result and "Get" in result["data"]:
-            chunks = result["data"]["Get"].get("GrimoireChunk", [])
+        for obj in response.objects:
+            # スコア取得
+            score = 0.0
+            if hasattr(obj.metadata, 'certainty') and obj.metadata.certainty is not None:
+                score = obj.metadata.certainty
+            elif hasattr(obj.metadata, 'distance') and obj.metadata.distance is not None:
+                score = 1.0 - obj.metadata.distance
 
-            for chunk in chunks:
-                # スコア取得（certaintyまたはdistance）
-                score = 0.0
-                if "_additional" in chunk:
-                    additional = chunk["_additional"]
-                    if "certainty" in additional:
-                        score = additional["certainty"]
-                    elif "distance" in additional:
-                        score = 1.0 - additional["distance"]  # distanceを類似度に変換
-
-                search_result = SearchResult(
-                    page_id=chunk.get("pageId", 0),
-                    chunk_id=chunk.get("chunkId", 0),
-                    url=chunk.get("url", ""),
-                    title=chunk.get("title", ""),
-                    memo=chunk.get("memo"),
-                    content=chunk.get("content", ""),
-                    summary=chunk.get("summary", ""),
-                    keywords=chunk.get("keywords", []),
-                    created_at=chunk.get("createdAt", ""),
-                    score=score,
-                )
-                search_results.append(search_result)
+            search_result = SearchResult(
+                page_id=obj.properties.get("pageId", 0),
+                chunk_id=obj.properties.get("chunkId", 0),
+                url=obj.properties.get("url", ""),
+                title=obj.properties.get("title", ""),
+                memo=obj.properties.get("memo"),
+                content=obj.properties.get("content", ""),
+                summary=obj.properties.get("summary", ""),
+                keywords=obj.properties.get("keywords", []),
+                created_at=obj.properties.get("createdAt", ""),
+                score=score,
+            )
+            search_results.append(search_result)
 
         return search_results
