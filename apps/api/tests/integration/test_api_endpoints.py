@@ -6,14 +6,17 @@ import pytest
 from fastapi.testclient import TestClient
 from grimoire_api.main import app
 
+# 統合テスト用フィクスチャをインポート
+pytest_plugins = ["tests.conftest_integration"]
+
 
 class TestAPIEndpoints:
     """APIエンドポイントの統合テスト."""
 
     @pytest.fixture
-    def client(self):
+    def client(self, integration_client):
         """テストクライアント."""
-        return TestClient(app)
+        return integration_client
 
     def test_root_endpoint(self, client):
         """ルートエンドポイントテスト."""

@@ -4,21 +4,24 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .repositories.database import DatabaseConnection
 from .routers import health, process, search
+from .utils.database_init import ensure_database_initialized
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリケーションライフサイクル管理."""
-    # 起動時処理
-    db = DatabaseConnection()
-    await db.initialize_tables()
+    # 起動時処理 - データベース初期化
+    success = await ensure_database_initialized()
+    if success:
+        print("✅ Database initialized successfully")
+    else:
+        print("⚠️ Database initialization failed, but continuing startup")
 
     yield
 
-    # 終了時処理（必要に応じて）
-    pass
+    # 終了時処理
+    print("🔄 Application shutting down")
 
 
 app = FastAPI(
