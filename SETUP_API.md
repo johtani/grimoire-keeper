@@ -31,36 +31,41 @@ cp .env.example .env
 uv sync
 ```
 
-## 2. データベース初期化
+## 2. Weaviate起動
 
-### 2.1 データベーステーブル作成
-```bash
-# データベース初期化スクリプト実行
-uv run python -c "
-import asyncio
-from apps.api.src.grimoire_api.repositories.database import DatabaseConnection
-
-async def init_db():
-    db = DatabaseConnection()
-    await db.initialize_tables()
-    print('Database initialized successfully!')
-
-asyncio.run(init_db())
-"
-```
-
-## 3. Weaviate起動
-
-### 3.1 Weaviateコンテナ起動
+### 2.1 Weaviateコンテナ起動
 ```bash
 # Weaviateをバックグラウンドで起動
 docker-compose up -d weaviate
 ```
 
-### 3.2 Weaviate接続確認
+### 2.2 Weaviate接続確認
 ```bash
-# Weaviateが起動したか確認
+# Weaviateが起動したか確認（数秒待ってから実行）
 curl http://localhost:8080/v1/meta
+```
+
+## 3. データベース初期化
+
+### 3.1 データベーステーブル作成
+```bash
+# データベース初期化スクリプト実行（SQLite + Weaviateスキーマ）
+uv run python scripts/init_database.py init
+
+# または単に
+uv run python scripts/init_database.py
+```
+
+**ℹ️ 注意**: Weaviateが起動していない場合は、まずSQLiteのみ初期化できます：
+```bash
+# SQLiteのみ初期化（Weaviate不要）
+uv run python scripts/init_database.py sqlite
+```
+
+### 3.2 データベース状態確認
+```bash
+# データベースの状態を確認
+uv run python scripts/init_database.py check
 ```
 
 ## 4. APIサービス起動
@@ -110,12 +115,14 @@ curl -X POST "http://localhost:8000/api/v1/search" \
 
 **データベースエラー**
 ```bash
+# データベース状態確認
+uv run python scripts/init_database.py check
+
+# データベースリセット（全データ削除）
+uv run python scripts/init_database.py reset
+
 # データベースファイルの権限確認
 ls -la grimoire.db
-
-# データベース再初期化
-rm grimoire.db
-# 手順2.1を再実行
 ```
 
 **Weaviate接続エラー**
@@ -142,6 +149,21 @@ cat .env
 
 # Weaviateログ
 docker-compose logs weaviate
+```
+
+### 6.3 データベース直接操作
+```bash
+# SQLite CLIでデータベースに接続
+uv run python scripts/db_cli.py
+
+# または直接sqlite3コマンドを使用
+sqlite3 grimoire.db
+
+# 便利なSQLiteコマンド
+# .tables          - テーブル一覧
+# .schema          - スキーマ表示
+# .headers on      - カラムヘッダー表示
+# .mode column     - カラム形式で表示
 ```
 
 ## 7. 開発時の推奨コマンド

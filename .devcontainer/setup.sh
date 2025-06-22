@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# システムパッケージの更新とsqlite3のインストール
+sudo apt-get update
+sudo apt-get install -y sqlite3
+
 # uvのインストール
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.cargo/bin:$PATH"
