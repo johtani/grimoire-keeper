@@ -43,7 +43,8 @@ def integration_client(integration_db):
         "JINA_API_KEY": "test-jina-key",
         "GOOGLE_API_KEY": "test-google-key", 
         "OPENAI_API_KEY": "test-openai-key",
-        "WEAVIATE_URL": "http://localhost:8080",
+        "WEAVIATE_HOST": "localhost",
+        "WEAVIATE_PORT": "8080",
     }
     
     with patch.dict(os.environ, test_env):

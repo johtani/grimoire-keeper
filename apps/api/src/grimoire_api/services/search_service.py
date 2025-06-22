@@ -13,21 +13,22 @@ from ..utils.exceptions import VectorizerError
 class SearchService:
     """検索サービス."""
 
-    def __init__(self, weaviate_url: str | None = None):
+    def __init__(self, weaviate_host: str | None = None, weaviate_port: int | None = None):
         """初期化.
 
         Args:
-            weaviate_url: Weaviate URL
+            weaviate_host: Weaviateホスト名
+            weaviate_port: Weaviateポート番号
         """
-        self.weaviate_url = weaviate_url or settings.WEAVIATE_URL
+        self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
+        self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
         self._client: weaviate.WeaviateClient | None = None
 
     @property
     def client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント."""
         if self._client is None:
-            host = self.weaviate_url.replace("http://", "").replace(":8080", "")
-            self._client = weaviate.connect_to_local(host=host)
+            self._client = weaviate.connect_to_local(host=self.weaviate_host, port=self.weaviate_port)
         return self._client
 
     async def vector_search(
