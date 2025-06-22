@@ -35,7 +35,9 @@ async def check_api():
     """API接続チェック."""
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://localhost:8000/api/v1/health", timeout=5.0)
+            response = await client.get(
+                "http://localhost:8000/api/v1/health", timeout=5.0
+            )
             if response.status_code == 200:
                 print("✅ API: 接続OK")
                 return True
@@ -51,12 +53,12 @@ def check_env_vars():
     """環境変数チェック."""
     required_vars = ["OPENAI_API_KEY", "GOOGLE_API_KEY", "JINA_API_KEY"]
     missing_vars = []
-    
+
     for var in required_vars:
         value = getattr(settings, var, "")
         if not value or value == "":
             missing_vars.append(var)
-    
+
     if missing_vars:
         print(f"❌ 環境変数: 未設定 - {', '.join(missing_vars)}")
         return False
@@ -79,20 +81,20 @@ def check_database():
 async def main():
     """メイン処理."""
     print("🔍 サービス状態をチェックしています...\n")
-    
+
     checks = [
         ("環境変数", check_env_vars()),
         ("データベース", check_database()),
         ("Weaviate", await check_weaviate()),
         ("API", await check_api()),
     ]
-    
+
     all_ok = True
     for name, result in checks:
         if not result:
             all_ok = False
-    
-    print("\n" + "="*50)
+
+    print("\n" + "=" * 50)
     if all_ok:
         print("🎉 全てのサービスが正常に動作しています!")
     else:

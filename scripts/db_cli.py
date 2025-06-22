@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """SQLite database CLI helper script."""
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 # プロジェクトルートをPythonパスに追加
@@ -15,7 +15,7 @@ from grimoire_api.config import settings
 def main():
     """SQLite CLIを起動."""
     db_path = settings.DATABASE_PATH
-    
+
     print(f"🗄️  Opening SQLite database: {db_path}")
     print("💡 Useful commands:")
     print("   .tables          - Show all tables")
@@ -24,7 +24,7 @@ def main():
     print("   .mode column     - Format output as columns")
     print("   .quit            - Exit")
     print("=" * 50)
-    
+
     # sqlite3コマンドを実行
     try:
         subprocess.run(["sqlite3", db_path], check=True)

@@ -60,7 +60,7 @@ class TestUrlProcessorService:
         assert "completed successfully" in result["message"]
 
         # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log.assert_called_once_with(url, "started")
+        mock_services["log_repo"].create_log.assert_called_once_with(url, "started", page_id)
         mock_services["jina_client"].fetch_content.assert_called_once_with(url)
         mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
             page_id
@@ -116,25 +116,15 @@ class TestUrlProcessorService:
     async def test_save_download_result(self, url_processor, mock_services):
         """ダウンロード結果保存テスト."""
         log_id = 1
-        url = "https://example.com"
-        memo = "Test memo"
         page_id = 2
         jina_result = {"data": {"title": "Test Title", "content": "Test content"}}
 
-        # モック設定
-        mock_services["page_repo"].create_page.return_value = page_id
-
         # 処理実行
-        result_page_id = await url_processor._save_download_result(
-            log_id, url, memo, jina_result
-        )
-
-        # 結果確認
-        assert result_page_id == page_id
+        await url_processor._save_download_result(log_id, page_id, jina_result)
 
         # 各メソッドが呼ばれたことを確認
-        mock_services["page_repo"].create_page.assert_called_once_with(
-            url=url, title="Test Title", memo=memo
+        mock_services["page_repo"].update_page_title.assert_called_once_with(
+            page_id, "Test Title"
         )
         mock_services["page_repo"].save_json_file.assert_called_once_with(
             page_id, jina_result
