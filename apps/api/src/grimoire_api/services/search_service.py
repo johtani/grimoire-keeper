@@ -13,7 +13,9 @@ from ..utils.exceptions import VectorizerError
 class SearchService:
     """検索サービス."""
 
-    def __init__(self, weaviate_host: str | None = None, weaviate_port: int | None = None):
+    def __init__(
+        self, weaviate_host: str | None = None, weaviate_port: int | None = None
+    ):
         """初期化.
 
         Args:
@@ -28,7 +30,9 @@ class SearchService:
     def client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント."""
         if self._client is None:
-            self._client = weaviate.connect_to_local(host=self.weaviate_host, port=self.weaviate_port)
+            self._client = weaviate.connect_to_local(
+                host=self.weaviate_host, port=self.weaviate_port
+            )
         return self._client
 
     async def vector_search(

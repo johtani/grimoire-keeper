@@ -1,10 +1,8 @@
 """Integration tests for API endpoints."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
-from grimoire_api.main import app
 
 # 統合テスト用フィクスチャをインポート
 pytest_plugins = ["tests.conftest_integration"]
@@ -38,19 +36,16 @@ class TestAPIEndpoints:
     def test_process_url_endpoint(self, mock_vectorize, mock_llm, mock_jina, client):
         """URL処理エンドポイントテスト."""
         import uuid
+
         test_url = f"https://test-{uuid.uuid4().hex[:8]}.example.com"
-        
+
         # モック設定
         mock_jina.return_value = {
-            "data": {
-                "title": "Test Title",
-                "content": "Test content",
-                "url": test_url
-            }
+            "data": {"title": "Test Title", "content": "Test content", "url": test_url}
         }
         mock_llm.return_value = {
             "summary": "Test summary",
-            "keywords": ["test", "keyword"]
+            "keywords": ["test", "keyword"],
         }
         mock_vectorize.return_value = None
 
@@ -70,7 +65,7 @@ class TestAPIEndpoints:
     def test_search_endpoint(self, mock_vector_search, client):
         """検索エンドポイントテスト."""
         from grimoire_api.models.response import SearchResult
-        
+
         # モック設定
         mock_vector_search.return_value = [
             SearchResult(

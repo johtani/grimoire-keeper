@@ -18,7 +18,9 @@ class LogRepository:
         """
         self.db = db
 
-    async def create_log(self, url: str, status: str, page_id: int | None = None) -> int:
+    async def create_log(
+        self, url: str, status: str, page_id: int | None = None
+    ) -> int:
         """ログ作成.
 
         Args:

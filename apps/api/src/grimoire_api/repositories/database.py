@@ -1,7 +1,7 @@
 """Database connection management."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import aiosqlite
 
@@ -21,7 +21,7 @@ class DatabaseConnection:
         self.db_path = db_path or settings.DATABASE_PATH
 
     @asynccontextmanager
-    async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
+    async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection]:
         """データベース接続を取得."""
         try:
             async with aiosqlite.connect(self.db_path) as conn:

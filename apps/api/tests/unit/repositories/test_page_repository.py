@@ -58,6 +58,20 @@ class TestPageRepository:
         assert page.keywords == '["keyword1", "keyword2", "keyword3"]'
 
     @pytest.mark.asyncio
+    async def test_update_page_title(self, page_repo):
+        """ページタイトル更新テスト."""
+        # ページ作成
+        page_id = await page_repo.create_page("https://example.com", "Old Title")
+
+        # タイトル更新
+        new_title = "New Title"
+        await page_repo.update_page_title(page_id, new_title)
+
+        # 更新確認
+        page = await page_repo.get_page(page_id)
+        assert page.title == new_title
+
+    @pytest.mark.asyncio
     async def test_update_weaviate_id(self, page_repo):
         """Weaviate ID更新テスト."""
         # ページ作成

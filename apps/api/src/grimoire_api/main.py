@@ -5,11 +5,11 @@ from typing import Any
 
 from fastapi import FastAPI
 
-# 警告フィルタを適用
-from .utils.warnings_filter import *  # noqa: F403, F401
-
 from .routers import health, process, search
 from .utils.database_init import ensure_database_initialized
+
+# 警告フィルタを適用
+from .utils.warnings_filter import *  # noqa: F403, F401
 
 
 @asynccontextmanager

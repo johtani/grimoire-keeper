@@ -44,7 +44,9 @@ class VectorizerService:
     def client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント."""
         if self._client is None:
-            self._client = weaviate.connect_to_local(host=self.weaviate_host, port=self.weaviate_port)
+            self._client = weaviate.connect_to_local(
+                host=self.weaviate_host, port=self.weaviate_port
+            )
         return self._client
 
     async def vectorize_content(self, page_id: int) -> None:

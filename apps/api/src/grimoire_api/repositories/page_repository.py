@@ -100,6 +100,19 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update summary/keywords: {str(e)}")
 
+    async def update_page_title(self, page_id: int, title: str) -> None:
+        """ページタイトル更新.
+
+        Args:
+            page_id: ページID
+            title: タイトル
+        """
+        try:
+            query = "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?"
+            await self.db.execute(query, (title, datetime.now(), page_id))
+        except Exception as e:
+            raise DatabaseError(f"Failed to update page title: {str(e)}")
+
     async def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
         """Weaviate ID更新.
 

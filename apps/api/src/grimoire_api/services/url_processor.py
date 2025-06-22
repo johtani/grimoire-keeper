@@ -53,22 +53,27 @@ class UrlProcessorService:
         page_id = None
 
         try:
-            # 1. 処理開始ログ
-            log_id = await self.log_repo.create_log(url, "started")
+            # 1. 仮のページ作成
+            page_id = await self.page_repo.create_page(
+                url=url, title="Processing...", memo=memo or ""
+            )
 
-            # 2. Jina AI Reader処理
+            # 2. 処理開始ログ作成（page_id付き）
+            log_id = await self.log_repo.create_log(url, "started", page_id)
+
+            # 3. Jina AI Reader処理
             jina_result = await self.jina_client.fetch_content(url)
-            page_id = await self._save_download_result(log_id, url, memo or "", jina_result)
+            await self._save_download_result(log_id, page_id, jina_result)
 
-            # 3. LLM処理
+            # 4. LLM処理
             llm_result = await self.llm_service.generate_summary_keywords(page_id)
             await self._save_llm_result(log_id, page_id, llm_result)
 
-            # 4. ベクトル化処理
+            # 5. ベクトル化処理
             await self.vectorizer.vectorize_content(page_id)
             await self.log_repo.update_status(log_id, "vectorize_complete")
 
-            # 5. 完了ログ
+            # 6. 完了ログ
             await self.log_repo.update_status(log_id, "completed")
 
             return {
@@ -83,32 +88,24 @@ class UrlProcessorService:
             raise GrimoireAPIError(f"URL processing failed: {str(e)}")
 
     async def _save_download_result(
-        self, log_id: int, url: str, memo: str, result: dict
-    ) -> int:
+        self, log_id: int, page_id: int, result: dict
+    ) -> None:
         """ダウンロード結果保存.
 
         Args:
             log_id: ログID
-            url: URL
-            memo: メモ
+            page_id: ページID
             result: Jina AI Readerの結果
-
-        Returns:
-            作成されたページID
         """
         try:
-            # pagesテーブル保存
-            page_id = await self.page_repo.create_page(
-                url=url, title=result["data"]["title"], memo=memo
-            )
+            # ページタイトル更新
+            await self.page_repo.update_page_title(page_id, result["data"]["title"])
 
             # JSONファイル保存
             await self.page_repo.save_json_file(page_id, result)
 
-            # ログにページID設定
+            # ステータス更新
             await self.log_repo.update_status(log_id, "download_complete")
-
-            return page_id
 
         except Exception as e:
             await self.log_repo.update_status(log_id, "download_error", str(e))
