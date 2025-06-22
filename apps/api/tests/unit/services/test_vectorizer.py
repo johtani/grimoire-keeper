@@ -39,7 +39,8 @@ class TestVectorizerService:
             page_repo=mock_dependencies["page_repo"],
             file_repo=mock_dependencies["file_repo"],
             text_chunker=mock_dependencies["text_chunker"],
-            weaviate_url="http://test-weaviate:8080",
+            weaviate_host="test-weaviate",
+            weaviate_port=8080,
         )
         # Weaviateクライアントをモックに置き換え
         service._client = mock_dependencies["weaviate_client"]

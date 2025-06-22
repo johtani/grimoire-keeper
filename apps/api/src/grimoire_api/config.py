@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     DATABASE_PATH: str = "./grimoire.db"
 
     # Weaviate
-    WEAVIATE_URL: str = "http://localhost:8080"
+    WEAVIATE_HOST: str = "localhost"
+    WEAVIATE_PORT: int = 8080
 
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"
