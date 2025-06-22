@@ -226,7 +226,8 @@ BACKEND_API_URL=http://localhost:8000
 OPENAI_API_KEY=sk-...        # Weaviate vectorizer用
 GOOGLE_API_KEY=sk-...        # Gemini要約・キーワード抽出用
 JINA_API_KEY=...
-WEAVIATE_URL=http://localhost:8080
+WEAVIATE_HOST=localhost
+WEAVIATE_PORT=8080
 DATABASE_PATH=./grimoire.db
 JSON_STORAGE_PATH=./data/json  # JSONファイル保存先
 ```

@@ -327,7 +327,10 @@ class VectorizerService:
         self.page_repo = page_repo
         self.file_repo = file_repo
         self.text_chunker = text_chunker
-        self.client = weaviate.Client(settings.WEAVIATE_URL)
+        self.client = weaviate.connect_to_local(
+            host=settings.WEAVIATE_HOST, 
+            port=settings.WEAVIATE_PORT
+        )
         
     async def vectorize_content(self, page_id: int) -> None:
         """コンテンツのベクトル化とWeaviate保存"""

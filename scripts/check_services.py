@@ -18,7 +18,8 @@ async def check_weaviate():
     """Weaviate接続チェック."""
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{settings.WEAVIATE_URL}/v1/meta", timeout=5.0)
+            weaviate_url = f"http://{settings.WEAVIATE_HOST}:{settings.WEAVIATE_PORT}"
+            response = await client.get(f"{weaviate_url}/v1/meta", timeout=5.0)
             if response.status_code == 200:
                 print("✅ Weaviate: 接続OK")
                 return True
