@@ -3,6 +3,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+# Pydantic警告を抑制
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic.*")
+
 
 @dataclass
 class Page:

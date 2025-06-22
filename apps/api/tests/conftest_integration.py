@@ -2,11 +2,16 @@
 
 import os
 import tempfile
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
+
+# 統合テスト用警告フィルタ
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 from fastapi.testclient import TestClient
 
 from grimoire_api.main import app

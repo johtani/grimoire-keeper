@@ -2,10 +2,15 @@
 
 import asyncio
 import tempfile
+import warnings
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
+# テスト用警告フィルタ
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
