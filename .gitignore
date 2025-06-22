@@ -52,6 +52,9 @@ htmlcov/
 *.sqlite3
 grimoire.db
 
+# データファイル
+data/json/
+
 # ログファイル
 *.log
 logs/
