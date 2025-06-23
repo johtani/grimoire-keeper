@@ -58,15 +58,28 @@ async def process_url(
         HTTPException: 処理エラー
     """
     try:
-        # バックグラウンドで処理実行
+        # 同期処理部分を実行
+        result = processor.prepare_url_processing(str(request.url), request.memo)
+        
+        if result["status"] == "already_exists":
+            return ProcessUrlResponse(
+                status=result["status"],
+                page_id=result["page_id"],
+                message=result["message"],
+            )
+        
+        # バックグラウンドタスクに非同期処理を追加
         background_tasks.add_task(
-            processor.process_url, url=str(request.url), memo=request.memo or ""
+            processor.process_url_background,
+            result["page_id"],
+            result["log_id"],
+            str(request.url)
         )
-
+        
         return ProcessUrlResponse(
-            status="accepted",
-            page_id=0,  # バックグラウンド処理のため仮のID
-            message="URL processing started in background",
+            status="processing",
+            page_id=result["page_id"],
+            message="URL processing started",
         )
 
     except Exception as e:
@@ -74,7 +87,7 @@ async def process_url(
 
 
 @router.get("/process-status/{page_id}")
-async def get_process_status(
+def get_process_status(
     page_id: int,
     processor: UrlProcessorService = Depends(get_url_processor),
 ) -> dict[str, str]:
@@ -88,7 +101,7 @@ async def get_process_status(
         処理状況
     """
     try:
-        status = await processor.get_processing_status(page_id)
+        status = processor.get_processing_status(page_id)
         return status
 
     except Exception as e:

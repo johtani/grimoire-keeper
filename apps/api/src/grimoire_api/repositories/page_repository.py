@@ -72,6 +72,34 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to create page: {str(e)}")
 
+    def get_page_sync(self, page_id: int) -> Page | None:
+        """ページ取得（同期版）.
+
+        Args:
+            page_id: ページID
+
+        Returns:
+            ページデータ
+        """
+        try:
+            query = "SELECT * FROM pages WHERE id = ?"
+            result = self.db.fetch_one(query, (page_id,))
+            if result:
+                return Page(
+                    id=result["id"],
+                    url=result["url"],
+                    title=result["title"],
+                    memo=result["memo"],
+                    summary=result["summary"],
+                    keywords=result["keywords"],
+                    created_at=datetime.fromisoformat(result["created_at"]),
+                    updated_at=datetime.fromisoformat(result["updated_at"]),
+                    weaviate_id=result["weaviate_id"],
+                )
+            return None
+        except Exception as e:
+            raise DatabaseError(f"Failed to get page: {str(e)}")
+
     async def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]
     ) -> None:
@@ -88,7 +116,7 @@ class PageRepository:
             SET summary = ?, keywords = ?, updated_at = ?
             WHERE id = ?
             """
-            await self.db.execute(
+            self.db.execute(
                 query,
                 (
                     summary,
@@ -109,7 +137,7 @@ class PageRepository:
         """
         try:
             query = "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?"
-            await self.db.execute(query, (title, datetime.now(), page_id))
+            self.db.execute(query, (title, datetime.now(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update page title: {str(e)}")
 
@@ -122,7 +150,7 @@ class PageRepository:
         """
         try:
             query = "UPDATE pages SET weaviate_id = ? WHERE id = ?"
-            await self.db.execute(query, (weaviate_id, page_id))
+            self.db.execute(query, (weaviate_id, page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update weaviate_id: {str(e)}")
 
@@ -151,7 +179,7 @@ class PageRepository:
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """
-            results = await self.db.fetch_all(query, (limit, offset))
+            results = self.db.fetch_all(query, (limit, offset))
             return [
                 Page(
                     id=row["id"],

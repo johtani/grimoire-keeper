@@ -41,6 +41,36 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")
 
+    def get_logs_by_status_sync(self, status: str) -> list[ProcessLog]:
+        """ステータス別ログ取得（同期版）.
+
+        Args:
+            status: ステータス
+
+        Returns:
+            ログデータのリスト
+        """
+        try:
+            query = """
+            SELECT * FROM process_logs
+            WHERE status = ?
+            ORDER BY created_at DESC
+            """
+            results = self.db.fetch_all(query, (status,))
+            return [
+                ProcessLog(
+                    id=row["id"],
+                    page_id=row["page_id"],
+                    url=row["url"],
+                    status=row["status"],
+                    error_message=row["error_message"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                )
+                for row in results
+            ]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get logs by status: {str(e)}")
+
     async def update_status(
         self, log_id: int, status: str, error_message: str | None = None
     ) -> None:
@@ -57,7 +87,7 @@ class LogRepository:
             SET status = ?, error_message = ?
             WHERE id = ?
             """
-            await self.db.execute(query, (status, error_message, log_id))
+            self.db.execute(query, (status, error_message, log_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update status: {str(e)}")
 
@@ -76,7 +106,7 @@ class LogRepository:
             WHERE status = ?
             ORDER BY created_at DESC
             """
-            results = await self.db.fetch_all(query, (status,))
+            results = self.db.fetch_all(query, (status,))
             return [
                 ProcessLog(
                     id=row["id"],
@@ -107,7 +137,7 @@ class LogRepository:
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """
-            results = await self.db.fetch_all(query, (limit, offset))
+            results = self.db.fetch_all(query, (limit, offset))
             return [
                 ProcessLog(
                     id=row["id"],
