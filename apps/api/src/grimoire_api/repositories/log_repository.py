@@ -1,4 +1,4 @@
-"""Process log repository."""
+"""Log repository."""
 
 from datetime import datetime
 
@@ -8,7 +8,7 @@ from .database import DatabaseConnection
 
 
 class LogRepository:
-    """処理ログリポジトリ."""
+    """ログリポジトリ."""
 
     def __init__(self, db: DatabaseConnection):
         """初期化.
@@ -18,10 +18,8 @@ class LogRepository:
         """
         self.db = db
 
-    async def create_log(
-        self, url: str, status: str, page_id: int | None = None
-    ) -> int:
-        """ログ作成.
+    def create_log_sync(self, url: str, status: str, page_id: int | None = None) -> int:
+        """ログ作成（同期版）.
 
         Args:
             url: URL
@@ -36,7 +34,7 @@ class LogRepository:
             INSERT INTO process_logs (page_id, url, status, created_at)
             VALUES (?, ?, ?, ?)
             """
-            cursor = await self.db.execute(
+            cursor = self.db.execute(
                 query, (page_id, url, status, datetime.now())
             )
             return cursor.lastrowid or 0
@@ -50,7 +48,7 @@ class LogRepository:
 
         Args:
             log_id: ログID
-            status: 新しいステータス
+            status: ステータス
             error_message: エラーメッセージ
         """
         try:
@@ -63,31 +61,6 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update status: {str(e)}")
 
-    async def get_log(self, log_id: int) -> ProcessLog | None:
-        """ログ取得.
-
-        Args:
-            log_id: ログID
-
-        Returns:
-            ログデータ
-        """
-        try:
-            query = "SELECT * FROM process_logs WHERE id = ?"
-            result = await self.db.fetch_one(query, (log_id,))
-            if result:
-                return ProcessLog(
-                    id=result["id"],
-                    page_id=result["page_id"],
-                    url=result["url"],
-                    status=result["status"],
-                    error_message=result["error_message"],
-                    created_at=datetime.fromisoformat(result["created_at"]),
-                )
-            return None
-        except Exception as e:
-            raise DatabaseError(f"Failed to get log: {str(e)}")
-
     async def get_logs_by_status(self, status: str) -> list[ProcessLog]:
         """ステータス別ログ取得.
 
@@ -98,9 +71,11 @@ class LogRepository:
             ログデータのリスト
         """
         try:
-            query = (
-                "SELECT * FROM process_logs WHERE status = ? ORDER BY created_at DESC"
-            )
+            query = """
+            SELECT * FROM process_logs
+            WHERE status = ?
+            ORDER BY created_at DESC
+            """
             results = await self.db.fetch_all(query, (status,))
             return [
                 ProcessLog(
@@ -115,3 +90,34 @@ class LogRepository:
             ]
         except Exception as e:
             raise DatabaseError(f"Failed to get logs by status: {str(e)}")
+
+    async def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
+        """全ログ取得.
+
+        Args:
+            limit: 取得件数制限
+            offset: オフセット
+
+        Returns:
+            ログデータのリスト
+        """
+        try:
+            query = """
+            SELECT * FROM process_logs
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """
+            results = await self.db.fetch_all(query, (limit, offset))
+            return [
+                ProcessLog(
+                    id=row["id"],
+                    page_id=row["page_id"],
+                    url=row["url"],
+                    status=row["status"],
+                    error_message=row["error_message"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                )
+                for row in results
+            ]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get all logs: {str(e)}")

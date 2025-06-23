@@ -1,9 +1,7 @@
 """Database connection management."""
 
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-
-import aiosqlite
+import asyncio
+import sqlite3
 
 from ..config import settings
 from ..utils.exceptions import DatabaseError
@@ -20,17 +18,7 @@ class DatabaseConnection:
         """
         self.db_path = db_path or settings.DATABASE_PATH
 
-    @asynccontextmanager
-    async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection]:
-        """データベース接続を取得."""
-        try:
-            async with aiosqlite.connect(self.db_path) as conn:
-                conn.row_factory = aiosqlite.Row
-                yield conn
-        except Exception as e:
-            raise DatabaseError(f"Database connection error: {str(e)}")
-
-    async def execute(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
+    def execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
         """クエリ実行.
 
         Args:
@@ -41,14 +29,15 @@ class DatabaseConnection:
             カーソル
         """
         try:
-            async with self.get_connection() as conn:
-                cursor = await conn.execute(query, params)
-                await conn.commit()
-                return cursor  # type: ignore[no-any-return]
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query, params)
+                conn.commit()
+                return cursor
         except Exception as e:
             raise DatabaseError(f"Query execution error: {str(e)}")
 
-    async def fetch_one(self, query: str, params: tuple = ()) -> aiosqlite.Row | None:
+    def fetch_one(self, query: str, params: tuple = ()) -> sqlite3.Row | None:
         """単一行取得.
 
         Args:
@@ -59,13 +48,14 @@ class DatabaseConnection:
             取得した行
         """
         try:
-            async with self.get_connection() as conn:
-                cursor = await conn.execute(query, params)
-                return await cursor.fetchone()  # type: ignore[no-any-return]
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query, params)
+                return cursor.fetchone()
         except Exception as e:
             raise DatabaseError(f"Fetch one error: {str(e)}")
 
-    async def fetch_all(self, query: str, params: tuple = ()) -> list[aiosqlite.Row]:
+    def fetch_all(self, query: str, params: tuple = ()) -> list[sqlite3.Row]:
         """全行取得.
 
         Args:
@@ -76,14 +66,14 @@ class DatabaseConnection:
             取得した行のリスト
         """
         try:
-            async with self.get_connection() as conn:
-                cursor = await conn.execute(query, params)
-                result = await cursor.fetchall()
-                return list(result)  # type: ignore[no-any-return]
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query, params)
+                return cursor.fetchall()
         except Exception as e:
             raise DatabaseError(f"Fetch all error: {str(e)}")
 
-    async def initialize_tables(self) -> None:
+    def initialize_tables(self) -> None:
         """テーブル初期化."""
         pages_table = """
         CREATE TABLE IF NOT EXISTS pages (
@@ -111,5 +101,5 @@ class DatabaseConnection:
         )
         """
 
-        await self.execute(pages_table)
-        await self.execute(process_logs_table)
+        self.execute(pages_table)
+        self.execute(process_logs_table)

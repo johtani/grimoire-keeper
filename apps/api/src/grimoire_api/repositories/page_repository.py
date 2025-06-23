@@ -22,58 +22,8 @@ class PageRepository:
         self.db = db
         self.file_repo = file_repo
 
-    async def create_page(self, url: str, title: str, memo: str | None = None) -> int:
-        """ページ作成.
-
-        Args:
-            url: URL
-            title: タイトル
-            memo: メモ
-
-        Returns:
-            作成されたページID
-        """
-        try:
-            query = """
-            INSERT INTO pages (url, title, memo, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            """
-            now = datetime.now()
-            cursor = await self.db.execute(query, (url, title, memo, now, now))
-            return cursor.lastrowid or 0
-        except Exception as e:
-            raise DatabaseError(f"Failed to create page: {str(e)}")
-
-    async def get_page(self, page_id: int) -> Page | None:
-        """ページ取得.
-
-        Args:
-            page_id: ページID
-
-        Returns:
-            ページデータ
-        """
-        try:
-            query = "SELECT * FROM pages WHERE id = ?"
-            result = await self.db.fetch_one(query, (page_id,))
-            if result:
-                return Page(
-                    id=result["id"],
-                    url=result["url"],
-                    title=result["title"],
-                    memo=result["memo"],
-                    summary=result["summary"],
-                    keywords=result["keywords"],
-                    created_at=datetime.fromisoformat(result["created_at"]),
-                    updated_at=datetime.fromisoformat(result["updated_at"]),
-                    weaviate_id=result["weaviate_id"],
-                )
-            return None
-        except Exception as e:
-            raise DatabaseError(f"Failed to get page: {str(e)}")
-
-    async def get_page_by_url(self, url: str) -> Page | None:
-        """URLでページ取得.
+    def get_page_by_url_sync(self, url: str) -> Page | None:
+        """URLでページ取得（同期版）.
 
         Args:
             url: URL
@@ -83,7 +33,7 @@ class PageRepository:
         """
         try:
             query = "SELECT * FROM pages WHERE url = ?"
-            result = await self.db.fetch_one(query, (url,))
+            result = self.db.fetch_one(query, (url,))
             if result:
                 return Page(
                     id=result["id"],
@@ -99,6 +49,28 @@ class PageRepository:
             return None
         except Exception as e:
             raise DatabaseError(f"Failed to get page by URL: {str(e)}")
+
+    def create_page_sync(self, url: str, title: str, memo: str | None = None) -> int:
+        """Page作成（同期版）.
+
+        Args:
+            url: URL
+            title: タイトル
+            memo: メモ
+
+        Returns:
+            作成されたページID
+        """
+        try:
+            query = """
+            INSERT INTO pages (url, title, memo, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """
+            now = datetime.now()
+            cursor = self.db.execute(query, (url, title, memo, now, now))
+            return cursor.lastrowid or 0
+        except Exception as e:
+            raise DatabaseError(f"Failed to create page: {str(e)}")
 
     async def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]
