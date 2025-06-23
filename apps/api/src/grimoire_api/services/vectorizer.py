@@ -38,10 +38,11 @@ class VectorizerService:
         self.text_chunker = text_chunker
         self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
         self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
+
     def _get_client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント取得."""
         return weaviate.connect_to_local(
-            host=self.weaviate_host, 
+            host=self.weaviate_host,
             port=self.weaviate_port,
             headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
         )
@@ -94,18 +95,18 @@ class VectorizerService:
             with self._get_client() as client:
                 collection = client.collections.get("GrimoireChunk")
 
-            for i, chunk in enumerate(chunks):
-                weaviate_object = {
-                    "pageId": page_data.id,
-                    "chunkId": i,
-                    "url": page_data.url,
-                    "title": page_data.title,
-                    "memo": page_data.memo or "",
-                    "content": chunk,
-                    "summary": page_data.summary or "",
-                    "keywords": json.loads(page_data.keywords or "[]"),
-                    "createdAt": page_data.created_at,
-                }
+                for i, chunk in enumerate(chunks):
+                    weaviate_object = {
+                        "pageId": page_data.id,
+                        "chunkId": i,
+                        "url": page_data.url,
+                        "title": page_data.title,
+                        "memo": page_data.memo or "",
+                        "content": chunk,
+                        "summary": page_data.summary or "",
+                        "keywords": json.loads(page_data.keywords or "[]"),
+                        "createdAt": page_data.created_at,
+                    }
 
                     result = collection.data.insert(properties=weaviate_object)
 
@@ -142,19 +143,19 @@ class VectorizerService:
                 if not client.collections.exists("GrimoireChunk"):
                     # コレクション作成
                     client.collections.create(
-                    name="GrimoireChunk",
-                    description="Grimoire Keeperで管理するWebページのチャンク",
-                    properties=[
-                        Property(name="pageId", data_type=DataType.INT),
-                        Property(name="chunkId", data_type=DataType.INT),
-                        Property(name="url", data_type=DataType.TEXT),
-                        Property(name="title", data_type=DataType.TEXT),
-                        Property(name="memo", data_type=DataType.TEXT),
-                        Property(name="content", data_type=DataType.TEXT),
-                        Property(name="summary", data_type=DataType.TEXT),
-                        Property(name="keywords", data_type=DataType.TEXT_ARRAY),
-                        Property(name="createdAt", data_type=DataType.DATE),
-                    ],
+                        name="GrimoireChunk",
+                        description="Grimoire Keeperで管理するWebページのチャンク",
+                        properties=[
+                            Property(name="pageId", data_type=DataType.INT),
+                            Property(name="chunkId", data_type=DataType.INT),
+                            Property(name="url", data_type=DataType.TEXT),
+                            Property(name="title", data_type=DataType.TEXT),
+                            Property(name="memo", data_type=DataType.TEXT),
+                            Property(name="content", data_type=DataType.TEXT),
+                            Property(name="summary", data_type=DataType.TEXT),
+                            Property(name="keywords", data_type=DataType.TEXT_ARRAY),
+                            Property(name="createdAt", data_type=DataType.DATE),
+                        ],
                         vectorizer_config=Configure.Vectorizer.text2vec_openai(),
                     )
 

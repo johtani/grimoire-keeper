@@ -28,7 +28,7 @@ class SearchService:
     def _get_client(self) -> weaviate.WeaviateClient:
         """Weaviateクライアント取得."""
         return weaviate.connect_to_local(
-            host=self.weaviate_host, 
+            host=self.weaviate_host,
             port=self.weaviate_port,
             headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
         )
