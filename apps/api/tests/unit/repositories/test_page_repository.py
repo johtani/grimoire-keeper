@@ -42,6 +42,30 @@ class TestPageRepository:
         assert page is None
 
     @pytest.mark.asyncio
+    async def test_get_page_by_url(self, page_repo):
+        """URLでページ取得テスト."""
+        url = "https://example.com"
+        title = "Test Title"
+        memo = "Test memo"
+
+        # ページ作成
+        page_id = await page_repo.create_page(url, title, memo)
+
+        # URLでページ取得
+        page = await page_repo.get_page_by_url(url)
+        assert page is not None
+        assert page.id == page_id
+        assert page.url == url
+        assert page.title == title
+        assert page.memo == memo
+
+    @pytest.mark.asyncio
+    async def test_get_page_by_nonexistent_url(self, page_repo):
+        """存在しないURLでのページ取得テスト."""
+        page = await page_repo.get_page_by_url("https://nonexistent.com")
+        assert page is None
+
+    @pytest.mark.asyncio
     async def test_update_summary_keywords(self, page_repo):
         """要約・キーワード更新テスト."""
         # ページ作成

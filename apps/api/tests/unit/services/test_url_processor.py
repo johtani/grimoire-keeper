@@ -41,6 +41,7 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
+        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["log_repo"].create_log.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
             "data": {"title": "Test Title", "content": "Test content"}
@@ -74,6 +75,7 @@ class TestUrlProcessorService:
         log_id = 1
 
         # モック設定
+        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["log_repo"].create_log.return_value = log_id
         mock_services["jina_client"].fetch_content.side_effect = Exception("Jina error")
 
@@ -94,6 +96,7 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
+        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["log_repo"].create_log.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
             "data": {"title": "Test Title", "content": "Test content"}
@@ -198,3 +201,29 @@ class TestUrlProcessorService:
         # 結果確認
         assert status["status"] == "not_found"
         assert "not found" in status["message"]
+
+    @pytest.mark.asyncio
+    async def test_process_url_already_exists(self, url_processor, mock_services):
+        """URL重複チェックテスト."""
+        url = "https://example.com"
+        memo = "Test memo"
+        existing_page_id = 123
+
+        # 既存ページのモック
+        existing_page = MagicMock()
+        existing_page.id = existing_page_id
+        mock_services["page_repo"].get_page_by_url.return_value = existing_page
+
+        # 処理実行
+        result = await url_processor.process_url(url, memo)
+
+        # 結果確認
+        assert result["status"] == "already_exists"
+        assert result["page_id"] == existing_page_id
+        assert "already exists" in result["message"]
+
+        # 重複チェックが呼ばれたことを確認
+        mock_services["page_repo"].get_page_by_url.assert_called_once_with(url)
+        
+        # 新規作成が呼ばれないことを確認
+        mock_services["page_repo"].create_page.assert_not_called()
