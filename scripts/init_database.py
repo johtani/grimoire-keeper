@@ -89,9 +89,7 @@ async def check_database_status():
 
             # レコード数確認
             pages_count = db.fetch_one("SELECT COUNT(*) as count FROM pages")
-            logs_count = db.fetch_one(
-                "SELECT COUNT(*) as count FROM process_logs"
-            )
+            logs_count = db.fetch_one("SELECT COUNT(*) as count FROM process_logs")
 
             print(f"📈 Pages: {pages_count['count']} records")
             print(f"📈 Process logs: {logs_count['count']} records")

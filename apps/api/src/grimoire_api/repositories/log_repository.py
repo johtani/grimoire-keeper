@@ -34,9 +34,7 @@ class LogRepository:
             INSERT INTO process_logs (page_id, url, status, created_at)
             VALUES (?, ?, ?, ?)
             """
-            cursor = self.db.execute(
-                query, (page_id, url, status, datetime.now())
-            )
+            cursor = self.db.execute(query, (page_id, url, status, datetime.now()))
             return cursor.lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")

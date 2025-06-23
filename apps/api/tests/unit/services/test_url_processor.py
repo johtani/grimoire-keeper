@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from grimoire_api.services.url_processor import UrlProcessorService
-from grimoire_api.utils.exceptions import GrimoireAPIError
 
 
 class TestUrlProcessorService:
@@ -16,10 +15,10 @@ class TestUrlProcessorService:
         page_repo = AsyncMock()
         page_repo.get_page_by_url_sync = MagicMock()
         page_repo.create_page_sync = MagicMock()
-        
+
         log_repo = AsyncMock()
         log_repo.create_log_sync = MagicMock()
-        
+
         return {
             "jina_client": AsyncMock(),
             "llm_service": AsyncMock(),
@@ -47,7 +46,9 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
+        mock_services[
+            "page_repo"
+        ].get_page_by_url_sync.return_value = None  # URL重複なし
         mock_services["page_repo"].create_page_sync.return_value = page_id
         mock_services["log_repo"].create_log_sync.return_value = log_id
 
@@ -61,7 +62,9 @@ class TestUrlProcessorService:
         assert "prepared" in result["message"]
 
         # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log_sync.assert_called_once_with(url, "started", page_id)
+        mock_services["log_repo"].create_log_sync.assert_called_once_with(
+            url, "started", page_id
+        )
 
     @pytest.mark.asyncio
     async def test_process_url_background_success(self, url_processor, mock_services):
@@ -98,7 +101,9 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
+        mock_services[
+            "page_repo"
+        ].get_page_by_url_sync.return_value = None  # URL重複なし
         mock_services["page_repo"].create_page_sync.return_value = page_id
         mock_services["log_repo"].create_log_sync.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
@@ -118,7 +123,9 @@ class TestUrlProcessorService:
         assert "completed successfully" in result["message"]
 
         # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log_sync.assert_called_once_with(url, "started", page_id)
+        mock_services["log_repo"].create_log_sync.assert_called_once_with(
+            url, "started", page_id
+        )
         mock_services["jina_client"].fetch_content.assert_called_once_with(url)
         mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
             page_id
@@ -126,7 +133,9 @@ class TestUrlProcessorService:
         mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
 
     @pytest.mark.asyncio
-    async def test_process_url_background_jina_error(self, url_processor, mock_services):
+    async def test_process_url_background_jina_error(
+        self, url_processor, mock_services
+    ):
         """Jina AI Readerエラーのテスト."""
         url = "https://example.com"
         log_id = 1
@@ -227,7 +236,9 @@ class TestUrlProcessorService:
 
         # モック設定
         mock_services["page_repo"].get_page_sync = MagicMock(return_value=mock_page)
-        mock_services["log_repo"].get_logs_by_status_sync = MagicMock(return_value=[mock_log])
+        mock_services["log_repo"].get_logs_by_status_sync = MagicMock(
+            return_value=[mock_log]
+        )
 
         # 処理実行
         status = url_processor.get_processing_status(page_id)
@@ -272,6 +283,6 @@ class TestUrlProcessorService:
 
         # 重複チェックが呼ばれたことを確認
         mock_services["page_repo"].get_page_by_url_sync.assert_called_once_with(url)
-        
+
         # 新規作成が呼ばれないことを確認
         mock_services["page_repo"].create_page_sync.assert_not_called()
