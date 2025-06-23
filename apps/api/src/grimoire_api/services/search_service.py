@@ -24,18 +24,14 @@ class SearchService:
         """
         self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
         self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
-        self._client: weaviate.WeaviateClient | None = None
 
-    @property
-    def client(self) -> weaviate.WeaviateClient:
-        """Weaviateクライアント."""
-        if self._client is None:
-            self._client = weaviate.connect_to_local(
-                host=self.weaviate_host, 
-                port=self.weaviate_port,
-                headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
-            )
-        return self._client
+    def _get_client(self) -> weaviate.WeaviateClient:
+        """Weaviateクライアント取得."""
+        return weaviate.connect_to_local(
+            host=self.weaviate_host, 
+            port=self.weaviate_port,
+            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
+        )
 
     async def vector_search(
         self, query: str, limit: int = 5, filters: dict | None = None
@@ -54,15 +50,16 @@ class SearchService:
             VectorizerError: 検索エラー
         """
         try:
-            collection = self.client.collections.get("GrimoireChunk")
+            with self._get_client() as client:
+                collection = client.collections.get("GrimoireChunk")
 
-            # クエリ実行
-            response = collection.query.near_text(
-                query=query, limit=limit, return_metadata=MetadataQuery(certainty=True)
-            )
+                # クエリ実行
+                response = collection.query.near_text(
+                    query=query, limit=limit, return_metadata=MetadataQuery(certainty=True)
+                )
 
-            # 結果変換
-            return self._convert_search_results_v4(response)
+                # 結果変換
+                return self._convert_search_results_v4(response)
 
         except Exception as e:
             raise VectorizerError(f"Vector search error: {str(e)}")
@@ -85,14 +82,15 @@ class SearchService:
         try:
             from weaviate.classes.query import Filter
 
-            collection = self.client.collections.get("GrimoireChunk")
+            with self._get_client() as client:
+                collection = client.collections.get("GrimoireChunk")
 
-            # キーワードフィルタで検索
-            response = collection.query.fetch_objects(  # type: ignore[call-overload]
-                where=Filter.by_property("keywords").contains_any(keywords), limit=limit
-            )
+                # キーワードフィルタで検索
+                response = collection.query.fetch_objects(  # type: ignore[call-overload]
+                    where=Filter.by_property("keywords").contains_any(keywords), limit=limit
+                )
 
-            return self._convert_search_results_v4(response)
+                return self._convert_search_results_v4(response)
 
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")
