@@ -53,8 +53,8 @@ class UrlProcessorService:
         page_id = None
 
         try:
-            # 0. URL重複チェック
-            existing_page = await self.page_repo.get_page_by_url(url)
+            # 0. URL重複チェック（同期処理）
+            existing_page = self.page_repo.get_page_by_url_sync(url)
             if existing_page:
                 return {
                     "status": "already_exists",
@@ -62,13 +62,13 @@ class UrlProcessorService:
                     "message": "URL already exists in the database",
                 }
 
-            # 1. 仮のページ作成
-            page_id = await self.page_repo.create_page(
+            # 1. 仮のページ作成（同期処理）
+            page_id = self.page_repo.create_page_sync(
                 url=url, title="Processing...", memo=memo or ""
             )
 
-            # 2. 処理開始ログ作成（page_id付き）
-            log_id = await self.log_repo.create_log(url, "started", page_id)
+            # 2. 処理開始ログ作成（同期処理、page_id付き）
+            log_id = self.log_repo.create_log_sync(url, "started", page_id)
 
             # 3. Jina AI Reader処理
             jina_result = await self.jina_client.fetch_content(url)

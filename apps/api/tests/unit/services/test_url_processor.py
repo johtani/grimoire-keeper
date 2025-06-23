@@ -13,12 +13,19 @@ class TestUrlProcessorService:
     @pytest.fixture
     def mock_services(self):
         """モックサービス群."""
+        page_repo = AsyncMock()
+        page_repo.get_page_by_url_sync = MagicMock()
+        page_repo.create_page_sync = MagicMock()
+        
+        log_repo = AsyncMock()
+        log_repo.create_log_sync = MagicMock()
+        
         return {
             "jina_client": AsyncMock(),
             "llm_service": AsyncMock(),
             "vectorizer": AsyncMock(),
-            "page_repo": AsyncMock(),
-            "log_repo": AsyncMock(),
+            "page_repo": page_repo,
+            "log_repo": log_repo,
         }
 
     @pytest.fixture
@@ -41,12 +48,12 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
-        mock_services["log_repo"].create_log.return_value = log_id
+        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
+        mock_services["page_repo"].create_page_sync.return_value = page_id
+        mock_services["log_repo"].create_log_sync.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
             "data": {"title": "Test Title", "content": "Test content"}
         }
-        mock_services["page_repo"].create_page.return_value = page_id
         mock_services["llm_service"].generate_summary_keywords.return_value = {
             "summary": "Test summary",
             "keywords": ["test", "keyword"],
@@ -61,7 +68,7 @@ class TestUrlProcessorService:
         assert "completed successfully" in result["message"]
 
         # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log.assert_called_once_with(url, "started", page_id)
+        mock_services["log_repo"].create_log_sync.assert_called_once_with(url, "started", page_id)
         mock_services["jina_client"].fetch_content.assert_called_once_with(url)
         mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
             page_id
@@ -75,8 +82,9 @@ class TestUrlProcessorService:
         log_id = 1
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
-        mock_services["log_repo"].create_log.return_value = log_id
+        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
+        mock_services["page_repo"].create_page_sync.return_value = 1
+        mock_services["log_repo"].create_log_sync.return_value = log_id
         mock_services["jina_client"].fetch_content.side_effect = Exception("Jina error")
 
         # エラー確認
@@ -96,12 +104,12 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
-        mock_services["log_repo"].create_log.return_value = log_id
+        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
+        mock_services["page_repo"].create_page_sync.return_value = page_id
+        mock_services["log_repo"].create_log_sync.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
             "data": {"title": "Test Title", "content": "Test content"}
         }
-        mock_services["page_repo"].create_page.return_value = page_id
         mock_services["llm_service"].generate_summary_keywords.side_effect = Exception(
             "LLM error"
         )
@@ -212,7 +220,7 @@ class TestUrlProcessorService:
         # 既存ページのモック
         existing_page = MagicMock()
         existing_page.id = existing_page_id
-        mock_services["page_repo"].get_page_by_url.return_value = existing_page
+        mock_services["page_repo"].get_page_by_url_sync.return_value = existing_page
 
         # 処理実行
         result = await url_processor.process_url(url, memo)
@@ -223,7 +231,7 @@ class TestUrlProcessorService:
         assert "already exists" in result["message"]
 
         # 重複チェックが呼ばれたことを確認
-        mock_services["page_repo"].get_page_by_url.assert_called_once_with(url)
+        mock_services["page_repo"].get_page_by_url_sync.assert_called_once_with(url)
         
         # 新規作成が呼ばれないことを確認
-        mock_services["page_repo"].create_page.assert_not_called()
+        mock_services["page_repo"].create_page_sync.assert_not_called()
