@@ -38,18 +38,13 @@ class VectorizerService:
         self.text_chunker = text_chunker
         self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
         self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
-        self._client: weaviate.WeaviateClient | None = None
-
-    @property
-    def client(self) -> weaviate.WeaviateClient:
-        """Weaviateクライアント."""
-        if self._client is None:
-            self._client = weaviate.connect_to_local(
-                host=self.weaviate_host, 
-                port=self.weaviate_port,
-                headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
-            )
-        return self._client
+    def _get_client(self) -> weaviate.WeaviateClient:
+        """Weaviateクライアント取得."""
+        return weaviate.connect_to_local(
+            host=self.weaviate_host, 
+            port=self.weaviate_port,
+            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
+        )
 
     async def vectorize_content(self, page_id: int) -> None:
         """コンテンツのベクトル化とWeaviate保存.
@@ -96,7 +91,8 @@ class VectorizerService:
         first_chunk_id = None
 
         try:
-            collection = self.client.collections.get("GrimoireChunk")
+            with self._get_client() as client:
+                collection = client.collections.get("GrimoireChunk")
 
             for i, chunk in enumerate(chunks):
                 weaviate_object = {
@@ -111,12 +107,12 @@ class VectorizerService:
                     "createdAt": page_data.created_at,
                 }
 
-                result = collection.data.insert(properties=weaviate_object)
+                    result = collection.data.insert(properties=weaviate_object)
 
-                if i == 0:
-                    first_chunk_id = str(result)
+                    if i == 0:
+                        first_chunk_id = str(result)
 
-            return first_chunk_id or ""
+                return first_chunk_id or ""
 
         except Exception as e:
             raise VectorizerError(f"Failed to save chunks to Weaviate: {str(e)}")
@@ -128,8 +124,9 @@ class VectorizerService:
             Weaviateが利用可能かどうか
         """
         try:
-            self.client.is_ready()
-            return True
+            with self._get_client() as client:
+                client.is_ready()
+                return True
         except Exception:
             return False
 
@@ -140,10 +137,11 @@ class VectorizerService:
             VectorizerError: スキーマ作成エラー
         """
         try:
-            # 既存コレクション確認
-            if not self.client.collections.exists("GrimoireChunk"):
-                # コレクション作成
-                self.client.collections.create(
+            with self._get_client() as client:
+                # 既存コレクション確認
+                if not client.collections.exists("GrimoireChunk"):
+                    # コレクション作成
+                    client.collections.create(
                     name="GrimoireChunk",
                     description="Grimoire Keeperで管理するWebページのチャンク",
                     properties=[
@@ -157,8 +155,8 @@ class VectorizerService:
                         Property(name="keywords", data_type=DataType.TEXT_ARRAY),
                         Property(name="createdAt", data_type=DataType.DATE),
                     ],
-                    vectorizer_config=Configure.Vectorizer.text2vec_openai(),
-                )
+                        vectorizer_config=Configure.Vectorizer.text2vec_openai(),
+                    )
 
         except Exception as e:
             raise VectorizerError(f"Failed to ensure schema: {str(e)}")
