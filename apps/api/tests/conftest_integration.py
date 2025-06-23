@@ -34,11 +34,11 @@ async def integration_db():
 
 
 @pytest.fixture
-def integration_client(integration_db):
+def integration_client():
     """統合テスト用クライアントフィクスチャ."""
     # テスト用環境変数を設定
     test_env = {
-        "DATABASE_PATH": integration_db,
+        "DATABASE_PATH": ":memory:",
         "JINA_API_KEY": "test-jina-key",
         "GOOGLE_API_KEY": "test-google-key",
         "OPENAI_API_KEY": "test-openai-key",
