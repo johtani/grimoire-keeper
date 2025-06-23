@@ -54,7 +54,7 @@ class TestProcessUrlIntegration:
 
             # モック設定
             mock_jina.return_value = mock_jina_response
-            
+
             # LLMレスポンスのモック
             class MockLLMResponse:
                 def __init__(self):
@@ -63,11 +63,11 @@ class TestProcessUrlIntegration:
                     return {
                         "choices": [{"message": {"content": json.dumps(mock_llm_response)}}]
                     }
-            
+
             class MockChoice:
                 def __init__(self):
                     self.message = MockMessage()
-            
+
             class MockMessage:
                 def __init__(self):
                     self.content = json.dumps(mock_llm_response)
@@ -87,7 +87,7 @@ class TestProcessUrlIntegration:
             assert data["status"] == "processing"
             assert "page_id" in data
             assert data["message"] == "URL processing started"
-            
+
             page_id = data["page_id"]
 
             # バックグラウンド処理完了まで待機
@@ -96,11 +96,11 @@ class TestProcessUrlIntegration:
             # 処理状況確認
             status_response = integration_client.get(f"/api/v1/process-status/{page_id}")
             assert status_response.status_code == 200
-            
+
             status_data = status_response.json()
             assert status_data["status"] in ["completed", "processing"]
             assert "page" in status_data
-            
+
             page_data = status_data["page"]
             assert page_data["id"] == page_id
             assert page_data["url"] == test_url
@@ -126,7 +126,7 @@ class TestProcessUrlIntegration:
         )
         assert response2.status_code == 200
         data2 = response2.json()
-        
+
         assert data2["status"] == "already_exists"
         assert data2["page_id"] == page_id
         assert "already exists" in data2["message"]
@@ -137,7 +137,7 @@ class TestProcessUrlIntegration:
             "/api/v1/process-url",
             json={"url": "invalid-url", "memo": "Test memo"}
         )
-        
+
         # バリデーションエラーまたは処理エラーを期待
         assert response.status_code in [400, 422, 500]
 
@@ -147,14 +147,14 @@ class TestProcessUrlIntegration:
             "/api/v1/process-url",
             json={"memo": "Test memo"}
         )
-        
+
         assert response.status_code == 422  # バリデーションエラー
 
     def test_process_status_not_found(self, integration_client: TestClient) -> None:
         """存在しないページの処理状況確認テスト."""
         response = integration_client.get("/api/v1/process-status/99999")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["status"] == "not_found"
         assert "not found" in data["message"]
@@ -181,7 +181,7 @@ class TestProcessUrlIntegration:
             # エラー状態確認
             status_response = integration_client.get(f"/api/v1/process-status/{page_id}")
             status_data = status_response.json()
-            
+
             # エラー状態またはまだ処理中の可能性
             assert status_data["status"] in ["failed", "processing"]
 
@@ -209,7 +209,7 @@ class TestProcessUrlIntegration:
 
             # モック設定
             mock_jina.return_value = mock_jina_response
-            
+
             class MockLLMResponse:
                 def model_dump(self):
                     return {
@@ -224,7 +224,7 @@ class TestProcessUrlIntegration:
                 "/api/v1/process-url",
                 json={"url": test_url, "memo": test_memo}
             )
-            
+
             assert response.status_code == 200
             data = response.json()
             page_id = data["page_id"]

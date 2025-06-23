@@ -75,10 +75,10 @@ class LLMService:
                     content = str(response.choices[0].message.content)
                 except Exception:
                     raise LLMServiceError(f"Failed to extract content from LLM response: {str(e)}")
-            
+
             if not content or content.strip() == "":
                 raise LLMServiceError("Empty response from LLM")
-            
+
             # JSON解析
             result = json.loads(content)
 
