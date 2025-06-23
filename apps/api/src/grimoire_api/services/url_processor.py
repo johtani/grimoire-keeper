@@ -53,6 +53,15 @@ class UrlProcessorService:
         page_id = None
 
         try:
+            # 0. URL重複チェック
+            existing_page = await self.page_repo.get_page_by_url(url)
+            if existing_page:
+                return {
+                    "status": "already_exists",
+                    "page_id": existing_page.id,
+                    "message": "URL already exists in the database",
+                }
+
             # 1. 仮のページ作成
             page_id = await self.page_repo.create_page(
                 url=url, title="Processing...", memo=memo or ""

@@ -72,6 +72,34 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get page: {str(e)}")
 
+    async def get_page_by_url(self, url: str) -> Page | None:
+        """URLでページ取得.
+
+        Args:
+            url: URL
+
+        Returns:
+            ページデータ
+        """
+        try:
+            query = "SELECT * FROM pages WHERE url = ?"
+            result = await self.db.fetch_one(query, (url,))
+            if result:
+                return Page(
+                    id=result["id"],
+                    url=result["url"],
+                    title=result["title"],
+                    memo=result["memo"],
+                    summary=result["summary"],
+                    keywords=result["keywords"],
+                    created_at=datetime.fromisoformat(result["created_at"]),
+                    updated_at=datetime.fromisoformat(result["updated_at"]),
+                    weaviate_id=result["weaviate_id"],
+                )
+            return None
+        except Exception as e:
+            raise DatabaseError(f"Failed to get page by URL: {str(e)}")
+
     async def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]
     ) -> None:
