@@ -1,6 +1,7 @@
 """LLM service for summary and keyword generation."""
 
 import json
+import logging
 from typing import Any
 
 from litellm import completion
@@ -8,6 +9,8 @@ from litellm import completion
 from ..config import settings
 from ..repositories.file_repository import FileRepository
 from ..utils.exceptions import LLMServiceError
+
+logger = logging.getLogger(__name__)
 
 
 class LLMService:
@@ -53,10 +56,24 @@ class LLMService:
                 messages=[{"role": "user", "content": prompt}],
                 api_key=self.api_key,
                 temperature=0.3,
+                response_format={"type": "json_object"},
             )
 
+            # デバッグ用ログ出力
+            logger.info(f"LiteLLM response type: {type(response)}")
+            logger.info(f"LiteLLM response: {response}")
+
+            # レスポンス内容取得（Pydantic警告回避）
+            try:
+                content = str(response.choices[0].message.content)
+            except (AttributeError, IndexError) as e:
+                raise LLMServiceError(f"Failed to extract content from LLM response: {str(e)}")
+            
+            if not content or content.strip() == "":
+                raise LLMServiceError("Empty response from LLM")
+            
             # JSON解析
-            result = json.loads(response.choices[0].message.content)
+            result = json.loads(content)
 
             # 結果検証
             if (
