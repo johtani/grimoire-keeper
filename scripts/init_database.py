@@ -20,7 +20,7 @@ async def initialize_database():
     try:
         # SQLiteデータベース初期化
         db = DatabaseConnection()
-        await db.initialize_tables()
+        db.initialize_tables()
         print("✅ SQLite database tables created successfully!")
 
         # Weaviateスキーマ初期化
@@ -53,7 +53,7 @@ async def initialize_sqlite_only():
     try:
         # SQLiteデータベース初期化
         db = DatabaseConnection()
-        await db.initialize_tables()
+        db.initialize_tables()
         print("✅ SQLite database tables created successfully!")
 
     except Exception as e:
@@ -79,7 +79,7 @@ async def check_database_status():
         SELECT name FROM sqlite_master
         WHERE type='table' AND name IN ('pages', 'process_logs')
         """
-        tables = await db.fetch_all(tables_query)
+        tables = db.fetch_all(tables_query)
         table_names = [table["name"] for table in tables]
 
         print(f"📊 Found tables: {table_names}")
@@ -88,8 +88,8 @@ async def check_database_status():
             print("✅ All required tables exist")
 
             # レコード数確認
-            pages_count = await db.fetch_one("SELECT COUNT(*) as count FROM pages")
-            logs_count = await db.fetch_one(
+            pages_count = db.fetch_one("SELECT COUNT(*) as count FROM pages")
+            logs_count = db.fetch_one(
                 "SELECT COUNT(*) as count FROM process_logs"
             )
 
@@ -114,12 +114,12 @@ async def reset_database():
         db = DatabaseConnection()
 
         # テーブル削除
-        await db.execute("DROP TABLE IF EXISTS process_logs")
-        await db.execute("DROP TABLE IF EXISTS pages")
+        db.execute("DROP TABLE IF EXISTS process_logs")
+        db.execute("DROP TABLE IF EXISTS pages")
         print("🗑️  Existing tables dropped")
 
         # テーブル再作成
-        await db.initialize_tables()
+        db.initialize_tables()
         print("✅ Tables recreated successfully!")
 
     except Exception as e:

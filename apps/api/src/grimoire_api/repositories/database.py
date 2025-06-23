@@ -29,11 +29,18 @@ class DatabaseConnection:
             カーソル
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                conn.commit()
-                return cursor
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(query, params)
+            conn.commit()
+            # lastrowidを保存してからクローズ
+            lastrowid = cursor.lastrowid
+            conn.close()
+            # 新しいカーソルオブジェクトを作成して返す
+            class MockCursor:
+                def __init__(self, lastrowid):
+                    self.lastrowid = lastrowid
+            return MockCursor(lastrowid)
         except Exception as e:
             raise DatabaseError(f"Query execution error: {str(e)}")
 
@@ -48,10 +55,12 @@ class DatabaseConnection:
             取得した行
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                return cursor.fetchone()
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(query, params)
+            result = cursor.fetchone()
+            conn.close()
+            return result
         except Exception as e:
             raise DatabaseError(f"Fetch one error: {str(e)}")
 
@@ -66,10 +75,12 @@ class DatabaseConnection:
             取得した行のリスト
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                return cursor.fetchall()
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(query, params)
+            result = cursor.fetchall()
+            conn.close()
+            return result
         except Exception as e:
             raise DatabaseError(f"Fetch all error: {str(e)}")
 
@@ -101,5 +112,8 @@ class DatabaseConnection:
         )
         """
 
-        self.execute(pages_table)
-        self.execute(process_logs_table)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(pages_table)
+        conn.execute(process_logs_table)
+        conn.commit()
+        conn.close()
