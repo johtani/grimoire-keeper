@@ -36,22 +36,16 @@ class UrlProcessorService:
         self.page_repo = page_repo
         self.log_repo = log_repo
 
-    async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
-        """URL処理のメインフロー.
+    def prepare_url_processing(self, url: str, memo: str | None = None) -> dict[str, Any]:
+        """URL処理準備（同期処理）.
 
         Args:
             url: 処理対象のURL
             memo: ユーザーメモ
 
         Returns:
-            処理結果
-
-        Raises:
-            GrimoireAPIError: 処理エラー
+            準備結果
         """
-        log_id = None
-        page_id = None
-
         try:
             # 0. URL重複チェック（同期処理）
             existing_page = self.page_repo.get_page_by_url_sync(url)
@@ -70,6 +64,25 @@ class UrlProcessorService:
             # 2. 処理開始ログ作成（同期処理、page_id付き）
             log_id = self.log_repo.create_log_sync(url, "started", page_id)
 
+            return {
+                "status": "prepared",
+                "page_id": page_id,
+                "log_id": log_id,
+                "message": "Processing prepared",
+            }
+
+        except Exception as e:
+            raise GrimoireAPIError(f"URL processing preparation failed: {str(e)}")
+
+    async def process_url_background(self, page_id: int, log_id: int, url: str) -> None:
+        """バックグラウンド処理.
+
+        Args:
+            page_id: ページID
+            log_id: ログID
+            url: 処理対象のURL
+        """
+        try:
             # 3. Jina AI Reader処理
             jina_result = await self.jina_client.fetch_content(url)
             await self._save_download_result(log_id, page_id, jina_result)
@@ -85,16 +98,36 @@ class UrlProcessorService:
             # 6. 完了ログ
             await self.log_repo.update_status(log_id, "completed")
 
-            return {
-                "status": "success",
-                "page_id": page_id,
-                "message": "URL processing completed successfully",
-            }
-
         except Exception as e:
-            if log_id:
-                await self.log_repo.update_status(log_id, "failed", str(e))
-            raise GrimoireAPIError(f"URL processing failed: {str(e)}")
+            await self.log_repo.update_status(log_id, "failed", str(e))
+
+    async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
+        """URL処理のメインフロー（後方互換性のため残存）.
+
+        Args:
+            url: 処理対象のURL
+            memo: ユーザーメモ
+
+        Returns:
+            処理結果
+
+        Raises:
+            GrimoireAPIError: 処理エラー
+        """
+        # 準備処理
+        result = self.prepare_url_processing(url, memo)
+        
+        if result["status"] == "already_exists":
+            return result
+        
+        # バックグラウンド処理を同期実行（テスト用）
+        await self.process_url_background(result["page_id"], result["log_id"], url)
+        
+        return {
+            "status": "success",
+            "page_id": result["page_id"],
+            "message": "URL processing completed successfully",
+        }
 
     async def _save_download_result(
         self, log_id: int, page_id: int, result: dict
@@ -138,7 +171,7 @@ class UrlProcessorService:
             await self.log_repo.update_status(log_id, "llm_error", str(e))
             raise
 
-    async def get_processing_status(self, page_id: int) -> dict[str, Any]:
+    def get_processing_status(self, page_id: int) -> dict[str, Any]:
         """処理状況取得.
 
         Args:
@@ -148,14 +181,14 @@ class UrlProcessorService:
             処理状況
         """
         try:
-            # ページ情報取得
-            page = await self.page_repo.get_page(page_id)
+            # ページ情報取得（同期処理）
+            page = self.page_repo.get_page_sync(page_id)
             if not page:
                 return {"status": "not_found", "message": "Page not found"}
 
-            # 最新ログ取得
-            logs = await self.log_repo.get_logs_by_status("completed")
-            logs.extend(await self.log_repo.get_logs_by_status("failed"))
+            # 最新ログ取得（同期処理）
+            logs = self.log_repo.get_logs_by_status_sync("completed")
+            logs.extend(self.log_repo.get_logs_by_status_sync("failed"))
 
             # 該当ページのログを検索
             page_log = None

@@ -39,9 +39,59 @@ class TestUrlProcessorService:
             log_repo=mock_services["log_repo"],
         )
 
+    def test_prepare_url_processing_success(self, url_processor, mock_services):
+        """正常なURL処理準備テスト."""
+        url = "https://example.com"
+        memo = "Test memo"
+        log_id = 1
+        page_id = 2
+
+        # モック設定
+        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
+        mock_services["page_repo"].create_page_sync.return_value = page_id
+        mock_services["log_repo"].create_log_sync.return_value = log_id
+
+        # 処理実行
+        result = url_processor.prepare_url_processing(url, memo)
+
+        # 結果確認
+        assert result["status"] == "prepared"
+        assert result["page_id"] == page_id
+        assert result["log_id"] == log_id
+        assert "prepared" in result["message"]
+
+        # 各ステップが呼ばれたことを確認
+        mock_services["log_repo"].create_log_sync.assert_called_once_with(url, "started", page_id)
+
+    @pytest.mark.asyncio
+    async def test_process_url_background_success(self, url_processor, mock_services):
+        """バックグラウンド処理テスト."""
+        url = "https://example.com"
+        log_id = 1
+        page_id = 2
+
+        # モック設定
+        mock_services["jina_client"].fetch_content.return_value = {
+            "data": {"title": "Test Title", "content": "Test content"}
+        }
+        mock_services["llm_service"].generate_summary_keywords.return_value = {
+            "summary": "Test summary",
+            "keywords": ["test", "keyword"],
+        }
+
+        # 処理実行
+        await url_processor.process_url_background(page_id, log_id, url)
+
+        # 各ステップが呼ばれたことを確認
+        mock_services["jina_client"].fetch_content.assert_called_once_with(url)
+        mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
+            page_id
+        )
+        mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
+
     @pytest.mark.asyncio
     async def test_process_url_success(self, url_processor, mock_services):
-        """正常なURL処理テスト."""
+        """統合URL処理テスト."""
         url = "https://example.com"
         memo = "Test memo"
         log_id = 1
@@ -76,20 +126,17 @@ class TestUrlProcessorService:
         mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
 
     @pytest.mark.asyncio
-    async def test_process_url_jina_error(self, url_processor, mock_services):
+    async def test_process_url_background_jina_error(self, url_processor, mock_services):
         """Jina AI Readerエラーのテスト."""
         url = "https://example.com"
         log_id = 1
+        page_id = 1
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
-        mock_services["page_repo"].create_page_sync.return_value = 1
-        mock_services["log_repo"].create_log_sync.return_value = log_id
         mock_services["jina_client"].fetch_content.side_effect = Exception("Jina error")
 
-        # エラー確認
-        with pytest.raises(GrimoireAPIError, match="URL processing failed"):
-            await url_processor.process_url(url)
+        # バックグラウンド処理実行（エラーはキャッチされる）
+        await url_processor.process_url_background(page_id, log_id, url)
 
         # エラーログが記録されることを確認
         mock_services["log_repo"].update_status.assert_called_with(
@@ -97,16 +144,13 @@ class TestUrlProcessorService:
         )
 
     @pytest.mark.asyncio
-    async def test_process_url_llm_error(self, url_processor, mock_services):
+    async def test_process_url_background_llm_error(self, url_processor, mock_services):
         """LLMエラーのテスト."""
         url = "https://example.com"
         log_id = 1
         page_id = 2
 
         # モック設定
-        mock_services["page_repo"].get_page_by_url_sync.return_value = None  # URL重複なし
-        mock_services["page_repo"].create_page_sync.return_value = page_id
-        mock_services["log_repo"].create_log_sync.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
             "data": {"title": "Test Title", "content": "Test content"}
         }
@@ -114,9 +158,8 @@ class TestUrlProcessorService:
             "LLM error"
         )
 
-        # エラー確認
-        with pytest.raises(GrimoireAPIError):
-            await url_processor.process_url(url)
+        # バックグラウンド処理実行（エラーはキャッチされる）
+        await url_processor.process_url_background(page_id, log_id, url)
 
         # エラーログが記録されることを確認
         mock_services["log_repo"].update_status.assert_called_with(
@@ -162,8 +205,7 @@ class TestUrlProcessorService:
             log_id, "llm_complete"
         )
 
-    @pytest.mark.asyncio
-    async def test_get_processing_status_completed(self, url_processor, mock_services):
+    def test_get_processing_status_completed(self, url_processor, mock_services):
         """完了済み処理状況取得テスト."""
         page_id = 1
 
@@ -184,34 +226,32 @@ class TestUrlProcessorService:
         mock_log.error_message = None
 
         # モック設定
-        mock_services["page_repo"].get_page.return_value = mock_page
-        mock_services["log_repo"].get_logs_by_status.return_value = [mock_log]
+        mock_services["page_repo"].get_page_sync = MagicMock(return_value=mock_page)
+        mock_services["log_repo"].get_logs_by_status_sync = MagicMock(return_value=[mock_log])
 
         # 処理実行
-        status = await url_processor.get_processing_status(page_id)
+        status = url_processor.get_processing_status(page_id)
 
         # 結果確認
         assert status["status"] == "completed"
         assert status["page"]["id"] == page_id
         assert status["page"]["title"] == "Test Title"
 
-    @pytest.mark.asyncio
-    async def test_get_processing_status_not_found(self, url_processor, mock_services):
+    def test_get_processing_status_not_found(self, url_processor, mock_services):
         """存在しないページの処理状況取得テスト."""
         page_id = 999
 
         # モック設定
-        mock_services["page_repo"].get_page.return_value = None
+        mock_services["page_repo"].get_page_sync = MagicMock(return_value=None)
 
         # 処理実行
-        status = await url_processor.get_processing_status(page_id)
+        status = url_processor.get_processing_status(page_id)
 
         # 結果確認
         assert status["status"] == "not_found"
         assert "not found" in status["message"]
 
-    @pytest.mark.asyncio
-    async def test_process_url_already_exists(self, url_processor, mock_services):
+    def test_process_url_already_exists(self, url_processor, mock_services):
         """URL重複チェックテスト."""
         url = "https://example.com"
         memo = "Test memo"
@@ -223,7 +263,7 @@ class TestUrlProcessorService:
         mock_services["page_repo"].get_page_by_url_sync.return_value = existing_page
 
         # 処理実行
-        result = await url_processor.process_url(url, memo)
+        result = url_processor.prepare_url_processing(url, memo)
 
         # 結果確認
         assert result["status"] == "already_exists"
