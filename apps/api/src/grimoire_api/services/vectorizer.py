@@ -45,7 +45,9 @@ class VectorizerService:
         """Weaviateクライアント."""
         if self._client is None:
             self._client = weaviate.connect_to_local(
-                host=self.weaviate_host, port=self.weaviate_port
+                host=self.weaviate_host, 
+                port=self.weaviate_port,
+                headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
             )
         return self._client
 
