@@ -8,7 +8,7 @@ from ..repositories.database import DatabaseConnection
 logger = logging.getLogger(__name__)
 
 
-async def ensure_database_initialized(db_path: str | None = None) -> bool:
+def ensure_database_initialized(db_path: str | None = None) -> bool:
     """データベースが初期化されていることを確認.
 
     Args:
@@ -24,7 +24,7 @@ async def ensure_database_initialized(db_path: str | None = None) -> bool:
         if db_path and not Path(db_path).exists():
             logger.info(f"Creating new database: {db_path}")
 
-        await db.initialize_tables()
+        db.initialize_tables()
         logger.info("Database tables initialized successfully")
         return True
 
@@ -33,7 +33,7 @@ async def ensure_database_initialized(db_path: str | None = None) -> bool:
         return False
 
 
-async def reset_database(db_path: str | None = None) -> bool:
+def reset_database(db_path: str | None = None) -> bool:
     """データベースをリセット（テスト用）.
 
     Args:
@@ -47,7 +47,7 @@ async def reset_database(db_path: str | None = None) -> bool:
             Path(db_path).unlink()
             logger.info(f"Database file removed: {db_path}")
 
-        return await ensure_database_initialized(db_path)
+        return ensure_database_initialized(db_path)
 
     except Exception as e:
         logger.error(f"Database reset failed: {e}")

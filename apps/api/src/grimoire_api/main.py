@@ -16,7 +16,7 @@ from .utils.warnings_filter import *  # noqa: F403, F401
 async def lifespan(app: FastAPI) -> Any:
     """アプリケーションライフサイクル管理."""
     # 起動時処理 - データベース初期化
-    success = await ensure_database_initialized()
+    success = ensure_database_initialized()
     if success:
         print("✅ Database initialized successfully")
     else:
