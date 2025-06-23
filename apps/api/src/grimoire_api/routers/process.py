@@ -1,5 +1,7 @@
 """URL processing router."""
 
+from typing import Any
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from ..models.request import ProcessUrlRequest
@@ -90,7 +92,7 @@ async def process_url(
 def get_process_status(
     page_id: int,
     processor: UrlProcessorService = Depends(get_url_processor),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """処理状況取得エンドポイント.
 
     Args:
