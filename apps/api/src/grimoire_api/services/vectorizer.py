@@ -60,7 +60,7 @@ class VectorizerService:
         """
         try:
             # データ読み込み
-            page_data = await self.page_repo.get_page(page_id)
+            page_data = self.page_repo.get_page_sync(page_id)
             if not page_data:
                 raise VectorizerError(f"Page not found: {page_id}")
 

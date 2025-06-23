@@ -62,22 +62,22 @@ async def process_url(
     try:
         # 同期処理部分を実行
         result = processor.prepare_url_processing(str(request.url), request.memo)
-        
+
         if result["status"] == "already_exists":
             return ProcessUrlResponse(
                 status=result["status"],
                 page_id=result["page_id"],
                 message=result["message"],
             )
-        
+
         # バックグラウンドタスクに非同期処理を追加
         background_tasks.add_task(
             processor.process_url_background,
             result["page_id"],
             result["log_id"],
-            str(request.url)
+            str(request.url),
         )
-        
+
         return ProcessUrlResponse(
             status="processing",
             page_id=result["page_id"],

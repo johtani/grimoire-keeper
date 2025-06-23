@@ -36,7 +36,9 @@ class UrlProcessorService:
         self.page_repo = page_repo
         self.log_repo = log_repo
 
-    def prepare_url_processing(self, url: str, memo: str | None = None) -> dict[str, Any]:
+    def prepare_url_processing(
+        self, url: str, memo: str | None = None
+    ) -> dict[str, Any]:
         """URL処理準備（同期処理）.
 
         Args:
@@ -116,13 +118,13 @@ class UrlProcessorService:
         """
         # 準備処理
         result = self.prepare_url_processing(url, memo)
-        
+
         if result["status"] == "already_exists":
             return result
-        
+
         # バックグラウンド処理を同期実行（テスト用）
         await self.process_url_background(result["page_id"], result["log_id"], url)
-        
+
         return {
             "status": "success",
             "page_id": result["page_id"],

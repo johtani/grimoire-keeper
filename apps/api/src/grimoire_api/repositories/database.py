@@ -1,6 +1,5 @@
 """Database connection management."""
 
-import asyncio
 import sqlite3
 
 from ..config import settings
@@ -36,11 +35,13 @@ class DatabaseConnection:
             # lastrowidを保存してからクローズ
             lastrowid = cursor.lastrowid
             conn.close()
+
             # 新しいカーソルオブジェクトを作成して返す
             class MockCursor:
-                def __init__(self, lastrowid):
+                def __init__(self, lastrowid: int | None) -> None:
                     self.lastrowid = lastrowid
-            return MockCursor(lastrowid)
+
+            return MockCursor(lastrowid)  # type: ignore[return-value]
         except Exception as e:
             raise DatabaseError(f"Query execution error: {str(e)}")
 
