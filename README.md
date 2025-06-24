@@ -1,253 +1,279 @@
-# Grimoire Keeper 設計書
+# Grimoire Keeper
 
-## 概要
-URLを投稿すると、ページ内容を要約・キーワード抽出してベクトルDBに保存し、後で検索できるようにするSlackボット
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 
-## システム構成
+**Grimoire Keeper** is an AI-powered URL content summarization and search system. It automatically processes web pages, extracts summaries and keywords using LLM, and enables semantic search through vector embeddings.
 
-### 1. アーキテクチャ
-```
-[Slack] → [Slackボット] → [バックエンドAPI] → [Weaviate]
-                                ↓
-                           [SQLite3]
-```
+## ✨ Features
 
-### 2. リポジトリ構成
-- `apps/bot/` - Slackボット
-- `apps/api/` - バックエンドAPI
-- `shared/` - 共通ライブラリ
+- 🔗 **URL Processing**: Automatically fetch and process web page content
+- 🤖 **AI Summarization**: Generate summaries and extract keywords using Google Gemini
+- 🔍 **Vector Search**: Semantic search powered by Weaviate and OpenAI embeddings
+- 📊 **Flexible Filtering**: Search by URL, keywords, date ranges
+- 🏗️ **Modular Architecture**: Separate API and bot services
+- 🧪 **Comprehensive Testing**: Unit and integration tests included
 
-## 機能要件
+## 🚀 Quick Start
 
-### Slackボット機能
-1. **URL投稿検知**
-   - メッセージ内のURLを検出
-   - バックエンドAPIに処理を依頼
+### Prerequisites
 
-2. **検索コマンド**
-   - `/search [キーワード]` でベクトル検索
-   - 関連する保存済みページを返す
+- Python 3.13+
+- Docker & Docker Compose
+- OpenAI API Key (for embeddings)
+- Google API Key (for Gemini LLM)
+- Jina AI API Key (for content extraction)
 
-3. **ステータス表示**
-   - 処理中・完了・エラーの通知
+### Installation
 
-### バックエンドAPI機能
-1. **コンテンツ取得・処理**
-   - Jina AI ReaderでURL内容取得（Markdown形式）
-   - LiteLLMで要約・キーワード抽出
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-org/grimoire-keeper.git
+   cd grimoire-keeper
+   ```
 
-2. **データ保存**
-   - SQLite3にメタデータ保存
-   - JSONファイルに生レスポンス保存
-   - Weaviateにベクトル保存
+2. **Set up environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys
+   ```
 
-3. **検索機能**
-   - ベクトル類似度検索
-   - 結果のランキング
+3. **Install dependencies**
+   ```bash
+   uv sync
+   ```
 
-## 技術スタック
+4. **Start Weaviate**
+   ```bash
+   docker-compose up -d weaviate
+   ```
 
-### Slackボット
-- **言語**: Python 3.13
-- **フレームワーク**: slack-bolt-python
-- **依存関係**:
-  - slack-bolt
-  - requests
-  - python-dotenv
+5. **Initialize database**
+   ```bash
+   python scripts/init_database.py init
+   ```
 
-### バックエンドAPI
-- **言語**: Python 3.13
-- **フレームワーク**: FastAPI
-- **依存関係**:
-  - fastapi
-  - uvicorn
-  - litellm
-  - weaviate-client
-  - sqlite3 (標準ライブラリ)
-  - requests
-  - pydantic
-  - google-generativeai (Gemini API用)
+6. **Start the API**
+   ```bash
+   uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
+   ```
 
-## データベース設計
+## 📖 Usage
 
-### SQLite3テーブル
-```sql
--- ページメタデータ
-CREATE TABLE pages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT UNIQUE NOT NULL,
-    title TEXT NOT NULL,
-    memo TEXT, -- ユーザーが入力したメモ
-    summary TEXT,
-    keywords TEXT, -- JSON配列として保存
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    weaviate_id TEXT -- WeaviateのオブジェクトID
-);
+### Process a URL
 
--- 処理ログ
-CREATE TABLE process_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    page_id INTEGER,
-    url TEXT NOT NULL,
-    status TEXT NOT NULL, -- 'started', 'download_complete', 'download_error', 'llm_complete', 'llm_error', 'vectorize_complete', 'vectorize_error', 'completed', 'failed'
-    error_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (page_id) REFERENCES pages(id)
-);
+```bash
+curl -X POST "http://localhost:8000/api/v1/process-url" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "memo": "Interesting article"}'
 ```
 
-### JSONファイル保存
-- **保存場所**: `data/json/{page_id}.json`
-- **ファイル名**: pagesテーブルのidを使用
-- **内容**: Jina AI Readerの生レスポンス
+### Search content
 
-### Weaviate スキーマ
+```bash
+curl -X GET "http://localhost:8000/api/v1/search?query=machine%20learning&limit=5"
+```
+
+### Check processing status
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/process-status/{page_id}"
+```
+
+## 🏗️ Architecture
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Client    │───▶│  FastAPI    │───▶│  Weaviate   │
+│             │    │     API     │    │ (Vector DB) │
+└─────────────┘    └─────────────┘    └─────────────┘
+                           │
+                           ▼
+                   ┌─────────────┐
+                   │   SQLite    │
+                   │ (Metadata)  │
+                   └─────────────┘
+```
+
+### Components
+
+- **FastAPI Backend**: RESTful API for URL processing and search
+- **Weaviate**: Vector database for semantic search
+- **SQLite**: Metadata storage and processing logs
+- **External APIs**: Jina AI Reader, Google Gemini, OpenAI Embeddings
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+grimoire-keeper/
+├── apps/
+│   ├── api/           # FastAPI backend
+│   └── bot/           # Slack bot (future)
+├── shared/            # Shared utilities
+├── docs/              # Documentation
+├── scripts/           # Utility scripts
+└── tests/             # Test files
+```
+
+### Development Workflow
+
+1. **Environment Setup**
+   ```bash
+   # Start devcontainer or local environment
+   cp .env.example .env
+   uv sync
+   ```
+
+2. **Code Quality**
+   ```bash
+   uv run ruff check .      # Linting
+   uv run ruff format .     # Formatting
+   uv run mypy .            # Type checking
+   uv run pytest           # Testing
+   ```
+
+3. **Running Services**
+   ```bash
+   # Infrastructure
+   docker-compose up -d weaviate
+   
+   # Application
+   uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
+   ```
+
+### Testing
+
+```bash
+# Unit tests
+uv run pytest apps/api/tests/unit/ -v
+
+# Integration tests
+uv run pytest apps/api/tests/integration/ -v
+
+# All tests with coverage
+uv run pytest --cov=apps --cov-report=html
+```
+
+## 📊 API Reference
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/process-url` | Process a URL and extract content |
+| `GET` | `/api/v1/search` | Search processed content |
+| `GET` | `/api/v1/process-status/{id}` | Check processing status |
+| `GET` | `/api/v1/health` | Health check |
+
+### Request/Response Examples
+
+**Process URL**
 ```json
-{
-  "class": "GrimoireChunk",
-  "properties": [
-    {
-      "name": "pageId",
-      "dataType": ["int"]
-    },
-    {
-      "name": "chunkId",
-      "dataType": ["int"]
-    },
-    {
-      "name": "url",
-      "dataType": ["text"]
-    },
-    {
-      "name": "title", 
-      "dataType": ["text"]
-    },
-    {
-      "name": "memo",
-      "dataType": ["text"]
-    },
-    {
-      "name": "content",
-      "dataType": ["text"]
-    },
-    {
-      "name": "summary",
-      "dataType": ["text"]
-    },
-    {
-      "name": "keywords",
-      "dataType": ["text[]"]
-    },
-    {
-      "name": "createdAt",
-      "dataType": ["date"]
-    }
-  ],
-  "vectorizer": "text2vec-openai"
-}
-```
-
-**チャンキング戦略**:
-- コンテンツを適切なサイズに分割して保存
-- 各チャンクにメタデータ（URL、タイトル、メモ、要約、キーワード）を付与
-- キーワード、要約、URL、取得日付でも検索可能
-
-## API設計
-
-### バックエンドAPI エンドポイント
-
-#### POST /api/v1/process-url
-URLを処理してデータベースに保存
-```json
+POST /api/v1/process-url
 {
   "url": "https://example.com",
-  "memo": "ユーザーが入力したメモ",
-  "slack_channel": "#general",
-  "slack_user": "user123"
+  "memo": "Optional memo"
 }
-```
 
-#### GET /api/v1/search
-ベクトル検索
-```json
+Response:
 {
-  "query": "機械学習",
-  "limit": 5
+  "status": "processing",
+  "page_id": 123,
+  "message": "URL processing started"
 }
 ```
 
-#### GET /api/v1/pages/{page_id}
-特定ページの詳細取得
+**Search**
+```json
+GET /api/v1/search?query=machine%20learning&limit=5
 
-#### GET /api/v1/health
-ヘルスチェック
-
-## 処理フロー
-
-### URL投稿時の処理
-1. Slackボットがメッセージ内のURLを検出
-2. バックエンドAPI `/process-url` を呼び出し（URLとメモを送信）
-3. **処理開始**
-   - process_logsに `started` ステータスで登録
-4. **Jina AI Reader処理**
-   - コンテンツ取得、JSONファイル保存、pagesテーブルにメモと一緒に保存
-   - 成功: ステータス `download_complete`
-   - 失敗: ステータス `download_error`
-5. **LLM処理**
-   - Google Gemini (LiteLLM経由) で要約・キーワード抽出（20個）
-   - 成功: pagesテーブルのsummary/keywords更新、ステータス `llm_complete`
-   - 失敗: ステータス `llm_error`
-6. **ベクトル化処理**
-   - コンテンツをチャンキングしてWeaviateに保存
-   - キーワード、要約、URL、取得日付でも検索可能
-   - 成功: ステータス `vectorize_complete`
-   - 失敗: ステータス `vectorize_error`
-7. **全体完了**: ステータス `completed`
-8. Slackに完了通知
-
-### 検索時の処理
-1. `/search` コマンドを受信
-2. バックエンドAPI `/search` を呼び出し
-3. Weaviateでベクトル検索実行
-4. 結果をSlackに表示
-
-## 設定・環境変数
-
-### Slackボット
-```env
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=...
-BACKEND_API_URL=http://localhost:8000
+Response:
+{
+  "results": [
+    {
+      "page_id": 123,
+      "url": "https://example.com",
+      "title": "ML Article",
+      "summary": "Article about machine learning...",
+      "keywords": ["machine learning", "AI"],
+      "score": 0.95
+    }
+  ]
+}
 ```
 
-### バックエンドAPI
-```env
-OPENAI_API_KEY=sk-...        # Weaviate vectorizer用
-GOOGLE_API_KEY=sk-...        # Gemini要約・キーワード抽出用
-JINA_API_KEY=...
+## ⚙️ Configuration
+
+### Environment Variables
+
+```bash
+# API Keys
+OPENAI_API_KEY=sk-...          # For embeddings
+GOOGLE_API_KEY=...             # For Gemini LLM
+JINA_API_KEY=...               # For content extraction
+
+# Services
 WEAVIATE_HOST=localhost
 WEAVIATE_PORT=8080
 DATABASE_PATH=./grimoire.db
-JSON_STORAGE_PATH=./data/json  # JSONファイル保存先
+
+# Optional
+JSON_STORAGE_PATH=./data/json  # Raw content storage
 ```
 
-## デプロイ・運用
+### Docker Compose
 
-### 開発環境
-- Slackボット: ローカル実行 + ngrok
-- バックエンドAPI: uvicorn
-- Weaviate: Docker Compose
+The project includes a `docker-compose.yml` for running Weaviate:
 
-### 本番環境（案）
-- Slackボット: ローカル実行
-- バックエンドAPI: ローカル実行 (uvicorn)
-- Weaviate: Docker (ローカル)
-- SQLite3: ファイルベース (ローカル)
+```bash
+docker-compose up -d weaviate
+```
 
-## 拡張可能性
-- 複数のLLMプロバイダー対応
-- ページ更新の検知・再処理
-- 検索結果のフィルタリング
-- ユーザー別の保存・検索
-- Web UI の提供
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Guidelines
+
+- Follow PEP 8 style guide
+- Add type hints to all functions
+- Write tests for new features
+- Update documentation as needed
+- Use conventional commit messages
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Jina AI Reader](https://jina.ai/) for content extraction
+- [Weaviate](https://weaviate.io/) for vector search
+- [Google Gemini](https://ai.google.dev/) for LLM processing
+- [OpenAI](https://openai.com/) for embeddings
+
+## 📚 Documentation
+
+For detailed documentation, see the [docs/](docs/) directory:
+
+- [Backend Architecture](docs/backend-architecture.md)
+- [API Flow](docs/backend-api-flow.md)
+- [Processing Pipeline](docs/download-process.md)
+
+## 🐛 Issues & Support
+
+If you encounter any issues or have questions:
+
+1. Check the [documentation](docs/)
+2. Search existing [issues](https://github.com/your-org/grimoire-keeper/issues)
+3. Create a new issue with detailed information
+
+---
+
+**Made with ❤️ by the Grimoire Keeper Team**
