@@ -53,9 +53,15 @@ class SearchService:
             with self._get_client() as client:
                 collection = client.collections.get("GrimoireChunk")
 
+                # フィルター条件構築
+                where_filter = self._build_weaviate_filter(filters) if filters else None
+
                 # クエリ実行
                 response = collection.query.near_text(
-                    query=query, limit=limit, return_metadata=MetadataQuery(certainty=True)
+                    query=query, 
+                    limit=limit, 
+                    where=where_filter,
+                    return_metadata=MetadataQuery(certainty=True)
                 )
 
                 # 結果変換
@@ -95,57 +101,43 @@ class SearchService:
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")
 
-    def _build_where_filter(self, filters: dict) -> dict | None:
-        """フィルタ条件構築.
+    def _build_weaviate_filter(self, filters: dict) -> Any:
+        """フィルタ条件構築 (Weaviate v4).
 
         Args:
             filters: フィルタ条件
 
         Returns:
-            Weaviate用フィルタ条件
+            Weaviate v4 Filterオブジェクト
         """
+        from weaviate.classes.query import Filter
+        
         conditions = []
 
         if "url" in filters:
             conditions.append(
-                {
-                    "path": ["url"],
-                    "operator": "Like",
-                    "valueText": f"*{filters['url']}*",
-                }
+                Filter.by_property("url").like(f"*{filters['url']}*")
             )
 
         if "keywords" in filters:
             conditions.append(
-                {
-                    "path": ["keywords"],
-                    "operator": "ContainsAny",
-                    "valueTextArray": filters["keywords"],
-                }
+                Filter.by_property("keywords").contains_any(filters["keywords"])
             )
 
         if "date_from" in filters:
             conditions.append(
-                {
-                    "path": ["createdAt"],
-                    "operator": "GreaterThanEqual",
-                    "valueDate": filters["date_from"],
-                }
+                Filter.by_property("createdAt").greater_or_equal(filters["date_from"])
             )
 
         if "date_to" in filters:
             conditions.append(
-                {
-                    "path": ["createdAt"],
-                    "operator": "LessThanEqual",
-                    "valueDate": filters["date_to"],
-                }
+                Filter.by_property("createdAt").less_or_equal(filters["date_to"])
             )
 
         if len(conditions) == 1:
             return conditions[0]
         elif len(conditions) > 1:
-            return {"operator": "And", "operands": conditions}
+            return Filter.all_of(conditions)
         else:
             return None
 
