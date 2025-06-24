@@ -48,10 +48,15 @@ class TestProcessUrlIntegration:
             "keywords": ["test", "integration", "example"],
         }
 
-        with patch("grimoire_api.services.jina_client.JinaClient.fetch_content") as mock_jina, \
-             patch("grimoire_api.services.llm_service.completion") as mock_llm, \
-             patch("grimoire_api.services.vectorizer.VectorizerService.vectorize_content") as mock_vectorizer:
-
+        with (
+            patch(
+                "grimoire_api.services.jina_client.JinaClient.fetch_content"
+            ) as mock_jina,
+            patch("grimoire_api.services.llm_service.completion") as mock_llm,
+            patch(
+                "grimoire_api.services.vectorizer.VectorizerService.vectorize_content"
+            ) as mock_vectorizer,
+        ):
             # モック設定
             mock_jina.return_value = mock_jina_response
 
@@ -59,9 +64,12 @@ class TestProcessUrlIntegration:
             class MockLLMResponse:
                 def __init__(self):
                     self.choices = [MockChoice()]
+
                 def model_dump(self):
                     return {
-                        "choices": [{"message": {"content": json.dumps(mock_llm_response)}}]
+                        "choices": [
+                            {"message": {"content": json.dumps(mock_llm_response)}}
+                        ]
                     }
 
             class MockChoice:
@@ -77,8 +85,7 @@ class TestProcessUrlIntegration:
 
             # URL処理リクエスト
             response = integration_client.post(
-                "/api/v1/process-url",
-                json={"url": test_url, "memo": test_memo}
+                "/api/v1/process-url", json={"url": test_url, "memo": test_memo}
             )
 
             # レスポンス確認
@@ -94,7 +101,9 @@ class TestProcessUrlIntegration:
             time.sleep(2)
 
             # 処理状況確認
-            status_response = integration_client.get(f"/api/v1/process-status/{page_id}")
+            status_response = integration_client.get(
+                f"/api/v1/process-status/{page_id}"
+            )
             assert status_response.status_code == 200
 
             status_data = status_response.json()
@@ -112,8 +121,7 @@ class TestProcessUrlIntegration:
 
         # 1回目の処理
         response1 = integration_client.post(
-            "/api/v1/process-url",
-            json={"url": test_url, "memo": "First request"}
+            "/api/v1/process-url", json={"url": test_url, "memo": "First request"}
         )
         assert response1.status_code == 200
         data1 = response1.json()
@@ -121,8 +129,7 @@ class TestProcessUrlIntegration:
 
         # 2回目の処理（重複）
         response2 = integration_client.post(
-            "/api/v1/process-url",
-            json={"url": test_url, "memo": "Second request"}
+            "/api/v1/process-url", json={"url": test_url, "memo": "Second request"}
         )
         assert response2.status_code == 200
         data2 = response2.json()
@@ -134,8 +141,7 @@ class TestProcessUrlIntegration:
     def test_process_url_invalid_url(self, integration_client: TestClient) -> None:
         """無効なURL処理テスト."""
         response = integration_client.post(
-            "/api/v1/process-url",
-            json={"url": "invalid-url", "memo": "Test memo"}
+            "/api/v1/process-url", json={"url": "invalid-url", "memo": "Test memo"}
         )
 
         # バリデーションエラーまたは処理エラーを期待
@@ -144,8 +150,7 @@ class TestProcessUrlIntegration:
     def test_process_url_missing_url(self, integration_client: TestClient) -> None:
         """URL未指定テスト."""
         response = integration_client.post(
-            "/api/v1/process-url",
-            json={"memo": "Test memo"}
+            "/api/v1/process-url", json={"memo": "Test memo"}
         )
 
         assert response.status_code == 422  # バリデーションエラー
@@ -163,12 +168,13 @@ class TestProcessUrlIntegration:
         """Jina AI Readerエラー時のテスト."""
         test_url = "https://example.com/jina-error"
 
-        with patch("grimoire_api.services.jina_client.JinaClient.fetch_content") as mock_jina:
+        with patch(
+            "grimoire_api.services.jina_client.JinaClient.fetch_content"
+        ) as mock_jina:
             mock_jina.side_effect = Exception("Jina API error")
 
             response = integration_client.post(
-                "/api/v1/process-url",
-                json={"url": test_url, "memo": "Error test"}
+                "/api/v1/process-url", json={"url": test_url, "memo": "Error test"}
             )
 
             assert response.status_code == 200
@@ -179,7 +185,9 @@ class TestProcessUrlIntegration:
             time.sleep(2)
 
             # エラー状態確認
-            status_response = integration_client.get(f"/api/v1/process-status/{page_id}")
+            status_response = integration_client.get(
+                f"/api/v1/process-status/{page_id}"
+            )
             status_data = status_response.json()
 
             # エラー状態またはまだ処理中の可能性
@@ -203,17 +211,24 @@ class TestProcessUrlIntegration:
             "keywords": ["workflow", "test", "integration", "page", "content"],
         }
 
-        with patch("grimoire_api.services.jina_client.JinaClient.fetch_content") as mock_jina, \
-             patch("grimoire_api.services.llm_service.completion") as mock_llm, \
-             patch("grimoire_api.services.vectorizer.VectorizerService.vectorize_content") as mock_vectorizer:
-
+        with (
+            patch(
+                "grimoire_api.services.jina_client.JinaClient.fetch_content"
+            ) as mock_jina,
+            patch("grimoire_api.services.llm_service.completion") as mock_llm,
+            patch(
+                "grimoire_api.services.vectorizer.VectorizerService.vectorize_content"
+            ) as mock_vectorizer,
+        ):
             # モック設定
             mock_jina.return_value = mock_jina_response
 
             class MockLLMResponse:
                 def model_dump(self):
                     return {
-                        "choices": [{"message": {"content": json.dumps(mock_llm_response)}}]
+                        "choices": [
+                            {"message": {"content": json.dumps(mock_llm_response)}}
+                        ]
                     }
 
             mock_llm.return_value = MockLLMResponse()
@@ -221,8 +236,7 @@ class TestProcessUrlIntegration:
 
             # 1. URL処理開始
             response = integration_client.post(
-                "/api/v1/process-url",
-                json={"url": test_url, "memo": test_memo}
+                "/api/v1/process-url", json={"url": test_url, "memo": test_memo}
             )
 
             assert response.status_code == 200
@@ -233,7 +247,9 @@ class TestProcessUrlIntegration:
             time.sleep(3)
 
             # 3. 最終状態確認
-            status_response = integration_client.get(f"/api/v1/process-status/{page_id}")
+            status_response = integration_client.get(
+                f"/api/v1/process-status/{page_id}"
+            )
             status_data = status_response.json()
 
             # 4. 結果検証

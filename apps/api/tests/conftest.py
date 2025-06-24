@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-
-# テスト用警告フィルタ
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
+
+# テスト用警告フィルタ
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +32,7 @@ async def temp_db():
         db_path = temp_file.name
 
     db = DatabaseConnection(db_path)
-    await db.initialize_tables()
+    db.initialize_tables()
 
     yield db
 

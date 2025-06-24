@@ -9,8 +9,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 
-from grimoire_api.repositories.database import DatabaseConnection
-from grimoire_api.services.vectorizer import VectorizerService
+from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
+from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
 
 
 async def initialize_database():
@@ -62,7 +62,8 @@ async def initialize_sqlite_only():
 
     print("🎉 SQLite initialization completed!")
     print(
-        "📝 Next: Start Weaviate and run 'python scripts/init_database.py init' for full setup"
+        "📝 Next: Start Weaviate and run "
+        "'python scripts/init_database.py init' for full setup"
     )
     return True
 

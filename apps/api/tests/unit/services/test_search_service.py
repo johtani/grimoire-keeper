@@ -1,10 +1,8 @@
 """Tests for SearchService."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from weaviate.classes.query import Filter
-
 from grimoire_api.services.search_service import SearchService
 from grimoire_api.utils.exceptions import VectorizerError
 
@@ -30,7 +28,9 @@ class TestSearchService:
         assert service.weaviate_port == 9090
 
     @pytest.mark.asyncio
-    async def test_vector_search_without_filters(self, search_service: SearchService) -> None:
+    async def test_vector_search_without_filters(
+        self, search_service: SearchService
+    ) -> None:
         """フィルターなしのベクトル検索テスト."""
         # モックレスポンス
         mock_obj = MagicMock()
@@ -57,7 +57,7 @@ class TestSearchService:
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=None)
 
-        with patch.object(search_service, '_get_client', return_value=mock_client):
+        with patch.object(search_service, "_get_client", return_value=mock_client):
             results = await search_service.vector_search("test query", limit=5)
 
         assert len(results) == 1
@@ -73,7 +73,9 @@ class TestSearchService:
         assert call_args[1]["filters"] is None
 
     @pytest.mark.asyncio
-    async def test_vector_search_with_filters(self, search_service: SearchService) -> None:
+    async def test_vector_search_with_filters(
+        self, search_service: SearchService
+    ) -> None:
         """フィルター付きのベクトル検索テスト."""
         # モックレスポンス
         mock_obj = MagicMock()
@@ -104,11 +106,13 @@ class TestSearchService:
             "url": "filtered",
             "keywords": ["test", "example"],
             "date_from": "2023-01-01",
-            "date_to": "2023-12-31"
+            "date_to": "2023-12-31",
         }
 
-        with patch.object(search_service, '_get_client', return_value=mock_client):
-            results = await search_service.vector_search("filtered query", limit=3, filters=filters)
+        with patch.object(search_service, "_get_client", return_value=mock_client):
+            results = await search_service.vector_search(
+                "filtered query", limit=3, filters=filters
+            )
 
         assert len(results) == 1
         assert results[0].page_id == 2
@@ -129,7 +133,7 @@ class TestSearchService:
         mock_client.__enter__ = MagicMock(side_effect=Exception("Connection error"))
         mock_client.__exit__ = MagicMock(return_value=None)
 
-        with patch.object(search_service, '_get_client', return_value=mock_client):
+        with patch.object(search_service, "_get_client", return_value=mock_client):
             with pytest.raises(VectorizerError, match="Vector search error"):
                 await search_service.vector_search("test query")
 
@@ -162,8 +166,10 @@ class TestSearchService:
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=None)
 
-        with patch.object(search_service, '_get_client', return_value=mock_client):
-            results = await search_service.keyword_search(["keyword", "search"], limit=10)
+        with patch.object(search_service, "_get_client", return_value=mock_client):
+            results = await search_service.keyword_search(
+                ["keyword", "search"], limit=10
+            )
 
         assert len(results) == 1
         assert results[0].page_id == 3
@@ -173,44 +179,58 @@ class TestSearchService:
     def test_build_weaviate_filter_url(self, search_service: SearchService) -> None:
         """URLフィルター構築テスト."""
         filters = {"url": "example"}
-        
-        with patch('weaviate.classes.query.Filter') as mock_filter:
+
+        with patch("weaviate.classes.query.Filter") as mock_filter:
             mock_filter.by_property.return_value.like.return_value = "url_filter"
-            
+
             result = search_service._build_weaviate_filter(filters)
-            
+
             mock_filter.by_property.assert_called_with("url")
             mock_filter.by_property.return_value.like.assert_called_with("*example*")
             assert result == "url_filter"
 
-    def test_build_weaviate_filter_keywords(self, search_service: SearchService) -> None:
+    def test_build_weaviate_filter_keywords(
+        self, search_service: SearchService
+    ) -> None:
         """キーワードフィルター構築テスト."""
         filters = {"keywords": ["test", "example"]}
-        
-        with patch('weaviate.classes.query.Filter') as mock_filter:
-            mock_filter.by_property.return_value.contains_any.return_value = "keywords_filter"
-            
+
+        with patch("weaviate.classes.query.Filter") as mock_filter:
+            mock_filter.by_property.return_value.contains_any.return_value = (
+                "keywords_filter"
+            )
+
             result = search_service._build_weaviate_filter(filters)
-            
+
             mock_filter.by_property.assert_called_with("keywords")
-            mock_filter.by_property.return_value.contains_any.assert_called_with(["test", "example"])
+            mock_filter.by_property.return_value.contains_any.assert_called_with(
+                ["test", "example"]
+            )
             assert result == "keywords_filter"
 
-    def test_build_weaviate_filter_date_range(self, search_service: SearchService) -> None:
+    def test_build_weaviate_filter_date_range(
+        self, search_service: SearchService
+    ) -> None:
         """日付範囲フィルター構築テスト."""
         filters = {"date_from": "2023-01-01", "date_to": "2023-12-31"}
-        
-        with patch('weaviate.classes.query.Filter') as mock_filter:
+
+        with patch("weaviate.classes.query.Filter") as mock_filter:
             mock_from_filter = MagicMock()
             mock_to_filter = MagicMock()
-            mock_filter.by_property.return_value.greater_or_equal.return_value = mock_from_filter
-            mock_filter.by_property.return_value.less_or_equal.return_value = mock_to_filter
+            mock_filter.by_property.return_value.greater_or_equal.return_value = (
+                mock_from_filter
+            )
+            mock_filter.by_property.return_value.less_or_equal.return_value = (
+                mock_to_filter
+            )
             mock_filter.all_of.return_value = "combined_filter"
-            
+
             result = search_service._build_weaviate_filter(filters)
-            
+
             assert mock_filter.by_property.call_count == 2
-            mock_filter.all_of.assert_called_once_with([mock_from_filter, mock_to_filter])
+            mock_filter.all_of.assert_called_once_with(
+                [mock_from_filter, mock_to_filter]
+            )
             assert result == "combined_filter"
 
     def test_build_weaviate_filter_empty(self, search_service: SearchService) -> None:
@@ -219,7 +239,9 @@ class TestSearchService:
         result = search_service._build_weaviate_filter(filters)
         assert result is None
 
-    def test_convert_search_results_v4_certainty(self, search_service: SearchService) -> None:
+    def test_convert_search_results_v4_certainty(
+        self, search_service: SearchService
+    ) -> None:
         """検索結果変換テスト（certainty）."""
         mock_obj = MagicMock()
         mock_obj.metadata.certainty = 0.95
@@ -240,11 +262,13 @@ class TestSearchService:
         mock_response.objects = [mock_obj]
 
         results = search_service._convert_search_results_v4(mock_response)
-        
+
         assert len(results) == 1
         assert results[0].score == 0.95
 
-    def test_convert_search_results_v4_distance(self, search_service: SearchService) -> None:
+    def test_convert_search_results_v4_distance(
+        self, search_service: SearchService
+    ) -> None:
         """検索結果変換テスト（distance）."""
         mock_obj = MagicMock()
         mock_obj.metadata.certainty = None
@@ -265,7 +289,7 @@ class TestSearchService:
         mock_response.objects = [mock_obj]
 
         results = search_service._convert_search_results_v4(mock_response)
-        
+
         assert len(results) == 1
         assert results[0].score == 0.8  # 1.0 - 0.2
         assert results[0].memo is None

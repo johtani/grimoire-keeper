@@ -44,7 +44,7 @@ class VectorizerService:
         return weaviate.connect_to_local(
             host=self.weaviate_host,
             port=self.weaviate_port,
-            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY}
+            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
         )
 
     async def vectorize_content(self, page_id: int) -> None:
@@ -105,7 +105,11 @@ class VectorizerService:
                         "content": chunk,
                         "summary": page_data.summary or "",
                         "keywords": json.loads(page_data.keywords or "[]"),
-                        "createdAt": page_data.created_at.replace(tzinfo=None).isoformat() + "Z" if page_data.created_at.tzinfo is None else page_data.created_at.isoformat(),
+                        "createdAt": (
+                            page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
+                            if page_data.created_at.tzinfo is None
+                            else page_data.created_at.isoformat()
+                        ),
                     }
 
                     result = collection.data.insert(properties=weaviate_object)
