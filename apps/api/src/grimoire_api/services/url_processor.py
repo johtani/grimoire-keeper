@@ -213,7 +213,11 @@ class UrlProcessorService:
                     "memo": page.memo,
                     "summary": page.summary,
                     "keywords": json.loads(page.keywords) if page.keywords else [],
-                    "created_at": page.created_at.replace(tzinfo=None).isoformat() if page.created_at.tzinfo is None else page.created_at.isoformat(),
+                    "created_at": (
+                        page.created_at.replace(tzinfo=None).isoformat()
+                        if page.created_at.tzinfo is None
+                        else page.created_at.isoformat()
+                    ),
                 },
             }
 

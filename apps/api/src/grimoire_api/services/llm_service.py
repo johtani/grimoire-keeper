@@ -69,7 +69,9 @@ class LLMService:
                 logger.info(f"Extracted content: {content[:100]}...")
             except (AttributeError, IndexError) as e:
                 logger.error(f"Failed to extract content from LLM response: {str(e)}")
-                raise LLMServiceError(f"Failed to extract content from LLM response: {str(e)}")
+                raise LLMServiceError(
+                    f"Failed to extract content from LLM response: {str(e)}"
+                )
 
             if not content or content.strip() == "":
                 raise LLMServiceError("Empty response from LLM")

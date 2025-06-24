@@ -9,7 +9,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 
-from grimoire_api.config import settings
+from grimoire_api.config import settings  # noqa: E402
 
 
 def main():
