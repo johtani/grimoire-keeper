@@ -105,7 +105,7 @@ class VectorizerService:
                         "content": chunk,
                         "summary": page_data.summary or "",
                         "keywords": json.loads(page_data.keywords or "[]"),
-                        "createdAt": page_data.created_at,
+                        "createdAt": page_data.created_at.replace(tzinfo=None).isoformat() + "Z" if page_data.created_at.tzinfo is None else page_data.created_at.isoformat(),
                     }
 
                     result = collection.data.insert(properties=weaviate_object)
