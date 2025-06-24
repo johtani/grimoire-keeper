@@ -1,3 +1,22 @@
+[project]
+name = "grimoire-keeper"
+version = "0.1.0"
+description = "URL content summarization and search system"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.13"
+authors = [
+    {name = "Grimoire Keeper Team"}
+]
+keywords = ["url", "summarization", "search", "ai", "llm", "vector-search"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+
 # ワークスペース設定
 [tool.uv.workspace]
 members = [
