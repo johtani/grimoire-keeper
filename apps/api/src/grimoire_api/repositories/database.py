@@ -16,6 +16,7 @@ class DatabaseConnection:
             db_path: データベースファイルパス
         """
         self.db_path = db_path or settings.DATABASE_PATH
+        self._enable_wal_mode()
 
     def execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
         """クエリ実行.
@@ -30,6 +31,7 @@ class DatabaseConnection:
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=30000")
             cursor = conn.execute(query, params)
             conn.commit()
             # lastrowidを保存してからクローズ
@@ -58,6 +60,7 @@ class DatabaseConnection:
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=30000")
             cursor = conn.execute(query, params)
             result = cursor.fetchone()
             conn.close()
@@ -78,6 +81,7 @@ class DatabaseConnection:
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=30000")
             cursor = conn.execute(query, params)
             result = cursor.fetchall()
             conn.close()
@@ -118,3 +122,21 @@ class DatabaseConnection:
         conn.execute(process_logs_table)
         conn.commit()
         conn.close()
+
+    def _enable_wal_mode(self) -> None:
+        """データベースのWALモードを有効化."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            # WALモードを有効化
+            conn.execute("PRAGMA journal_mode=WAL")
+            # 同期モードをNORMALに設定（パフォーマンス向上）
+            conn.execute("PRAGMA synchronous=NORMAL")
+            # キャッシュサイズを増加
+            conn.execute("PRAGMA cache_size=10000")
+            # タイムアウトを設定
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.commit()
+            conn.close()
+        except Exception:
+            # WALモード設定に失敗しても継続
+            pass

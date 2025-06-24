@@ -6,17 +6,8 @@ requires-python = ">=3.13"
 members = [
     "grimoire-api",
     "grimoire-bot",
+    "grimoire-keeper",
     "grimoire-shared",
-]
-
-[manifest.dependency-groups]
-dev = [
-    { name = "mypy", specifier = ">=1.0.0" },
-    { name = "pre-commit", specifier = ">=3.0.0" },
-    { name = "pytest", specifier = ">=7.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.21.0" },
-    { name = "pytest-cov", specifier = ">=4.0.0" },
-    { name = "ruff", specifier = ">=0.1.0" },
 ]
 
 [[package]]
@@ -450,6 +441,33 @@ requires-dist = [
     { name = "slack-bolt", specifier = ">=1.18.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "grimoire-keeper"
+version = "0.1.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.0.0" },
+    { name = "pre-commit", specifier = ">=3.0.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
+]
 
 [[package]]
 name = "grimoire-shared"
