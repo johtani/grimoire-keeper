@@ -60,7 +60,7 @@ class SearchService:
                 response = collection.query.near_text(
                     query=query, 
                     limit=limit, 
-                    where=where_filter,
+                    filters=where_filter,
                     return_metadata=MetadataQuery(certainty=True)
                 )
 
