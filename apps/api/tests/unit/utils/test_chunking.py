@@ -6,25 +6,25 @@ from grimoire_api.utils.chunking import TextChunker
 class TestTextChunker:
     """TextChunkerのテストクラス."""
 
-    def test_init_default_values(self):
+    def test_init_default_values(self) -> None:
         """デフォルト値での初期化テスト."""
         chunker = TextChunker()
         assert chunker.chunk_size == 1000
         assert chunker.overlap == 200
 
-    def test_init_custom_values(self):
+    def test_init_custom_values(self) -> None:
         """カスタム値での初期化テスト."""
         chunker = TextChunker(chunk_size=500, overlap=100)
         assert chunker.chunk_size == 500
         assert chunker.overlap == 100
 
-    def test_chunk_empty_text(self):
+    def test_chunk_empty_text(self) -> None:
         """空文字列のチャンキングテスト."""
         chunker = TextChunker()
         result = chunker.chunk_text("")
         assert result == []
 
-    def test_chunk_short_text(self):
+    def test_chunk_short_text(self) -> None:
         """短いテキストのチャンキングテスト."""
         chunker = TextChunker(chunk_size=100, overlap=20)
         text = "This is a short text."
@@ -32,7 +32,7 @@ class TestTextChunker:
         assert len(result) == 1
         assert result[0] == text
 
-    def test_chunk_paragraph_based(self):
+    def test_chunk_paragraph_based(self) -> None:
         """段落ベースのチャンキングテスト."""
         chunker = TextChunker(chunk_size=50, overlap=10)
         text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
@@ -42,7 +42,7 @@ class TestTextChunker:
         assert len(result) >= 2
         assert "First paragraph." in result[0]
 
-    def test_chunk_with_overlap(self):
+    def test_chunk_with_overlap(self) -> None:
         """重複ありのチャンキングテスト."""
         chunker = TextChunker(chunk_size=20, overlap=5)
         text = "a" * 50  # 50文字の文字列
@@ -54,7 +54,7 @@ class TestTextChunker:
         for chunk in result[:-1]:  # 最後のチャンク以外
             assert len(chunk) <= chunker.chunk_size
 
-    def test_split_by_size(self):
+    def test_split_by_size(self) -> None:
         """文字数ベース分割のテスト."""
         chunker = TextChunker(chunk_size=10, overlap=3)
         text = "a" * 25
@@ -67,7 +67,7 @@ class TestTextChunker:
         assert len(result[2]) == 10
         assert len(result[3]) == 4  # 最後のチャンク
 
-    def test_chunk_mixed_content(self):
+    def test_chunk_mixed_content(self) -> None:
         """混合コンテンツのチャンキングテスト."""
         chunker = TextChunker(chunk_size=100, overlap=20)
         text = """# Title

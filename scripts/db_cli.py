@@ -12,7 +12,7 @@ sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 from grimoire_api.config import settings  # noqa: E402
 
 
-def main():
+def main() -> None:
     """SQLite CLIを起動."""
     db_path = settings.DATABASE_PATH
 

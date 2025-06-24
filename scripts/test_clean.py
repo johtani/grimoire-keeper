@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 
-def main():
+def main() -> None:
     """警告を抑制してテストを実行."""
     # 環境変数を設定
     env = os.environ.copy()
