@@ -120,9 +120,20 @@ class SearchService:
             )
 
         if "keywords" in filters:
-            conditions.append(
-                Filter.by_property("keywords").contains_any(filters["keywords"])
-            )
+            # keywordsを配列として確実に処理
+            keywords_value = filters["keywords"]
+            if isinstance(keywords_value, str):
+                keywords_value = [keywords_value] if keywords_value.strip() else []
+            elif not isinstance(keywords_value, list):
+                keywords_value = list(keywords_value) if keywords_value else []
+            
+            # 空の配列や空文字列のみの配列を除外
+            keywords_value = [k for k in keywords_value if k and k.strip()]
+            
+            if keywords_value:  # 有効なキーワードがある場合のみフィルターを追加
+                conditions.append(
+                    Filter.by_property("keywords").contains_any(keywords_value)
+                )
 
         if "date_from" in filters:
             conditions.append(
