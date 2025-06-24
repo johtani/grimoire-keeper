@@ -93,7 +93,7 @@ class SearchService:
 
                 # キーワードフィルタで検索
                 response = collection.query.fetch_objects(  # type: ignore[call-overload]
-                    where=Filter.by_property("keywords").contains_any(keywords), limit=limit
+                    filters=Filter.by_property("keywords").contains_any(keywords), limit=limit
                 )
 
                 return self._convert_search_results_v4(response)
