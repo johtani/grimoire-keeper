@@ -70,7 +70,7 @@ class TestSearchService:
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "test query"
         assert call_args[1]["limit"] == 5
-        assert call_args[1]["where"] is None
+        assert call_args[1]["filters"] is None
 
     @pytest.mark.asyncio
     async def test_vector_search_with_filters(self, search_service: SearchService) -> None:
@@ -120,7 +120,7 @@ class TestSearchService:
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "filtered query"
         assert call_args[1]["limit"] == 3
-        assert call_args[1]["where"] is not None
+        assert call_args[1]["filters"] is not None
 
     @pytest.mark.asyncio
     async def test_vector_search_error(self, search_service: SearchService) -> None:
