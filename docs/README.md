@@ -1,49 +1,30 @@
-# Documentation
+# Documentation / ドキュメント
 
 This directory contains detailed documentation for the Grimoire Keeper project.
+このディレクトリには、Grimoire Keeperプロジェクトの詳細なドキュメントが含まれています。
 
-## 📚 Table of Contents
+## 📚 Table of Contents / 目次
 
-### Architecture & Design
-- [**Architecture Overview**](architecture.md) - System architecture and component design
-- [**API Reference**](api-reference.md) - Complete API documentation
-- [**Database Schema**](database-schema.md) - Database design and relationships
+### Architecture & Design / アーキテクチャと設計
+- [**Architecture Overview**](architecture.md) - System architecture and component design / システムアーキテクチャとコンポーネント設計
+- [**API Reference**](api-reference.md) - Complete API documentation / 完全なAPIドキュメント
 
-### Development
-- [**Development Guide**](development.md) - Setup and development workflow
-- [**Testing Guide**](testing.md) - Testing strategies and guidelines
-- [**Deployment Guide**](deployment.md) - Production deployment instructions
+### Development / 開発
+- [**Development Guide**](development.md) - Setup and development workflow / セットアップと開発ワークフロー
 
-### Processing Pipeline
-- [**URL Processing Flow**](processing-flow.md) - Detailed processing pipeline
-- [**Content Extraction**](content-extraction.md) - Jina AI Reader integration
-- [**LLM Processing**](llm-processing.md) - Summarization and keyword extraction
-- [**Vector Search**](vector-search.md) - Weaviate integration and search
+## 🚀 Quick Links / クイックリンク
 
-### Configuration
-- [**Environment Variables**](configuration.md) - Configuration options
-- [**Docker Setup**](docker-setup.md) - Container configuration
+- **Getting Started / はじめに**: See the main [README.md](../README.md) / メインREADMEを参照
+- **API Endpoints / APIエンドポイント**: [API Reference](api-reference.md)
+- **Development Setup / 開発環境構築**: [Development Guide](development.md)
 
-## 🚀 Quick Links
+## 📖 Reading Order / 読み進め方
 
-- **Getting Started**: See the main [README.md](../README.md)
-- **API Endpoints**: [API Reference](api-reference.md)
-- **Development Setup**: [Development Guide](development.md)
-- **Troubleshooting**: [Common Issues](troubleshooting.md)
-
-## 📖 Reading Order
-
-For new developers:
-1. Start with [Architecture Overview](architecture.md)
-2. Follow [Development Guide](development.md) for setup
-3. Review [API Reference](api-reference.md) for endpoints
-4. Understand [Processing Flow](processing-flow.md) for business logic
-
-For operators:
-1. Review [Deployment Guide](deployment.md)
-2. Check [Configuration](configuration.md) options
-3. Set up monitoring using [Docker Setup](docker-setup.md)
+For new developers / 新しい開発者向け:
+1. Start with [Architecture Overview](architecture.md) / アーキテクチャ概要から始める
+2. Follow [Development Guide](development.md) for setup / セットアップは開発ガイドに従う
+3. Review [API Reference](api-reference.md) for endpoints / エンドポイントはAPIリファレンスを確認
 
 ---
 
-**Need help?** Check the [troubleshooting guide](troubleshooting.md) or create an issue.
+**Need help? / ヘルプが必要ですか？** Create an issue with detailed information. / 詳細情報を含む問題を作成してください。
