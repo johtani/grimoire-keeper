@@ -64,7 +64,7 @@ class DatabaseConnection:
             cursor = conn.execute(query, params)
             result = cursor.fetchone()
             conn.close()
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             raise DatabaseError(f"Fetch one error: {str(e)}")
 

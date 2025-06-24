@@ -4,6 +4,7 @@ import asyncio
 import tempfile
 import warnings
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -18,7 +19,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 @pytest.fixture(scope="session")
-def event_loop():
+def event_loop() -> Any:
     """イベントループフィクスチャ."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
@@ -41,25 +42,25 @@ async def temp_db():
 
 
 @pytest.fixture
-def temp_storage():
+def temp_storage() -> Any:
     """一時ストレージフィクスチャ."""
     with tempfile.TemporaryDirectory() as temp_dir:
         yield temp_dir
 
 
 @pytest.fixture
-def file_repo(temp_storage):
+def file_repo(temp_storage: str) -> FileRepository:
     """ファイルリポジトリフィクスチャ."""
     return FileRepository(storage_path=temp_storage)
 
 
 @pytest_asyncio.fixture
-async def page_repo(temp_db, file_repo):
+async def page_repo(temp_db: DatabaseConnection, file_repo: FileRepository) -> PageRepository:
     """ページリポジトリフィクスチャ."""
     return PageRepository(db=temp_db, file_repo=file_repo)
 
 
 @pytest_asyncio.fixture
-async def log_repo(temp_db):
+async def log_repo(temp_db: DatabaseConnection) -> LogRepository:
     """ログリポジトリフィクスチャ."""
     return LogRepository(db=temp_db)
