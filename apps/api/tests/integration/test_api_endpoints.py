@@ -99,7 +99,9 @@ class TestAPIEndpoints:
         assert len(data["results"]) == 1
 
     @patch("grimoire_api.services.search_service.SearchService.keyword_search")
-    def test_keyword_search_endpoint(self, mock_keyword_search: Any, client: Any) -> None:
+    def test_keyword_search_endpoint(
+        self, mock_keyword_search: Any, client: Any
+    ) -> None:
         """キーワード検索エンドポイントテスト."""
         # モック設定
         mock_keyword_search.return_value = []

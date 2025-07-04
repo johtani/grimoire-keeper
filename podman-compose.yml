@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.prod
+    ports:
+      - "8000:8000"
+    volumes:
+      - sqlite_data:/data
+      - json_data:/app/data/json
+    environment:
+      - PYTHONPATH=/app
+      - WEAVIATE_HOST=weaviate
+      - WEAVIATE_PORT=8080
+      - DATABASE_PATH=/data/grimoire.db
+      - JSON_STORAGE_PATH=/app/data/json
+    env_file:
+      - .env
+    depends_on:
+      - weaviate
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.31.1
+    ports:
+      - "8080:8080"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-openai'
+      ENABLE_MODULES: 'text2vec-openai'
+      CLUSTER_HOSTNAME: 'node1'
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+volumes:
+  weaviate_data:
+  sqlite_data:
+  json_data:

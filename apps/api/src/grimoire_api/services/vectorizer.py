@@ -58,7 +58,7 @@ class VectorizerService:
         """
         try:
             # データ読み込み
-            page_data = self.page_repo.get_page_sync(page_id)
+            page_data = self.page_repo.get_page(page_id)
             if not page_data:
                 raise VectorizerError(f"Page not found: {page_id}")
 
@@ -74,7 +74,7 @@ class VectorizerService:
             weaviate_id = await self._save_chunks_to_weaviate(page_data, chunks)
 
             # ページにWeaviate ID保存
-            await self.page_repo.update_weaviate_id(page_id, weaviate_id)
+            self.page_repo.update_weaviate_id(page_id, weaviate_id)
 
         except Exception as e:
             raise VectorizerError(f"Vectorization error: {str(e)}")

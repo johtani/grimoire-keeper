@@ -1,0 +1,33 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# システム依存関係
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# uvインストール
+RUN pip install uv
+
+# プロジェクトファイルコピー
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY ../../shared/ ./shared/
+
+# 依存関係インストール
+RUN uv sync --frozen
+
+# データディレクトリ作成
+RUN mkdir -p /data /app/data/json
+
+# ポート公開
+EXPOSE 8000
+
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# アプリ起動
+CMD ["uv", "run", "uvicorn", "src.grimoire_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

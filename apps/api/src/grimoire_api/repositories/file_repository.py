@@ -20,8 +20,8 @@ class FileRepository:
         self.storage_path = Path(storage_path or settings.JSON_STORAGE_PATH)
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
-    async def save_json_file(self, page_id: int, data: dict[str, Any]) -> None:
-        """JSONファイル保存.
+    def save_json_file_sync(self, page_id: int, data: dict[str, Any]) -> None:
+        """JSONファイル保存（同期版）.
 
         Args:
             page_id: ページID
@@ -33,6 +33,15 @@ class FileRepository:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             raise FileOperationError(f"Failed to save JSON file: {str(e)}")
+
+    async def save_json_file(self, page_id: int, data: dict[str, Any]) -> None:
+        """JSONファイル保存.
+
+        Args:
+            page_id: ページID
+            data: 保存するデータ
+        """
+        self.save_json_file_sync(page_id, data)
 
     async def load_json_file(self, page_id: int) -> dict[str, Any]:
         """JSONファイル読み込み.

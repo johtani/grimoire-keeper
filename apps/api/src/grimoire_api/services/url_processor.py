@@ -51,7 +51,7 @@ class UrlProcessorService:
         """
         try:
             # 0. URL重複チェック（同期処理）
-            existing_page = self.page_repo.get_page_by_url_sync(url)
+            existing_page = self.page_repo.get_page_by_url(url)
             if existing_page:
                 return {
                     "status": "already_exists",
@@ -60,7 +60,7 @@ class UrlProcessorService:
                 }
 
             # 1. 仮のページ作成（同期処理）
-            page_id = self.page_repo.create_page_sync(
+            page_id = self.page_repo.create_page(
                 url=url, title="Processing...", memo=memo or ""
             )
 
@@ -144,10 +144,10 @@ class UrlProcessorService:
         """
         try:
             # ページタイトル更新
-            await self.page_repo.update_page_title(page_id, result["data"]["title"])
+            self.page_repo.update_page_title(page_id, result["data"]["title"])
 
             # JSONファイル保存
-            await self.page_repo.save_json_file(page_id, result)
+            self.page_repo.save_json_file(page_id, result)
 
             # ステータス更新
             await self.log_repo.update_status(log_id, "download_complete")
@@ -165,7 +165,7 @@ class UrlProcessorService:
             result: LLMの結果
         """
         try:
-            await self.page_repo.update_summary_keywords(
+            self.page_repo.update_summary_keywords(
                 page_id=page_id, summary=result["summary"], keywords=result["keywords"]
             )
             await self.log_repo.update_status(log_id, "llm_complete")
@@ -185,7 +185,7 @@ class UrlProcessorService:
         """
         try:
             # ページ情報取得（同期処理）
-            page = self.page_repo.get_page_sync(page_id)
+            page = self.page_repo.get_page(page_id)
             if not page:
                 return {"status": "not_found", "message": "Page not found"}
 

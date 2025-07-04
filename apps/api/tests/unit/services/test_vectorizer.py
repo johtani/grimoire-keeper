@@ -27,8 +27,8 @@ class TestVectorizerService:
 
         # PageRepositoryのモック
         mock_page_repo = MagicMock()
-        mock_page_repo.get_page_sync = MagicMock()
-        mock_page_repo.update_weaviate_id = AsyncMock()
+        mock_page_repo.get_page = MagicMock()
+        mock_page_repo.update_weaviate_id = MagicMock()
 
         # FileRepositoryのモック
         mock_file_repo = MagicMock()
@@ -83,7 +83,7 @@ class TestVectorizerService:
         mock_chunks = ["chunk1", "chunk2", "chunk3"]
 
         # モック設定
-        mock_dependencies["page_repo"].get_page_sync.return_value = mock_page
+        mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
         mock_dependencies["text_chunker"].chunk_text.return_value = mock_chunks
         mock_dependencies[
@@ -101,7 +101,7 @@ class TestVectorizerService:
             await vectorizer_service.vectorize_content(page_id)
 
         # 各メソッドが呼ばれたことを確認
-        mock_dependencies["page_repo"].get_page_sync.assert_called_once_with(page_id)
+        mock_dependencies["page_repo"].get_page.assert_called_once_with(page_id)
         mock_dependencies["file_repo"].load_json_file.assert_called_once_with(page_id)
         mock_dependencies["text_chunker"].chunk_text.assert_called_once_with(
             "This is test content for vectorization."
@@ -123,7 +123,7 @@ class TestVectorizerService:
         page_id = 999
 
         # モック設定
-        mock_dependencies["page_repo"].get_page_sync.return_value = None
+        mock_dependencies["page_repo"].get_page.return_value = None
 
         # エラー確認
         with patch.object(vectorizer_service, "_get_client"):
@@ -151,7 +151,7 @@ class TestVectorizerService:
         )
 
         # モック設定
-        mock_dependencies["page_repo"].get_page_sync.return_value = mock_page
+        mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = {
             "data": {"content": ""}
         }

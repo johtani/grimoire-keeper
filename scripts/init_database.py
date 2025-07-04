@@ -26,6 +26,7 @@ async def initialize_database() -> bool:
         # Weaviateスキーマ初期化
         print("🔧 Initializing Weaviate schema...")
         from unittest.mock import MagicMock
+
         vectorizer = VectorizerService(
             MagicMock(),  # type: ignore
             MagicMock(),  # type: ignore
@@ -94,7 +95,7 @@ async def check_database_status() -> bool:
             # レコード数確認
             pages_result = db.fetch_one("SELECT COUNT(*) as count FROM pages")
             logs_result = db.fetch_one("SELECT COUNT(*) as count FROM process_logs")
-            
+
             pages_count = pages_result["count"] if pages_result else 0
             logs_count = logs_result["count"] if logs_result else 0
 
