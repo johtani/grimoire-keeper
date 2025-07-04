@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 from grimoire_api.config import settings  # noqa: E402
 
 
-async def check_weaviate():
+async def check_weaviate() -> bool:
     """Weaviate接続チェック."""
     try:
         async with httpx.AsyncClient() as client:
@@ -31,7 +31,7 @@ async def check_weaviate():
         return False
 
 
-async def check_api():
+async def check_api() -> bool:
     """API接続チェック."""
     try:
         async with httpx.AsyncClient() as client:
@@ -49,7 +49,7 @@ async def check_api():
         return False
 
 
-def check_env_vars():
+def check_env_vars() -> bool:
     """環境変数チェック."""
     required_vars = ["OPENAI_API_KEY", "GOOGLE_API_KEY", "JINA_API_KEY"]
     missing_vars = []
@@ -67,7 +67,7 @@ def check_env_vars():
         return True
 
 
-def check_database():
+def check_database() -> bool:
     """データベースファイルチェック."""
     db_path = Path(settings.DATABASE_PATH)
     if db_path.exists():
@@ -78,7 +78,7 @@ def check_database():
         return False
 
 
-async def main():
+async def main() -> None:
     """メイン処理."""
     print("🔍 サービス状態をチェックしています...\n")
 

@@ -98,26 +98,7 @@ class LogRepository:
         Returns:
             ログデータのリスト
         """
-        try:
-            query = """
-            SELECT * FROM process_logs
-            WHERE status = ?
-            ORDER BY created_at DESC
-            """
-            results = self.db.fetch_all(query, (status,))
-            return [
-                ProcessLog(
-                    id=row["id"],
-                    page_id=row["page_id"],
-                    url=row["url"],
-                    status=row["status"],
-                    error_message=row["error_message"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                )
-                for row in results
-            ]
-        except Exception as e:
-            raise DatabaseError(f"Failed to get logs by status: {str(e)}")
+        return self.get_logs_by_status_sync(status)
 
     async def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
         """全ログ取得.

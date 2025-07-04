@@ -4,6 +4,7 @@ import os
 import tempfile
 import warnings
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18,13 +19,13 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 @pytest_asyncio.fixture
-async def integration_db():
+async def integration_db() -> Any:
     """統合テスト用データベースフィクスチャ."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
         db_path = temp_file.name
 
     # データベース初期化
-    success = await ensure_database_initialized(db_path)
+    success = ensure_database_initialized(db_path)
     assert success, "Failed to initialize test database"
 
     yield db_path
@@ -34,7 +35,7 @@ async def integration_db():
 
 
 @pytest.fixture
-def integration_client():
+def integration_client() -> Any:
     """統合テスト用クライアントフィクスチャ."""
     # テスト用環境変数を設定
     test_env = {

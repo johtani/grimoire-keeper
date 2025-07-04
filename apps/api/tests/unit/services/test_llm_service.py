@@ -1,6 +1,7 @@
 """Test LLM service."""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +13,7 @@ class TestLLMService:
     """LLMServiceのテストクラス."""
 
     @pytest.fixture
-    def mock_file_repo(self):
+    def mock_file_repo(self: Any) -> Any:
         """ファイルリポジトリモック."""
         mock_repo = AsyncMock()
         mock_repo.load_json_file.return_value = {
@@ -24,17 +25,17 @@ class TestLLMService:
         return mock_repo
 
     @pytest.fixture
-    def llm_service(self, mock_file_repo):
+    def llm_service(self, mock_file_repo: Any) -> Any:
         """LLMサービスフィクスチャ."""
         return LLMService(file_repo=mock_file_repo, api_key="test_api_key")
 
-    def test_init_with_api_key(self, mock_file_repo):
+    def test_init_with_api_key(self: Any, mock_file_repo: Any) -> None:
         """APIキー指定での初期化テスト."""
         api_key = "test_api_key"
         service = LLMService(file_repo=mock_file_repo, api_key=api_key)
         assert service.api_key == api_key
 
-    def test_init_without_api_key(self, mock_file_repo):
+    def test_init_without_api_key(self: Any, mock_file_repo: Any) -> None:
         """APIキー未指定での初期化テスト."""
         with patch("grimoire_api.services.llm_service.settings") as mock_settings:
             mock_settings.GOOGLE_API_KEY = "settings_api_key"
@@ -42,7 +43,9 @@ class TestLLMService:
             assert service.api_key == "settings_api_key"
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_success(self, llm_service, mock_file_repo):
+    async def test_generate_summary_keywords_success(
+        self, llm_service: Any, mock_file_repo: Any
+    ) -> None:
         """正常な要約・キーワード生成テスト."""
         page_id = 1
         expected_result = {
@@ -63,7 +66,9 @@ class TestLLMService:
             mock_file_repo.load_json_file.assert_called_once_with(page_id)
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_no_api_key(self, mock_file_repo):
+    async def test_generate_summary_keywords_no_api_key(
+        self: Any, mock_file_repo: Any
+    ) -> None:
         """APIキー未設定でのテスト."""
         with patch("grimoire_api.services.llm_service.settings") as mock_settings:
             mock_settings.GOOGLE_API_KEY = None
@@ -75,7 +80,9 @@ class TestLLMService:
                 await service.generate_summary_keywords(1)
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_invalid_api_key(self, mock_file_repo):
+    async def test_generate_summary_keywords_invalid_api_key(
+        self: Any, mock_file_repo: Any
+    ) -> None:
         """無効なAPIキーでのテスト."""
         service = LLMService(file_repo=mock_file_repo, api_key="invalid_key")
 
@@ -83,7 +90,9 @@ class TestLLMService:
             await service.generate_summary_keywords(1)
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_invalid_json(self, llm_service):
+    async def test_generate_summary_keywords_invalid_json(
+        self: Any, llm_service: Any
+    ) -> None:
         """不正なJSON応答のテスト."""
         page_id = 1
 
@@ -99,7 +108,9 @@ class TestLLMService:
                 await llm_service.generate_summary_keywords(page_id)
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_invalid_format(self, llm_service):
+    async def test_generate_summary_keywords_invalid_format(
+        self: Any, llm_service: Any
+    ) -> None:
         """不正なフォーマットの応答テスト."""
         page_id = 1
         invalid_result = {"summary": "test"}  # keywordsが不足
@@ -114,7 +125,9 @@ class TestLLMService:
                 await llm_service.generate_summary_keywords(page_id)
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_keywords_not_list(self, llm_service):
+    async def test_generate_summary_keywords_keywords_not_list(
+        self: Any, llm_service: Any
+    ) -> None:
         """キーワードがリストでない場合のテスト."""
         page_id = 1
         invalid_result = {"summary": "test summary", "keywords": "not a list"}
@@ -129,7 +142,9 @@ class TestLLMService:
                 await llm_service.generate_summary_keywords(page_id)
 
     @pytest.mark.asyncio
-    async def test_generate_summary_keywords_completion_error(self, llm_service):
+    async def test_generate_summary_keywords_completion_error(
+        self: Any, llm_service: Any
+    ) -> None:
         """LiteLLM呼び出しエラーのテスト."""
         page_id = 1
 
@@ -139,7 +154,7 @@ class TestLLMService:
             with pytest.raises(LLMServiceError, match="LLM processing error"):
                 await llm_service.generate_summary_keywords(page_id)
 
-    def test_build_prompt(self, llm_service):
+    def test_build_prompt(self: Any, llm_service: Any) -> None:
         """プロンプト構築テスト."""
         title = "Test Title"
         content = "Test content"
@@ -153,7 +168,7 @@ class TestLLMService:
         assert "keywords" in prompt
 
     @pytest.mark.asyncio
-    async def test_completion_parameters(self, llm_service):
+    async def test_completion_parameters(self: Any, llm_service: Any) -> None:
         """LiteLLM呼び出しパラメータのテスト."""
         page_id = 1
         expected_result = {"summary": "test", "keywords": ["test"]}

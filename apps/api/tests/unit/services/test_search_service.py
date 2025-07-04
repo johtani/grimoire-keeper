@@ -1,5 +1,6 @@
 """Tests for SearchService."""
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,13 +16,13 @@ class TestSearchService:
         """SearchServiceフィクスチャ."""
         return SearchService(weaviate_host="test-host", weaviate_port=8080)
 
-    def test_init_default_values(self) -> None:
+    def test_init_default_values(self: Any) -> None:
         """デフォルト値での初期化テスト."""
         service = SearchService()
         assert service.weaviate_host == "weaviate"  # settings.WEAVIATE_HOST
         assert service.weaviate_port == 8080
 
-    def test_init_custom_values(self) -> None:
+    def test_init_custom_values(self: Any) -> None:
         """カスタム値での初期化テスト."""
         service = SearchService(weaviate_host="custom-host", weaviate_port=9090)
         assert service.weaviate_host == "custom-host"
@@ -235,7 +236,7 @@ class TestSearchService:
 
     def test_build_weaviate_filter_empty(self, search_service: SearchService) -> None:
         """空フィルター構築テスト."""
-        filters = {}
+        filters: dict[str, Any] = {}
         result = search_service._build_weaviate_filter(filters)
         assert result is None
 

@@ -1,7 +1,8 @@
 """Test vectorizer service."""
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from grimoire_api.models.database import Page
@@ -13,7 +14,7 @@ class TestVectorizerService:
     """VectorizerServiceのテストクラス."""
 
     @pytest.fixture
-    def mock_dependencies(self):
+    def mock_dependencies(self: Any) -> Any:
         """依存関係のモック."""
         mock_collection = MagicMock()
         mock_collections = MagicMock()
@@ -24,9 +25,18 @@ class TestVectorizerService:
         mock_client.collections = mock_collections
         mock_client.is_ready.return_value = True
 
+        # PageRepositoryのモック
+        mock_page_repo = MagicMock()
+        mock_page_repo.get_page_sync = MagicMock()
+        mock_page_repo.update_weaviate_id = AsyncMock()
+
+        # FileRepositoryのモック
+        mock_file_repo = MagicMock()
+        mock_file_repo.load_json_file = AsyncMock()
+
         return {
-            "page_repo": AsyncMock(),
-            "file_repo": AsyncMock(),
+            "page_repo": mock_page_repo,
+            "file_repo": mock_file_repo,
             "text_chunker": MagicMock(),
             "weaviate_client": mock_client,
             "mock_collection": mock_collection,
@@ -42,12 +52,6 @@ class TestVectorizerService:
             weaviate_host="test-weaviate",
             weaviate_port=8080,
         )
-        # Weaviateクライアントをモックに置き換え
-        service._client = mock_dependencies["weaviate_client"]
-        # コレクションモックを設定
-        mock_dependencies[
-            "weaviate_client"
-        ].collections.get.return_value = mock_dependencies["mock_collection"]
         return service
 
     @pytest.mark.asyncio
@@ -79,18 +83,25 @@ class TestVectorizerService:
         mock_chunks = ["chunk1", "chunk2", "chunk3"]
 
         # モック設定
-        mock_dependencies["page_repo"].get_page.return_value = mock_page
+        mock_dependencies["page_repo"].get_page_sync.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
         mock_dependencies["text_chunker"].chunk_text.return_value = mock_chunks
         mock_dependencies[
             "mock_collection"
         ].data.insert.return_value = "weaviate-id-123"
 
-        # 処理実行
-        await vectorizer_service.vectorize_content(page_id)
+        # _get_clientをモック化
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(
+                return_value=mock_dependencies["weaviate_client"]
+            )
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            # 処理実行
+            await vectorizer_service.vectorize_content(page_id)
 
         # 各メソッドが呼ばれたことを確認
-        mock_dependencies["page_repo"].get_page.assert_called_once_with(page_id)
+        mock_dependencies["page_repo"].get_page_sync.assert_called_once_with(page_id)
         mock_dependencies["file_repo"].load_json_file.assert_called_once_with(page_id)
         mock_dependencies["text_chunker"].chunk_text.assert_called_once_with(
             "This is test content for vectorization."
@@ -112,11 +123,12 @@ class TestVectorizerService:
         page_id = 999
 
         # モック設定
-        mock_dependencies["page_repo"].get_page.return_value = None
+        mock_dependencies["page_repo"].get_page_sync.return_value = None
 
         # エラー確認
-        with pytest.raises(VectorizerError, match="Page not found"):
-            await vectorizer_service.vectorize_content(page_id)
+        with patch.object(vectorizer_service, "_get_client"):
+            with pytest.raises(VectorizerError, match="Page not found"):
+                await vectorizer_service.vectorize_content(page_id)
 
     @pytest.mark.asyncio
     async def test_vectorize_content_no_chunks(
@@ -139,18 +151,21 @@ class TestVectorizerService:
         )
 
         # モック設定
-        mock_dependencies["page_repo"].get_page.return_value = mock_page
+        mock_dependencies["page_repo"].get_page_sync.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = {
             "data": {"content": ""}
         }
         mock_dependencies["text_chunker"].chunk_text.return_value = []
 
         # エラー確認
-        with pytest.raises(VectorizerError, match="No chunks generated"):
-            await vectorizer_service.vectorize_content(page_id)
+        with patch.object(vectorizer_service, "_get_client"):
+            with pytest.raises(VectorizerError, match="No chunks generated"):
+                await vectorizer_service.vectorize_content(page_id)
 
     @pytest.mark.asyncio
-    async def test_save_chunks_to_weaviate(self, vectorizer_service, mock_dependencies):
+    async def test_save_chunks_to_weaviate(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
         """Weaviateへのチャンク保存テスト."""
         # モックページデータ
         mock_page = Page(
@@ -170,8 +185,17 @@ class TestVectorizerService:
         # モック設定
         mock_dependencies["mock_collection"].data.insert.return_value = "weaviate-id"
 
-        # 処理実行
-        result = await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
+        # _get_clientをモック化
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(
+                return_value=mock_dependencies["weaviate_client"]
+            )
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            # 処理実行
+            result = await vectorizer_service._save_chunks_to_weaviate(
+                mock_page, chunks
+            )
 
         # 結果確認
         assert result == "weaviate-id"
@@ -198,27 +222,36 @@ class TestVectorizerService:
         assert second_data["content"] == "chunk2"
 
     @pytest.mark.asyncio
-    async def test_health_check_success(self, vectorizer_service, mock_dependencies):
+    async def test_health_check_success(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
         """ヘルスチェック成功テスト."""
         # モック設定
-        mock_dependencies["weaviate_client"].is_ready.return_value = True
+        mock_client = MagicMock()
+        mock_client.is_ready.return_value = True
 
-        # 処理実行
-        result = await vectorizer_service.health_check()
+        # _get_clientをモック化
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(return_value=mock_client)
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            # 処理実行
+            result = await vectorizer_service.health_check()
 
         # 結果確認
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_health_check_failure(self, vectorizer_service, mock_dependencies):
+    async def test_health_check_failure(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
         """ヘルスチェック失敗テスト."""
-        # モック設定
-        mock_dependencies["weaviate_client"].is_ready.side_effect = Exception(
-            "Connection error"
-        )
+        # _get_clientで例外を発生させる
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.side_effect = Exception("Connection error")
 
-        # 処理実行
-        result = await vectorizer_service.health_check()
+            # 処理実行
+            result = await vectorizer_service.health_check()
 
         # 結果確認
         assert result is False
@@ -231,8 +264,15 @@ class TestVectorizerService:
         # モック設定（既存コレクションなし）
         mock_dependencies["weaviate_client"].collections.exists.return_value = False
 
-        # 処理実行
-        await vectorizer_service.ensure_schema()
+        # _get_clientをモック化
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(
+                return_value=mock_dependencies["weaviate_client"]
+            )
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            # 処理実行
+            await vectorizer_service.ensure_schema()
 
         # コレクション作成が呼ばれたことを確認
         mock_dependencies["weaviate_client"].collections.create.assert_called_once()
@@ -249,8 +289,15 @@ class TestVectorizerService:
         # モック設定（既存コレクションあり）
         mock_dependencies["weaviate_client"].collections.exists.return_value = True
 
-        # 処理実行
-        await vectorizer_service.ensure_schema()
+        # _get_clientをモック化
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(
+                return_value=mock_dependencies["weaviate_client"]
+            )
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            # 処理実行
+            await vectorizer_service.ensure_schema()
 
         # コレクション作成が呼ばれないことを確認
         mock_dependencies["weaviate_client"].collections.create.assert_not_called()
