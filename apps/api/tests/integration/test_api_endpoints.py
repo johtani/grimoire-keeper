@@ -1,5 +1,7 @@
 """Integration tests for API endpoints."""
 
+from datetime import datetime
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -12,17 +14,17 @@ class TestAPIEndpoints:
     """APIエンドポイントの統合テスト."""
 
     @pytest.fixture
-    def client(self, integration_client):
+    def client(self, integration_client: Any) -> Any:
         """テストクライアント."""
         return integration_client
 
-    def test_root_endpoint(self, client):
+    def test_root_endpoint(self: Any, client: Any) -> None:
         """ルートエンドポイントテスト."""
         response = client.get("/")
         assert response.status_code == 200
         assert "Grimoire Keeper API is running" in response.json()["message"]
 
-    def test_health_check(self, client):
+    def test_health_check(self: Any, client: Any) -> None:
         """ヘルスチェックテスト."""
         response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -33,7 +35,9 @@ class TestAPIEndpoints:
     @patch("grimoire_api.services.jina_client.JinaClient.fetch_content")
     @patch("grimoire_api.services.llm_service.LLMService.generate_summary_keywords")
     @patch("grimoire_api.services.vectorizer.VectorizerService.vectorize_content")
-    def test_process_url_endpoint(self, mock_vectorize, mock_llm, mock_jina, client):
+    def test_process_url_endpoint(
+        self, mock_vectorize: Any, mock_llm: Any, mock_jina: Any, client: Any
+    ) -> None:
         """URL処理エンドポイントテスト."""
         import uuid
 
@@ -58,11 +62,11 @@ class TestAPIEndpoints:
         # レスポンス確認
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "accepted"
-        assert "background" in data["message"]
+        assert data["status"] == "processing"
+        assert "page_id" in data
 
     @patch("grimoire_api.services.search_service.SearchService.vector_search")
-    def test_search_endpoint(self, mock_vector_search, client):
+    def test_search_endpoint(self, mock_vector_search: Any, client: Any) -> None:
         """検索エンドポイントテスト."""
         from grimoire_api.models.response import SearchResult
 
@@ -77,7 +81,7 @@ class TestAPIEndpoints:
                 content="Test content",
                 summary="Test summary",
                 keywords=["test", "keyword"],
-                created_at="2024-01-01T00:00:00",
+                created_at=datetime(2024, 1, 1),
                 score=0.9,
             )
         ]
@@ -95,7 +99,7 @@ class TestAPIEndpoints:
         assert len(data["results"]) == 1
 
     @patch("grimoire_api.services.search_service.SearchService.keyword_search")
-    def test_keyword_search_endpoint(self, mock_keyword_search, client):
+    def test_keyword_search_endpoint(self, mock_keyword_search: Any, client: Any) -> None:
         """キーワード検索エンドポイントテスト."""
         # モック設定
         mock_keyword_search.return_value = []
@@ -110,7 +114,7 @@ class TestAPIEndpoints:
         assert data["total"] == 0
         assert data["results"] == []
 
-    def test_invalid_url_format(self, client):
+    def test_invalid_url_format(self: Any, client: Any) -> None:
         """不正なURL形式のテスト."""
         response = client.post(
             "/api/v1/process-url", json={"url": "invalid-url", "memo": "Test memo"}
@@ -119,7 +123,7 @@ class TestAPIEndpoints:
         # バリデーションエラーを確認
         assert response.status_code == 422
 
-    def test_missing_required_fields(self, client):
+    def test_missing_required_fields(self: Any, client: Any) -> None:
         """必須フィールド不足のテスト."""
         response = client.post(
             "/api/v1/process-url",
@@ -132,7 +136,7 @@ class TestAPIEndpoints:
         # バリデーションエラーを確認
         assert response.status_code == 422
 
-    def test_search_without_query(self, client):
+    def test_search_without_query(self: Any, client: Any) -> None:
         """クエリなし検索のテスト."""
         response = client.post(
             "/api/v1/search",

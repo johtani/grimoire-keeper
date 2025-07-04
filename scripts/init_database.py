@@ -13,7 +13,7 @@ from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
 
 
-async def initialize_database():
+async def initialize_database() -> bool:
     """データベースとWeaviateスキーマを初期化."""
     print("🔧 Initializing database...")
 
@@ -25,9 +25,12 @@ async def initialize_database():
 
         # Weaviateスキーマ初期化
         print("🔧 Initializing Weaviate schema...")
+        from unittest.mock import MagicMock
         vectorizer = VectorizerService(
-            None, None, None
-        )  # スキーマ作成のみなのでNoneでOK
+            MagicMock(),  # type: ignore
+            MagicMock(),  # type: ignore
+            MagicMock(),  # type: ignore
+        )  # スキーマ作成のみなのでダミーオブジェクト
 
         # Weaviate接続確認
         if await vectorizer.health_check():
@@ -46,7 +49,7 @@ async def initialize_database():
     return True
 
 
-async def initialize_sqlite_only():
+async def initialize_sqlite_only() -> bool:
     """データベースのみ初期化（Weaviate不要）."""
     print("🔧 Initializing SQLite database...")
 
@@ -68,7 +71,7 @@ async def initialize_sqlite_only():
     return True
 
 
-async def check_database_status():
+async def check_database_status() -> bool:
     """データベース状態確認."""
     print("🔍 Checking database status...")
 
@@ -89,11 +92,14 @@ async def check_database_status():
             print("✅ All required tables exist")
 
             # レコード数確認
-            pages_count = db.fetch_one("SELECT COUNT(*) as count FROM pages")
-            logs_count = db.fetch_one("SELECT COUNT(*) as count FROM process_logs")
+            pages_result = db.fetch_one("SELECT COUNT(*) as count FROM pages")
+            logs_result = db.fetch_one("SELECT COUNT(*) as count FROM process_logs")
+            
+            pages_count = pages_result["count"] if pages_result else 0
+            logs_count = logs_result["count"] if logs_result else 0
 
-            print(f"📈 Pages: {pages_count['count']} records")
-            print(f"📈 Process logs: {logs_count['count']} records")
+            print(f"📈 Pages: {pages_count} records")
+            print(f"📈 Process logs: {logs_count} records")
         else:
             print("❌ Required tables are missing")
             return False
@@ -105,7 +111,7 @@ async def check_database_status():
     return True
 
 
-async def reset_database():
+async def reset_database() -> bool:
     """データベースリセット（開発用）."""
     print("🗑️  Resetting database...")
 
@@ -129,7 +135,7 @@ async def reset_database():
     return True
 
 
-def print_usage():
+def print_usage() -> None:
     """使用方法を表示."""
     print("""
 🔧 Database Initialization Script
@@ -153,7 +159,7 @@ Examples:
 """)
 
 
-async def main():
+async def main() -> None:
     """メイン処理."""
     command = sys.argv[1] if len(sys.argv) > 1 else "init"
 

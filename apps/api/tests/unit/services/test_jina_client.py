@@ -1,5 +1,6 @@
 """Test Jina AI Reader client."""
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -11,14 +12,14 @@ from grimoire_api.utils.exceptions import JinaClientError
 class TestJinaClient:
     """JinaClientのテストクラス."""
 
-    def test_init_with_api_key(self):
+    def test_init_with_api_key(self: Any) -> None:
         """APIキー指定での初期化テスト."""
         api_key = "test_api_key"
         client = JinaClient(api_key=api_key)
         assert client.api_key == api_key
         assert client.base_url == "https://r.jina.ai"
 
-    def test_init_without_api_key(self):
+    def test_init_without_api_key(self: Any) -> None:
         """APIキー未指定での初期化テスト."""
         with patch("grimoire_api.services.jina_client.settings") as mock_settings:
             mock_settings.JINA_API_KEY = "settings_api_key"
@@ -26,7 +27,7 @@ class TestJinaClient:
             assert client.api_key == "settings_api_key"
 
     @pytest.mark.asyncio
-    async def test_fetch_content_success(self):
+    async def test_fetch_content_success(self: Any) -> None:
         """正常なコンテンツ取得テスト."""
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
@@ -48,7 +49,7 @@ class TestJinaClient:
             assert result == expected_response
 
     @pytest.mark.asyncio
-    async def test_fetch_content_no_api_key(self):
+    async def test_fetch_content_no_api_key(self: Any) -> None:
         """APIキー未設定でのコンテンツ取得テスト."""
         with patch("grimoire_api.services.jina_client.settings") as mock_settings:
             mock_settings.JINA_API_KEY = None
@@ -59,7 +60,7 @@ class TestJinaClient:
                 await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
-    async def test_fetch_content_http_error(self):
+    async def test_fetch_content_http_error(self: Any) -> None:
         """HTTP エラーのテスト."""
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
@@ -80,7 +81,7 @@ class TestJinaClient:
                 await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
-    async def test_fetch_content_request_error(self):
+    async def test_fetch_content_request_error(self: Any) -> None:
         """リクエストエラーのテスト."""
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
@@ -95,7 +96,7 @@ class TestJinaClient:
                 await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
-    async def test_health_check_success(self):
+    async def test_health_check_success(self: Any) -> None:
         """ヘルスチェック成功テスト."""
         client = JinaClient(api_key="test_key")
 
@@ -104,7 +105,7 @@ class TestJinaClient:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_health_check_failure(self):
+    async def test_health_check_failure(self: Any) -> None:
         """ヘルスチェック失敗テスト."""
         client = JinaClient(api_key="test_key")
 
@@ -115,7 +116,7 @@ class TestJinaClient:
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_fetch_content_headers(self):
+    async def test_fetch_content_headers(self: Any) -> None:
         """リクエストヘッダーのテスト."""
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"

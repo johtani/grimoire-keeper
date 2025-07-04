@@ -37,7 +37,7 @@ class TestSearchServiceKeywords:
         self, search_service: SearchService
     ) -> None:
         """空配列キーワードフィルター構築テスト."""
-        filters = {"keywords": []}
+        filters: dict[str, list[str]] = {"keywords": []}
 
         result = search_service._build_weaviate_filter(filters)
 
@@ -47,7 +47,7 @@ class TestSearchServiceKeywords:
         self, search_service: SearchService
     ) -> None:
         """空文字列キーワードフィルター構築テスト."""
-        filters = {"keywords": ""}
+        filters: dict[str, str] = {"keywords": ""}
 
         result = search_service._build_weaviate_filter(filters)
 

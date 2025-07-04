@@ -1,5 +1,6 @@
 """Test URL processor service."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -10,7 +11,7 @@ class TestUrlProcessorService:
     """UrlProcessorServiceのテストクラス."""
 
     @pytest.fixture
-    def mock_services(self):
+    def mock_services(self: Any) -> Any:
         """モックサービス群."""
         page_repo = AsyncMock()
         page_repo.get_page_by_url_sync = MagicMock()
@@ -28,7 +29,7 @@ class TestUrlProcessorService:
         }
 
     @pytest.fixture
-    def url_processor(self, mock_services):
+    def url_processor(self, mock_services: Any) -> Any:
         """URL処理サービスフィクスチャ."""
         return UrlProcessorService(
             jina_client=mock_services["jina_client"],
@@ -38,7 +39,9 @@ class TestUrlProcessorService:
             log_repo=mock_services["log_repo"],
         )
 
-    def test_prepare_url_processing_success(self, url_processor, mock_services):
+    def test_prepare_url_processing_success(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """正常なURL処理準備テスト."""
         url = "https://example.com"
         memo = "Test memo"
@@ -67,7 +70,9 @@ class TestUrlProcessorService:
         )
 
     @pytest.mark.asyncio
-    async def test_process_url_background_success(self, url_processor, mock_services):
+    async def test_process_url_background_success(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """バックグラウンド処理テスト."""
         url = "https://example.com"
         log_id = 1
@@ -93,7 +98,7 @@ class TestUrlProcessorService:
         mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
 
     @pytest.mark.asyncio
-    async def test_process_url_success(self, url_processor, mock_services):
+    async def test_process_url_success(self, url_processor, mock_services: Any) -> None:
         """統合URL処理テスト."""
         url = "https://example.com"
         memo = "Test memo"
@@ -153,7 +158,9 @@ class TestUrlProcessorService:
         )
 
     @pytest.mark.asyncio
-    async def test_process_url_background_llm_error(self, url_processor, mock_services):
+    async def test_process_url_background_llm_error(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """LLMエラーのテスト."""
         url = "https://example.com"
         log_id = 1
@@ -176,7 +183,9 @@ class TestUrlProcessorService:
         )
 
     @pytest.mark.asyncio
-    async def test_save_download_result(self, url_processor, mock_services):
+    async def test_save_download_result(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """ダウンロード結果保存テスト."""
         log_id = 1
         page_id = 2
@@ -197,7 +206,7 @@ class TestUrlProcessorService:
         )
 
     @pytest.mark.asyncio
-    async def test_save_llm_result(self, url_processor, mock_services):
+    async def test_save_llm_result(self, url_processor, mock_services: Any) -> None:
         """LLM結果保存テスト."""
         log_id = 1
         page_id = 2
@@ -214,7 +223,9 @@ class TestUrlProcessorService:
             log_id, "llm_complete"
         )
 
-    def test_get_processing_status_completed(self, url_processor, mock_services):
+    def test_get_processing_status_completed(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """完了済み処理状況取得テスト."""
         page_id = 1
 
@@ -248,7 +259,9 @@ class TestUrlProcessorService:
         assert status["page"]["id"] == page_id
         assert status["page"]["title"] == "Test Title"
 
-    def test_get_processing_status_not_found(self, url_processor, mock_services):
+    def test_get_processing_status_not_found(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """存在しないページの処理状況取得テスト."""
         page_id = 999
 
@@ -262,7 +275,9 @@ class TestUrlProcessorService:
         assert status["status"] == "not_found"
         assert "not found" in status["message"]
 
-    def test_process_url_already_exists(self, url_processor, mock_services):
+    def test_process_url_already_exists(
+        self, url_processor, mock_services: Any
+    ) -> None:
         """URL重複チェックテスト."""
         url = "https://example.com"
         memo = "Test memo"
