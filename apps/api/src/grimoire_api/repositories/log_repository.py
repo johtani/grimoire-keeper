@@ -18,8 +18,8 @@ class LogRepository:
         """
         self.db = db
 
-    def create_log_sync(self, url: str, status: str, page_id: int | None = None) -> int:
-        """ログ作成（同期版）.
+    def create_log(self, url: str, status: str, page_id: int | None = None) -> int:
+        """ログ作成.
 
         Args:
             url: URL
@@ -39,8 +39,8 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")
 
-    def get_logs_by_status_sync(self, status: str) -> list[ProcessLog]:
-        """ステータス別ログ取得（同期版）.
+    def get_logs_by_status(self, status: str) -> list[ProcessLog]:
+        """ステータス別ログ取得.
 
         Args:
             status: ステータス
@@ -69,7 +69,7 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get logs by status: {str(e)}")
 
-    async def update_status(
+    def update_status(
         self, log_id: int, status: str, error_message: str | None = None
     ) -> None:
         """ステータス更新.
@@ -89,18 +89,7 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update status: {str(e)}")
 
-    async def get_logs_by_status(self, status: str) -> list[ProcessLog]:
-        """ステータス別ログ取得.
-
-        Args:
-            status: ステータス
-
-        Returns:
-            ログデータのリスト
-        """
-        return self.get_logs_by_status_sync(status)
-
-    async def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
+    def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
         """全ログ取得.
 
         Args:

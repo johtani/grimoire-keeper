@@ -18,7 +18,7 @@ class TestUrlProcessorService:
         page_repo.create_page = MagicMock()
 
         log_repo = AsyncMock()
-        log_repo.create_log_sync = MagicMock()
+        log_repo.create_log = MagicMock()
 
         return {
             "jina_client": AsyncMock(),
@@ -51,7 +51,7 @@ class TestUrlProcessorService:
         # モック設定
         mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["page_repo"].create_page.return_value = page_id
-        mock_services["log_repo"].create_log_sync.return_value = log_id
+        mock_services["log_repo"].create_log.return_value = log_id
 
         # 処理実行
         result = url_processor.prepare_url_processing(url, memo)
@@ -63,7 +63,7 @@ class TestUrlProcessorService:
         assert "prepared" in result["message"]
 
         # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log_sync.assert_called_once_with(
+        mock_services["log_repo"].create_log.assert_called_once_with(
             url, "started", page_id
         )
 
@@ -106,7 +106,7 @@ class TestUrlProcessorService:
         # モック設定
         mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["page_repo"].create_page.return_value = page_id
-        mock_services["log_repo"].create_log_sync.return_value = log_id
+        mock_services["log_repo"].create_log.return_value = log_id
         mock_services["jina_client"].fetch_content.return_value = {
             "data": {"title": "Test Title", "content": "Test content"}
         }
@@ -124,7 +124,7 @@ class TestUrlProcessorService:
         assert "completed successfully" in result["message"]
 
         # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log_sync.assert_called_once_with(
+        mock_services["log_repo"].create_log.assert_called_once_with(
             url, "started", page_id
         )
         mock_services["jina_client"].fetch_content.assert_called_once_with(url)
@@ -243,7 +243,7 @@ class TestUrlProcessorService:
 
         # モック設定
         mock_services["page_repo"].get_page = MagicMock(return_value=mock_page)
-        mock_services["log_repo"].get_logs_by_status_sync = MagicMock(
+        mock_services["log_repo"].get_logs_by_status = MagicMock(
             return_value=[mock_log]
         )
 
