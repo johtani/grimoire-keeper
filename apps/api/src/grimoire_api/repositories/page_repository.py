@@ -22,8 +22,8 @@ class PageRepository:
         self.db = db
         self.file_repo = file_repo
 
-    def get_page_by_url_sync(self, url: str) -> Page | None:
-        """URLでページ取得（同期版）.
+    def get_page_by_url(self, url: str) -> Page | None:
+        """URLでページ取得.
 
         Args:
             url: URL
@@ -50,8 +50,8 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get page by URL: {str(e)}")
 
-    def create_page_sync(self, url: str, title: str, memo: str | None = None) -> int:
-        """Page作成（同期版）.
+    def create_page(self, url: str, title: str, memo: str | None = None) -> int:
+        """Page作成.
 
         Args:
             url: URL
@@ -72,8 +72,8 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to create page: {str(e)}")
 
-    def get_page_sync(self, page_id: int) -> Page | None:
-        """ページ取得（同期版）.
+    def get_page(self, page_id: int) -> Page | None:
+        """ページ取得.
 
         Args:
             page_id: ページID
@@ -100,7 +100,7 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get page: {str(e)}")
 
-    async def update_summary_keywords(
+    def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]
     ) -> None:
         """要約・キーワード更新.
@@ -128,7 +128,7 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update summary/keywords: {str(e)}")
 
-    async def update_page_title(self, page_id: int, title: str) -> None:
+    def update_page_title(self, page_id: int, title: str) -> None:
         """ページタイトル更新.
 
         Args:
@@ -141,7 +141,7 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update page title: {str(e)}")
 
-    async def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
+    def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
         """Weaviate ID更新.
 
         Args:
@@ -154,16 +154,16 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update weaviate_id: {str(e)}")
 
-    async def save_json_file(self, page_id: int, data: dict) -> None:
+    def save_json_file(self, page_id: int, data: dict) -> None:
         """JSONファイル保存.
 
         Args:
             page_id: ページID
             data: 保存するデータ
         """
-        await self.file_repo.save_json_file(page_id, data)
+        self.file_repo.save_json_file_sync(page_id, data)
 
-    async def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
+    def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
         """全ページ取得.
 
         Args:
