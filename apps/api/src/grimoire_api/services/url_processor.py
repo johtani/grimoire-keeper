@@ -65,7 +65,7 @@ class UrlProcessorService:
             )
 
             # 2. 処理開始ログ作成（同期処理、page_id付き）
-            log_id = self.log_repo.create_log_sync(url, "started", page_id)
+            log_id = self.log_repo.create_log(url, "started", page_id)
 
             return {
                 "status": "prepared",
@@ -96,13 +96,13 @@ class UrlProcessorService:
 
             # 5. ベクトル化処理
             await self.vectorizer.vectorize_content(page_id)
-            await self.log_repo.update_status(log_id, "vectorize_complete")
+            self.log_repo.update_status(log_id, "vectorize_complete")
 
             # 6. 完了ログ
-            await self.log_repo.update_status(log_id, "completed")
+            self.log_repo.update_status(log_id, "completed")
 
         except Exception as e:
-            await self.log_repo.update_status(log_id, "failed", str(e))
+            self.log_repo.update_status(log_id, "failed", str(e))
 
     async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
         """URL処理のメインフロー（後方互換性のため残存）.
@@ -150,10 +150,10 @@ class UrlProcessorService:
             self.page_repo.save_json_file(page_id, result)
 
             # ステータス更新
-            await self.log_repo.update_status(log_id, "download_complete")
+            self.log_repo.update_status(log_id, "download_complete")
 
         except Exception as e:
-            await self.log_repo.update_status(log_id, "download_error", str(e))
+            self.log_repo.update_status(log_id, "download_error", str(e))
             raise
 
     async def _save_llm_result(self, log_id: int, page_id: int, result: dict) -> None:
@@ -168,10 +168,10 @@ class UrlProcessorService:
             self.page_repo.update_summary_keywords(
                 page_id=page_id, summary=result["summary"], keywords=result["keywords"]
             )
-            await self.log_repo.update_status(log_id, "llm_complete")
+            self.log_repo.update_status(log_id, "llm_complete")
 
         except Exception as e:
-            await self.log_repo.update_status(log_id, "llm_error", str(e))
+            self.log_repo.update_status(log_id, "llm_error", str(e))
             raise
 
     def get_processing_status(self, page_id: int) -> dict[str, Any]:
@@ -190,8 +190,8 @@ class UrlProcessorService:
                 return {"status": "not_found", "message": "Page not found"}
 
             # 最新ログ取得（同期処理）
-            logs = self.log_repo.get_logs_by_status_sync("completed")
-            logs.extend(self.log_repo.get_logs_by_status_sync("failed"))
+            logs = self.log_repo.get_logs_by_status("completed")
+            logs.extend(self.log_repo.get_logs_by_status("failed"))
 
             # 該当ページのログを検索
             page_log = None
