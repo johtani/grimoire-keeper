@@ -19,6 +19,11 @@ if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ] || [ -z "$JINA_API_KEY" 
     exit 1
 fi
 
+# データディレクトリ作成
+echo "📁 データディレクトリ作成中..."
+sudo mkdir -p /opt/grimoire-keeper-data/{database,json,weaviate}
+sudo chown -R $USER:$USER /opt/grimoire-keeper-data
+
 # 既存コンテナ停止・削除
 echo "🛑 既存サービス停止中..."
 docker-compose -f docker-compose.prod.yml down

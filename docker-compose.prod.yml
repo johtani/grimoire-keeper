@@ -8,8 +8,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - sqlite_data:/data
-      - json_data:/app/data/json
+      - /opt/grimoire-keeper-data/database:/data
+      - /opt/grimoire-keeper-data/json:/app/data/json
     environment:
       - PYTHONPATH=/app
       - WEAVIATE_HOST=weaviate
@@ -36,15 +36,12 @@ services:
       ENABLE_MODULES: 'text2vec-openai'
       CLUSTER_HOSTNAME: 'node1'
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - /opt/grimoire-keeper-data/weaviate:/var/lib/weaviate
     restart: unless-stopped
     networks:
       - grimoire-network
 
-volumes:
-  weaviate_data:
-  sqlite_data:
-  json_data:
+
 
 networks:
   grimoire-network:
