@@ -3,6 +3,7 @@
 from slack_bolt import App
 from ..services.api_client import ApiClient
 from ..utils.formatters import format_search_results, format_process_status, format_error_message
+from ..utils.blocks import create_url_processing_blocks, create_search_result_blocks, create_status_blocks
 
 def register_command_handlers(app: App) -> None:
     """コマンドハンドラーを登録"""
@@ -36,8 +37,10 @@ def register_command_handlers(app: App) -> None:
                 try:
                     api_client = ApiClient()
                     result = await api_client.get_process_status(int(page_id_str))
-                    response = format_process_status(result, int(page_id_str))
-                    respond(response)
+                    
+                    # Block Kit形式で応答
+                    blocks = create_status_blocks(result, int(page_id_str))
+                    respond(blocks=blocks)
                 except Exception as e:
                     respond(f"ステータス確認エラー: {str(e)}")
             else:
@@ -49,8 +52,10 @@ def register_command_handlers(app: App) -> None:
                     api_client = ApiClient()
                     result = await api_client.search_content(query, limit=5)
                     results = result.get("results", [])
-                    response = format_search_results(results, query)
-                    respond(response)
+                    
+                    # Block Kit形式で応答
+                    blocks = create_search_result_blocks(results, query)
+                    respond(blocks=blocks)
                 except Exception as e:
                     error_msg = format_error_message(str(e), "検索")
                     respond(error_msg)
@@ -74,7 +79,10 @@ def register_command_handlers(app: App) -> None:
                 api_client = ApiClient()
                 result = await api_client.process_url(text)
                 page_id = result.get("page_id")
-                respond(f"✅ URL処理を開始しました！\n処理ID: {page_id}\n完了まで少々お待ちください。")
+                
+                # Block Kit形式で応答
+                blocks = create_url_processing_blocks(page_id, text)
+                respond(blocks=blocks)
             except Exception as e:
                 respond(f"エラー: {str(e)}")
         else:
