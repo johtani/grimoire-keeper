@@ -423,20 +423,26 @@ name = "grimoire-bot"
 version = "0.1.0"
 source = { editable = "apps/bot" }
 dependencies = [
+    { name = "httpx" },
     { name = "python-dotenv" },
     { name = "slack-bolt" },
 ]
 
 [package.optional-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-mock" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.25.0" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.25.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.10.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "slack-bolt", specifier = ">=1.18.0" },
 ]
