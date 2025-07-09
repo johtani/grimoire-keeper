@@ -14,8 +14,15 @@ fi
 # 必要なAPIキーチェック
 source .env
 if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ] || [ -z "$JINA_API_KEY" ]; then
-    echo "❌ 必要なAPIキーが設定されていません"
+    echo "❌ バックエンド用APIキーが設定されていません"
     echo "OPENAI_API_KEY, GOOGLE_API_KEY, JINA_API_KEYを.envに設定してください"
+    exit 1
+fi
+
+# Slack Bot用APIキーチェック
+if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_SIGNING_SECRET" ] || [ -z "$SLACK_APP_TOKEN" ]; then
+    echo "❌ Slack Bot用APIキーが設定されていません"
+    echo "SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_APP_TOKENを.envに設定してください"
     exit 1
 fi
 
@@ -56,8 +63,20 @@ else
     exit 1
 fi
 
+# Slack Bot確認
+if docker-compose -f docker-compose.prod.yml ps bot | grep -q "Up"; then
+    echo "✅ Slack Bot起動完了"
+else
+    echo "❌ Slack Bot起動失敗"
+    exit 1
+fi
+
 echo "🎉 デプロイ完了！"
 echo "API: http://localhost:8000"
 echo "Weaviate: http://localhost:8080"
+echo "Slack Bot: コンテナ内で実行中"
 echo ""
-echo "ログ確認: docker-compose -f docker-compose.prod.yml logs -f"
+echo "ログ確認:"
+echo "  全体: docker-compose -f docker-compose.prod.yml logs -f"
+echo "  API: docker-compose -f docker-compose.prod.yml logs -f api"
+echo "  Bot: docker-compose -f docker-compose.prod.yml logs -f bot"
