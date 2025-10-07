@@ -1,8 +1,9 @@
 """Grimoire Bot メインアプリケーション"""
 
 import os
-from slack_bolt import App
-from slack_bolt.adapter.socket_mode import SocketModeHandler
+import asyncio
+from slack_bolt.async_app import AsyncApp
+from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from dotenv import load_dotenv
 
 from .handlers.events import register_event_handlers
@@ -13,7 +14,7 @@ from .handlers.modals import register_modal_handlers
 load_dotenv()
 
 # Slack App初期化
-app = App(
+app = AsyncApp(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
@@ -24,10 +25,10 @@ register_command_handlers(app)
 register_action_handlers(app)
 register_modal_handlers(app)
 
-def start_bot() -> None:
+async def start_bot() -> None:
     """ボット開始"""
-    handler = SocketModeHandler(app, os.environ.get("SLACK_APP_TOKEN"))
-    handler.start()
+    handler = AsyncSocketModeHandler(app, os.environ.get("SLACK_APP_TOKEN"))
+    await handler.start_async()
 
 if __name__ == "__main__":
-    start_bot()
+    asyncio.run(start_bot())

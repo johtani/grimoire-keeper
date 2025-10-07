@@ -1,10 +1,10 @@
 """ボタンアクションハンドラー"""
 
-from slack_bolt import App
+from slack_bolt.async_app import AsyncApp
 from ..services.api_client import ApiClient
 from ..utils.formatters import format_process_status, format_error_message
 
-def register_action_handlers(app: App) -> None:
+def register_action_handlers(app: AsyncApp) -> None:
     """アクションハンドラーを登録"""
     
     @app.action("check_status")

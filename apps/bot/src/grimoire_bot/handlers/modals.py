@@ -1,10 +1,10 @@
 """モーダルハンドラー"""
 
-from slack_bolt import App
+from slack_bolt.async_app import AsyncApp
 from ..services.api_client import ApiClient
 from ..utils.blocks import create_url_processing_blocks
 
-def register_modal_handlers(app: App) -> None:
+def register_modal_handlers(app: AsyncApp) -> None:
     """モーダルハンドラーを登録"""
     
     @app.shortcut("add_url")
