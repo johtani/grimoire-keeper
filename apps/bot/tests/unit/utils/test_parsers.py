@@ -1,7 +1,5 @@
 """Test parsers utilities."""
 
-import pytest
-
 from grimoire_bot.utils.parsers import parse_url_and_memo
 
 
@@ -12,7 +10,7 @@ class TestParseUrlAndMemo:
         """Test URL with memo."""
         text = "https://example.com 面白い記事"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "https://example.com"
         assert memo == "面白い記事"
 
@@ -20,7 +18,7 @@ class TestParseUrlAndMemo:
         """Test URL only."""
         text = "https://example.com"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "https://example.com"
         assert memo is None
 
@@ -28,7 +26,7 @@ class TestParseUrlAndMemo:
         """Test memo before URL."""
         text = "面白い記事 https://example.com"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "https://example.com"
         assert memo == "面白い記事"
 
@@ -36,7 +34,7 @@ class TestParseUrlAndMemo:
         """Test memo around URL."""
         text = "これは https://example.com 面白い記事です"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "https://example.com"
         assert memo == "これは 面白い記事です"
 
@@ -44,7 +42,7 @@ class TestParseUrlAndMemo:
         """Test text without URL."""
         text = "面白い記事"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url is None
         assert memo is None
 
@@ -52,7 +50,7 @@ class TestParseUrlAndMemo:
         """Test empty text."""
         text = ""
         url, memo = parse_url_and_memo(text)
-        
+
         assert url is None
         assert memo is None
 
@@ -60,7 +58,7 @@ class TestParseUrlAndMemo:
         """Test HTTP URL."""
         text = "http://example.com テスト"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "http://example.com"
         assert memo == "テスト"
 
@@ -68,7 +66,7 @@ class TestParseUrlAndMemo:
         """Test URL with path."""
         text = "https://example.com/path/to/article 記事"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "https://example.com/path/to/article"
         assert memo == "記事"
 
@@ -76,6 +74,6 @@ class TestParseUrlAndMemo:
         """Test multiple URLs (should return first one)."""
         text = "https://example.com https://another.com"
         url, memo = parse_url_and_memo(text)
-        
+
         assert url == "https://example.com"
         assert memo == "https://another.com"

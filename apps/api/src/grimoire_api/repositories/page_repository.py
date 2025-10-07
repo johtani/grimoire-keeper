@@ -12,7 +12,11 @@ from .file_repository import FileRepository
 class PageRepository:
     """ページリポジトリ."""
 
-    def __init__(self, db: DatabaseConnection | None = None, file_repo: FileRepository | None = None):
+    def __init__(
+        self,
+        db: DatabaseConnection | None = None,
+        file_repo: FileRepository | None = None,
+    ):
         """初期化.
 
         Args:
@@ -209,7 +213,7 @@ class PageRepository:
         page = self.get_page(page_id)
         if not page:
             return None
-        
+
         return {
             "id": page.id,
             "url": page.url,
@@ -222,7 +226,13 @@ class PageRepository:
             "weaviate_id": page.weaviate_id,
         }
 
-    async def list_pages(self, limit: int = 20, offset: int = 0, sort: str = "created_at", order: str = "desc") -> tuple[list[dict], int]:
+    async def list_pages(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        sort: str = "created_at",
+        order: str = "desc",
+    ) -> tuple[list[dict], int]:
         """ページ一覧取得 (async).
 
         Args:
@@ -239,7 +249,7 @@ class PageRepository:
             count_query = "SELECT COUNT(*) as total FROM pages"
             count_result = self.db.fetch_one(count_query)
             total = count_result["total"] if count_result else 0
-            
+
             # ページ取得
             order_clause = f"ORDER BY {sort} {order.upper()}"
             query = f"""
@@ -248,19 +258,23 @@ class PageRepository:
             LIMIT ? OFFSET ?
             """
             results = self.db.fetch_all(query, (limit, offset))
-            
+
             pages = []
             for row in results:
-                pages.append({
-                    "id": row["id"],
-                    "url": row["url"],
-                    "title": row["title"],
-                    "memo": row["memo"],
-                    "summary": row["summary"],
-                    "keywords": json.loads(row["keywords"]) if row["keywords"] else [],
-                    "created_at": datetime.fromisoformat(row["created_at"]),
-                })
-            
+                pages.append(
+                    {
+                        "id": row["id"],
+                        "url": row["url"],
+                        "title": row["title"],
+                        "memo": row["memo"],
+                        "summary": row["summary"],
+                        "keywords": json.loads(row["keywords"])
+                        if row["keywords"]
+                        else [],
+                        "created_at": datetime.fromisoformat(row["created_at"]),
+                    }
+                )
+
             return pages, total
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
