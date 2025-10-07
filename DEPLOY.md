@@ -44,29 +44,63 @@ git clone <your-repo-url> grimoire-keeper
 cd grimoire-keeper
 ```
 
-### 2. 環境設定
+### 2. Slack App設定（デプロイ前に必須）
+
+#### 2.1. Slack App作成
+1. https://api.slack.com/apps → "Create New App"
+2. "From scratch" → アプリ名・ワークスペース選択
+
+#### 2.2. Socket Mode設定
+**Socket Mode:**
+1. "Socket Mode" → Enable Socket Mode: ON
+2. "Generate Token and Scopes" → Token Name: "grimoire-app-token"
+3. Scopes: `connections:write` → Generate
+4. App-Level Tokenをコピー → 後で`SLACK_APP_TOKEN`に設定
+
+#### 2.3. Bot設定
+**OAuth & Permissions:**
+1. Bot Token Scopes: `app_mentions:read`, `chat:write`, `commands`
+2. Install App to Workspace
+3. Bot User OAuth Tokenをコピー → 後で`SLACK_BOT_TOKEN`に設定
+
+**Event Subscriptions:**
+1. Enable Events: ON
+2. Subscribe to bot events: `app_mention`
+
+**Slash Commands:**
+1. Command: `/grimoire`
+2. Description: "Grimoire Keeper URL処理"
+3. Usage Hint: `[URL] [memo]`
+
+**Interactivity & Shortcuts:**
+1. Interactivity: ON
+
+**Basic Information:**
+1. Signing Secretをコピー → 後で`SLACK_SIGNING_SECRET`に設定
+
+### 3. 環境設定
 ```bash
 # 環境変数設定
 cp .env.example .env
-nano .env  # APIキーを設定
+nano .env  # 上記で取得したAPIキー・トークンを設定
 
 # 必須設定項目:
 # OPENAI_API_KEY=sk-...
 # GOOGLE_API_KEY=...
 # JINA_API_KEY=...
-# SLACK_BOT_TOKEN=xoxb-...
-# SLACK_SIGNING_SECRET=...
-# SLACK_APP_TOKEN=xapp-...
+# SLACK_BOT_TOKEN=xoxb-...        # 手順2.3で取得
+# SLACK_SIGNING_SECRET=...        # 手順2.3で取得  
+# SLACK_APP_TOKEN=xapp-...        # 手順2.2で取得
 ```
 
-### 3. デプロイ実行
+### 4. デプロイ実行
 ```bash
 # 自動デプロイ
 chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```
 
-### 4. 動作確認
+### 5. 動作確認
 ```bash
 # サービス状態確認
 docker compose -f docker-compose.prod.yml ps
@@ -81,34 +115,19 @@ curl http://localhost:8000/api/v1/health
 curl http://localhost:8080/v1/meta
 ```
 
-## Slack App設定
+## 補足: Slack App詳細設定
 
-### 1. Slack App作成
-1. https://api.slack.com/apps → "Create New App"
-2. "From scratch" → アプリ名・ワークスペース選択
+上記手順2で設定したSlack Appの詳細情報：
 
-### 2. Bot設定
-**OAuth & Permissions:**
-- Bot Token Scopes: `app_mentions:read`, `chat:write`, `commands`
-- Install App to Workspace
+### 必要なスコープ
+- `app_mentions:read`: メンション受信
+- `chat:write`: メッセージ送信
+- `commands`: スラッシュコマンド
 
-**Event Subscriptions:**
-- Enable Events: ON
-- Request URL: `https://your-domain.com/slack/events` (ngrok等)
-- Subscribe to bot events: `app_mention`
-
-**Slash Commands:**
-- Command: `/grimoire`
-- Request URL: `https://your-domain.com/slack/commands`
-
-**Interactivity & Shortcuts:**
-- Interactivity: ON
-- Request URL: `https://your-domain.com/slack/interactive`
-
-### 3. トークン取得
-- **Bot User OAuth Token** → `SLACK_BOT_TOKEN`
-- **Signing Secret** → `SLACK_SIGNING_SECRET`  
-- **App-Level Token** → `SLACK_APP_TOKEN`
+### Socket Modeの利点
+- 外部URLエンドポイント不要
+- ファイアウォール設定簡素化
+- WebSocket接続でリアルタイム通信
 
 ## 運用管理
 
@@ -175,7 +194,7 @@ ls -la /opt/grimoire-keeper-data/
 ### ポート使用状況
 - **8000**: API (外部公開)
 - **8080**: Weaviate (内部のみ)
-- **Bot**: Socket Mode (外部ポート不要)
+- **Bot**: Socket Mode (外部ポート不要、WebSocket接続)
 
 ## セキュリティ
 
