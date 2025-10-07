@@ -11,7 +11,7 @@ def register_command_handlers(app: AsyncApp) -> None:
     @app.command("/grimoire")
     async def handle_grimoire_command(ack, respond, command):
         """グリモワールコマンド処理"""
-        ack()
+        await ack()
         
         text = command["text"].strip()
         user_id = command["user_id"]
@@ -28,7 +28,7 @@ def register_command_handlers(app: AsyncApp) -> None:
 `/grimoire https://example.com`
 `/grimoire search AI`
 `/grimoire status 123`"""
-            respond(help_text)
+            await respond(help_text)
             return
             
         if text.startswith("status "):
@@ -40,11 +40,11 @@ def register_command_handlers(app: AsyncApp) -> None:
                     
                     # Block Kit形式で応答
                     blocks = create_status_blocks(result, int(page_id_str))
-                    respond(blocks=blocks)
+                    await respond(blocks=blocks)
                 except Exception as e:
-                    respond(f"ステータス確認エラー: {str(e)}")
+                    await respond(f"ステータス確認エラー: {str(e)}")
             else:
-                respond("有効な処理IDを入力してください")
+                await respond("有効な処理IDを入力してください")
         elif text.startswith("search "):
             query = text[7:].strip()
             if query:
@@ -55,12 +55,12 @@ def register_command_handlers(app: AsyncApp) -> None:
                     
                     # Block Kit形式で応答
                     blocks = create_search_result_blocks(results, query)
-                    respond(blocks=blocks)
+                    await respond(blocks=blocks)
                 except Exception as e:
                     error_msg = format_error_message(str(e), "検索")
-                    respond(error_msg)
+                    await respond(error_msg)
             else:
-                respond("検索語を入力してください")
+                await respond("検索語を入力してください")
         elif text == "help":
             help_text = """📚 **Grimoire Keeper 使用方法**
 
@@ -73,7 +73,7 @@ def register_command_handlers(app: AsyncApp) -> None:
 `/grimoire https://example.com`
 `/grimoire search AI`
 `/grimoire status 123`"""
-            respond(help_text)
+            await respond(help_text)
         elif "http" in text:
             try:
                 api_client = ApiClient()
@@ -82,8 +82,8 @@ def register_command_handlers(app: AsyncApp) -> None:
                 
                 # Block Kit形式で応答
                 blocks = create_url_processing_blocks(page_id, text)
-                respond(blocks=blocks)
+                await respond(blocks=blocks)
             except Exception as e:
-                respond(f"エラー: {str(e)}")
+                await respond(f"エラー: {str(e)}")
         else:
-            respond("有効なURLまたは検索コマンドを入力してください")
+            await respond("有効なURLまたは検索コマンドを入力してください")
