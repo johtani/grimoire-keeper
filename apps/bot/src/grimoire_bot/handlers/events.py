@@ -33,6 +33,6 @@ def register_event_handlers(app: AsyncApp) -> None:
             say(f"<@{user}> URLが見つかりません。有効なURLを教えてください。")
     
     @app.event("message")
-    def handle_message_events(body, logger):
+    async def handle_message_events(body, logger):
         """メッセージイベント（ログ用）"""
         logger.info(body)
