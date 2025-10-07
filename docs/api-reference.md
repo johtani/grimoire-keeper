@@ -209,17 +209,7 @@ Get detailed information about a specific page.
   "keywords": ["machine learning", "AI", "algorithms", "data science"],
   "created_at": "2025-01-01T12:00:00Z",
   "updated_at": "2025-01-01T12:05:00Z",
-  "weaviate_id": "uuid-string",
-  "processing_logs": [
-    {
-      "status": "started",
-      "created_at": "2025-01-01T12:00:00Z"
-    },
-    {
-      "status": "completed",
-      "created_at": "2025-01-01T12:05:00Z"
-    }
-  ]
+  "weaviate_id": "uuid-string"
 }
 ```
 

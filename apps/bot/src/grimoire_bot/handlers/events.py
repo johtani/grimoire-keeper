@@ -2,6 +2,7 @@
 
 from slack_bolt.async_app import AsyncApp
 from ..services.api_client import ApiClient
+from ..utils.parsers import parse_url_and_memo
 
 def register_event_handlers(app: AsyncApp) -> None:
     """イベントハンドラーを登録"""
@@ -19,18 +20,21 @@ def register_event_handlers(app: AsyncApp) -> None:
             say(f"<@{user}> こんにちは！URLを教えてください。")
             return
             
-        # URL検出の簡易実装
-        if "http" in clean_text:
-            say(f"<@{user}> URLを処理中です...")
+        # URLとmemoを分割
+        url, memo = parse_url_and_memo(clean_text)
+        
+        if url:
+            await say(f"<@{user}> URLを処理中です...")
             try:
                 api_client = ApiClient()
-                result = await api_client.process_url(clean_text)
+                result = await api_client.process_url(url, memo)
                 page_id = result.get("page_id")
-                say(f"<@{user}> URL処理を開始しました！\n処理ID: {page_id}\n完了まで少々お待ちください。")
+                memo_text = f"\nメモ: {memo}" if memo else ""
+                await say(f"<@{user}> URL処理を開始しました！\n処理ID: {page_id}{memo_text}\n完了まで少々お待ちください。")
             except Exception as e:
-                say(f"<@{user}> エラーが発生しました: {str(e)}")
+                await say(f"<@{user}> エラーが発生しました: {str(e)}")
         else:
-            say(f"<@{user}> URLが見つかりません。有効なURLを教えてください。")
+            await say(f"<@{user}> URLが見つかりません。有効なURLを教えてください。")
     
     @app.event("message")
     async def handle_message_events(body, logger):
