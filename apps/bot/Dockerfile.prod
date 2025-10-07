@@ -17,7 +17,7 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 
 # 依存関係インストール
-RUN uv sync --frozen
+RUN uv sync
 
 # ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
