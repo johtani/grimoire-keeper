@@ -10,11 +10,11 @@ from ..repositories.database import DatabaseConnection
 from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
+from ..services.chunking_service import ChunkingService
 from ..services.jina_client import JinaClient
 from ..services.llm_service import LLMService
 from ..services.url_processor import UrlProcessorService
 from ..services.vectorizer import VectorizerService
-from ..utils.chunking import TextChunker
 
 router = APIRouter(prefix="/api/v1", tags=["process"])
 
@@ -28,8 +28,8 @@ def get_url_processor() -> UrlProcessorService:
 
     jina_client = JinaClient()
     llm_service = LLMService(file_repo)
-    text_chunker = TextChunker()
-    vectorizer = VectorizerService(page_repo, file_repo, text_chunker)
+    chunking_service = ChunkingService()
+    vectorizer = VectorizerService(page_repo, file_repo, chunking_service)
 
     return UrlProcessorService(
         jina_client=jina_client,

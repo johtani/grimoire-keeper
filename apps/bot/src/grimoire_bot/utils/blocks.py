@@ -11,8 +11,7 @@ def create_url_processing_blocks(page_id: int, url: str) -> list[dict[str, Any]]
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    f"✅ *URL処理を開始しました*\n\n"
-                    f"🔗 {url}\n📋 処理ID: `{page_id}`"
+                    f"✅ *URL処理を開始しました*\n\n🔗 {url}\n📋 処理ID: `{page_id}`"
                 ),
             },
         },
