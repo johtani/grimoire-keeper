@@ -1,9 +1,9 @@
 """イベントハンドラー"""
 
-from slack_bolt import App
+from slack_bolt.async_app import AsyncApp
 from ..services.api_client import ApiClient
 
-def register_event_handlers(app: App) -> None:
+def register_event_handlers(app: AsyncApp) -> None:
     """イベントハンドラーを登録"""
     
     @app.event("app_mention")

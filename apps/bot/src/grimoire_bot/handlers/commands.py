@@ -1,11 +1,11 @@
 """スラッシュコマンドハンドラー"""
 
-from slack_bolt import App
+from slack_bolt.async_app import AsyncApp
 from ..services.api_client import ApiClient
 from ..utils.formatters import format_search_results, format_process_status, format_error_message
 from ..utils.blocks import create_url_processing_blocks, create_search_result_blocks, create_status_blocks
 
-def register_command_handlers(app: App) -> None:
+def register_command_handlers(app: AsyncApp) -> None:
     """コマンドハンドラーを登録"""
     
     @app.command("/grimoire")
