@@ -14,7 +14,6 @@ RUN pip install uv
 # プロジェクトファイルコピー
 COPY pyproject.toml ./
 COPY src/ ./src/
-COPY ../../shared/ ./shared/
 
 # 依存関係インストール
 RUN uv sync --frozen
