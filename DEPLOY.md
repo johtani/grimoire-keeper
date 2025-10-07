@@ -112,7 +112,7 @@ docker compose -f docker-compose.prod.yml logs -f
 curl http://localhost:8000/api/v1/health
 
 # Weaviate動作確認  
-curl http://localhost:8080/v1/meta
+curl http://localhost:8089/v1/meta
 ```
 
 ## 補足: Slack App詳細設定
@@ -193,7 +193,7 @@ ls -la /opt/grimoire-keeper-data/
 
 ### ポート使用状況
 - **8000**: API (外部公開)
-- **8080**: Weaviate (内部のみ)
+- **8089**: Weaviate (内部のみ)
 - **Bot**: Socket Mode (外部ポート不要、WebSocket接続)
 
 ## セキュリティ
