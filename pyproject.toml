@@ -21,8 +21,7 @@ classifiers = [
 [tool.uv.workspace]
 members = [
     "apps/bot",
-    "apps/api", 
-    "shared"
+    "apps/api"
 ]
 
 [tool.uv]
@@ -36,12 +35,11 @@ dev-dependencies = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/bot/tests", "apps/api/tests", "shared/tests"]
+testpaths = ["apps/bot/tests", "apps/api/tests"]
 python_files = ["test_*.py", "*_test.py"]
 addopts = [
     "--strict-markers",
     "--cov=apps",
-    "--cov=shared",
     "--cov-report=term-missing",
 ]
 
