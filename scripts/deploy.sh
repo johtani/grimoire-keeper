@@ -48,7 +48,7 @@ echo "🔍 サービス起動確認中..."
 sleep 10
 
 # Weaviate確認
-if curl -f http://localhost:8080/v1/meta >/dev/null 2>&1; then
+if curl -f http://localhost:8089/v1/meta >/dev/null 2>&1; then
     echo "✅ Weaviate起動完了"
 else
     echo "❌ Weaviate起動失敗"
@@ -73,7 +73,7 @@ fi
 
 echo "🎉 デプロイ完了！"
 echo "API: http://localhost:8000"
-echo "Weaviate: http://localhost:8080"
+echo "Weaviate: http://localhost:8089"
 echo "Slack Bot: コンテナ内で実行中"
 echo ""
 echo "ログ確認:"
