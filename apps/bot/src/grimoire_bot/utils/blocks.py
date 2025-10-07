@@ -57,14 +57,21 @@ def create_search_result_blocks(
         title = item.get("title", "No Title")
         url = item.get("url", "")
         summary = item.get("summary", "")
+        content = item.get("content", "")
         keywords = item.get("keywords", [])
 
         if len(summary) > 150:
             summary = summary[:150] + "..."
 
+        # コンテンツを100文字に制限
+        if len(content) > 100:
+            content = content[:100] + "..."
+
         text = f"*{i}. {title}*\n🔗 <{url}|リンクを開く>\n"
         if summary:
             text += f"📝 {summary}\n"
+        if content:
+            text += f"📄 {content}\n"
         if keywords:
             text += f"🏷️ {', '.join(keywords[:3])}"
 
