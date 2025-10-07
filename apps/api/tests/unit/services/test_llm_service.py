@@ -183,7 +183,7 @@ class TestLLMService:
 
             # 呼び出しパラメータを確認
             call_args = mock_completion.call_args
-            assert call_args[1]["model"] == "gemini/gemini-1.5-flash"
+            assert call_args[1]["model"] == "gemini/gemini-2.5-flash"
             assert call_args[1]["api_key"] == "test_api_key"
             assert call_args[1]["temperature"] == 0.3
             assert len(call_args[1]["messages"]) == 1

@@ -52,7 +52,7 @@ class LLMService:
 
             # LiteLLM呼び出し
             response = completion(
-                model="gemini/gemini-1.5-flash",
+                model="gemini/gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
                 api_key=self.api_key,
                 temperature=0.3,
