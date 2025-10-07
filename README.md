@@ -279,6 +279,7 @@ For detailed documentation, see the [docs/](docs/) directory:
 - [Backend Architecture / バックエンドアーキテクチャ](docs/architecture.md)
 - [API Reference / APIリファレンス](docs/api-reference.md)
 - [Development Guide / 開発ガイド](docs/development.md)
+- [Slack Bot Usage / Slack Bot使用方法](docs/slack-bot-usage.md)
 
 ## 🐛 Issues & Support / 問題とサポート
 

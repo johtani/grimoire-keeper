@@ -12,15 +12,15 @@ from .file_repository import FileRepository
 class PageRepository:
     """ページリポジトリ."""
 
-    def __init__(self, db: DatabaseConnection, file_repo: FileRepository):
+    def __init__(self, db: DatabaseConnection | None = None, file_repo: FileRepository | None = None):
         """初期化.
 
         Args:
             db: データベース接続
             file_repo: ファイルリポジトリ
         """
-        self.db = db
-        self.file_repo = file_repo
+        self.db = db or DatabaseConnection()
+        self.file_repo = file_repo or FileRepository()
 
     def get_page_by_url(self, url: str) -> Page | None:
         """URLでページ取得.
@@ -194,5 +194,73 @@ class PageRepository:
                 )
                 for row in results
             ]
+
+    async def get_by_id(self, page_id: int) -> dict | None:
+        """ページIDで取得 (async).
+
+        Args:
+            page_id: ページID
+
+        Returns:
+            ページデータ
+        """
+        page = self.get_page(page_id)
+        if not page:
+            return None
+        
+        return {
+            "id": page.id,
+            "url": page.url,
+            "title": page.title,
+            "memo": page.memo,
+            "summary": page.summary,
+            "keywords": json.loads(page.keywords) if page.keywords else [],
+            "created_at": page.created_at,
+            "updated_at": page.updated_at,
+            "weaviate_id": page.weaviate_id,
+        }
+
+    async def list_pages(self, limit: int = 20, offset: int = 0, sort: str = "created_at", order: str = "desc") -> tuple[list[dict], int]:
+        """ページ一覧取得 (async).
+
+        Args:
+            limit: 取得件数
+            offset: オフセット
+            sort: ソートフィールド
+            order: ソート順序
+
+        Returns:
+            ページリストと総数
+        """
+        try:
+            # 総数取得
+            count_query = "SELECT COUNT(*) as total FROM pages"
+            count_result = self.db.fetch_one(count_query)
+            total = count_result["total"] if count_result else 0
+            
+            # ページ取得
+            order_clause = f"ORDER BY {sort} {order.upper()}"
+            query = f"""
+            SELECT * FROM pages
+            {order_clause}
+            LIMIT ? OFFSET ?
+            """
+            results = self.db.fetch_all(query, (limit, offset))
+            
+            pages = []
+            for row in results:
+                pages.append({
+                    "id": row["id"],
+                    "url": row["url"],
+                    "title": row["title"],
+                    "memo": row["memo"],
+                    "summary": row["summary"],
+                    "keywords": json.loads(row["keywords"]) if row["keywords"] else [],
+                    "created_at": datetime.fromisoformat(row["created_at"]),
+                })
+            
+            return pages, total
+        except Exception as e:
+            raise DatabaseError(f"Failed to list pages: {str(e)}")
         except Exception as e:
             raise DatabaseError(f"Failed to get all pages: {str(e)}")

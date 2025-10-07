@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
-from .routers import health, process, search
+from .routers import health, process, search, pages
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
@@ -39,6 +39,7 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(process.router)
 app.include_router(search.router)
+app.include_router(pages.router)
 
 
 @app.get("/")

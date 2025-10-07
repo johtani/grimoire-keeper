@@ -34,3 +34,38 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
     total: int
     query: str
+
+
+class PageResponse(BaseModel):
+    """ページ詳細レスポンス."""
+
+    id: int
+    url: str
+    title: str
+    memo: str | None
+    summary: str
+    keywords: list[str]
+    created_at: datetime
+    updated_at: datetime | None
+    weaviate_id: str | None
+
+
+class PageListItem(BaseModel):
+    """ページ一覧アイテム."""
+
+    id: int
+    url: str
+    title: str
+    memo: str | None
+    summary: str
+    keywords: list[str]
+    created_at: datetime
+
+
+class PageListResponse(BaseModel):
+    """ページ一覧レスポンス."""
+
+    pages: list[PageListItem]
+    total: int
+    limit: int
+    offset: int

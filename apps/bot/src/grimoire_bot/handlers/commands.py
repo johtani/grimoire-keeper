@@ -4,6 +4,7 @@ from slack_bolt.async_app import AsyncApp
 from ..services.api_client import ApiClient
 from ..utils.formatters import format_search_results, format_process_status, format_error_message
 from ..utils.blocks import create_url_processing_blocks, create_search_result_blocks, create_status_blocks
+from ..utils.parsers import parse_url_and_memo
 
 def register_command_handlers(app: AsyncApp) -> None:
     """コマンドハンドラーを登録"""
@@ -74,16 +75,20 @@ def register_command_handlers(app: AsyncApp) -> None:
 `/grimoire search AI`
 `/grimoire status 123`"""
             await respond(help_text)
-        elif "http" in text:
-            try:
-                api_client = ApiClient()
-                result = await api_client.process_url(text)
-                page_id = result.get("page_id")
-                
-                # Block Kit形式で応答
-                blocks = create_url_processing_blocks(page_id, text)
-                await respond(blocks=blocks)
-            except Exception as e:
-                await respond(f"エラー: {str(e)}")
         else:
-            await respond("有効なURLまたは検索コマンドを入力してください")
+            # URLとmemoを分割
+            url, memo = parse_url_and_memo(text)
+            
+            if url:
+                try:
+                    api_client = ApiClient()
+                    result = await api_client.process_url(url, memo)
+                    page_id = result.get("page_id")
+                    
+                    # Block Kit形式で応答
+                    blocks = create_url_processing_blocks(page_id, url)
+                    await respond(blocks=blocks)
+                except Exception as e:
+                    await respond(f"エラー: {str(e)}")
+            else:
+                await respond("有効なURLまたは検索コマンドを入力してください")
