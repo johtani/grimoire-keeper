@@ -7,7 +7,7 @@
 
 ## 開発パターン
 - **推奨**: 混合実行
-  - インフラ: `docker-compose up -d weaviate`
+  - インフラ: `docker compose up -d weaviate`
   - アプリ: `uv run --package grimoire-api uvicorn grimoire_api.main:app --reload`
 
 ## コード品質チェック
