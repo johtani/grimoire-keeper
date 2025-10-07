@@ -53,7 +53,7 @@
 
 4. **Start Weaviate / Weaviateの起動**
    ```bash
-   docker-compose up -d weaviate
+   docker compose up -d weaviate
    ```
 
 5. **Initialize database / データベースの初期化**
@@ -146,7 +146,7 @@ grimoire-keeper/
 3. **Running Services / サービスの実行**
    ```bash
    # Infrastructure / インフラ
-   docker-compose up -d weaviate
+   docker compose up -d weaviate
    
    # Application / アプリケーション
    uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
@@ -238,7 +238,7 @@ The project includes a `docker-compose.yml` for running Weaviate:
 プロジェクトにはWeaviate実行用の`docker-compose.yml`が含まれています：
 
 ```bash
-docker-compose up -d weaviate
+docker compose up -d weaviate
 ```
 
 ## 🤝 Contributing / 貢献

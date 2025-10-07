@@ -33,15 +33,15 @@ sudo chown -R $USER:$USER /opt/grimoire-keeper-data
 
 # 既存コンテナ停止・削除
 echo "🛑 既存サービス停止中..."
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # イメージビルド
 echo "🔨 イメージビルド中..."
-docker-compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build --no-cache
 
 # サービス起動
 echo "🚀 サービス起動中..."
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # ヘルスチェック
 echo "🔍 サービス起動確認中..."
@@ -64,7 +64,7 @@ else
 fi
 
 # Slack Bot確認
-if docker-compose -f docker-compose.prod.yml ps bot | grep -q "Up"; then
+if docker compose -f docker-compose.prod.yml ps bot | grep -q "Up"; then
     echo "✅ Slack Bot起動完了"
 else
     echo "❌ Slack Bot起動失敗"
@@ -77,6 +77,6 @@ echo "Weaviate: http://localhost:8080"
 echo "Slack Bot: コンテナ内で実行中"
 echo ""
 echo "ログ確認:"
-echo "  全体: docker-compose -f docker-compose.prod.yml logs -f"
-echo "  API: docker-compose -f docker-compose.prod.yml logs -f api"
-echo "  Bot: docker-compose -f docker-compose.prod.yml logs -f bot"
+echo "  全体: docker compose -f docker-compose.prod.yml logs -f"
+echo "  API: docker compose -f docker-compose.prod.yml logs -f api"
+echo "  Bot: docker compose -f docker-compose.prod.yml logs -f bot"
