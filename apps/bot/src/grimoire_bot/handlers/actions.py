@@ -1,17 +1,19 @@
 """ボタンアクションハンドラー"""
 
 from slack_bolt.async_app import AsyncApp
+
 from ..services.api_client import ApiClient
-from ..utils.formatters import format_process_status, format_error_message
+from ..utils.formatters import format_error_message, format_process_status
+
 
 def register_action_handlers(app: AsyncApp) -> None:
     """アクションハンドラーを登録"""
-    
+
     @app.action("check_status")
     async def handle_check_status(ack, body, respond):
         """ステータス確認ボタン"""
         await ack()
-        
+
         page_id = body["actions"][0]["value"]
         try:
             api_client = ApiClient()
@@ -21,18 +23,18 @@ def register_action_handlers(app: AsyncApp) -> None:
         except Exception as e:
             error_msg = format_error_message(str(e), "ステータス確認")
             await respond(error_msg)
-    
+
     @app.action("search_similar")
     async def handle_search_similar(ack, body, respond):
         """類似検索ボタン"""
         await ack()
-        
+
         keywords = body["actions"][0]["value"]
         try:
             api_client = ApiClient()
             result = await api_client.search_content(keywords, limit=3)
             results = result.get("results", [])
-            
+
             if results:
                 response = f"🔍 '{keywords}' の類似コンテンツ:\n\n"
                 for i, item in enumerate(results, 1):
@@ -41,7 +43,7 @@ def register_action_handlers(app: AsyncApp) -> None:
                     response += f"{i}. **{title}**\n🔗 {url}\n\n"
             else:
                 response = f"'{keywords}' に類似するコンテンツが見つかりませんでした。"
-            
+
             await respond(response)
         except Exception as e:
             error_msg = format_error_message(str(e), "類似検索")

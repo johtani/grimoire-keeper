@@ -1,22 +1,30 @@
 """スラッシュコマンドハンドラー"""
 
 from slack_bolt.async_app import AsyncApp
+
 from ..services.api_client import ApiClient
-from ..utils.formatters import format_search_results, format_process_status, format_error_message
-from ..utils.blocks import create_url_processing_blocks, create_search_result_blocks, create_status_blocks
+from ..utils.blocks import (
+    create_search_result_blocks,
+    create_status_blocks,
+    create_url_processing_blocks,
+)
+from ..utils.formatters import (
+    format_error_message,
+)
 from ..utils.parsers import parse_url_and_memo
+
 
 def register_command_handlers(app: AsyncApp) -> None:
     """コマンドハンドラーを登録"""
-    
+
     @app.command("/grimoire")
     async def handle_grimoire_command(ack, respond, command):
         """グリモワールコマンド処理"""
         await ack()
-        
+
         text = command["text"].strip()
-        user_id = command["user_id"]
-        
+        # user_id = command["user_id"]  # 未使用のため削除
+
         if not text:
             help_text = """📚 **Grimoire Keeper 使用方法**
 
@@ -31,14 +39,14 @@ def register_command_handlers(app: AsyncApp) -> None:
 `/grimoire status 123`"""
             await respond(help_text)
             return
-            
+
         if text.startswith("status "):
             page_id_str = text[7:].strip()
             if page_id_str.isdigit():
                 try:
                     api_client = ApiClient()
                     result = await api_client.get_process_status(int(page_id_str))
-                    
+
                     # Block Kit形式で応答
                     blocks = create_status_blocks(result, int(page_id_str))
                     await respond(blocks=blocks)
@@ -53,7 +61,7 @@ def register_command_handlers(app: AsyncApp) -> None:
                     api_client = ApiClient()
                     result = await api_client.search_content(query, limit=5)
                     results = result.get("results", [])
-                    
+
                     # Block Kit形式で応答
                     blocks = create_search_result_blocks(results, query)
                     await respond(blocks=blocks)
@@ -78,13 +86,13 @@ def register_command_handlers(app: AsyncApp) -> None:
         else:
             # URLとmemoを分割
             url, memo = parse_url_and_memo(text)
-            
+
             if url:
                 try:
                     api_client = ApiClient()
                     result = await api_client.process_url(url, memo)
                     page_id = result.get("page_id")
-                    
+
                     # Block Kit形式で応答
                     blocks = create_url_processing_blocks(page_id, url)
                     await respond(blocks=blocks)
