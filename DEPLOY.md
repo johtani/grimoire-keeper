@@ -19,9 +19,22 @@
 
 ### 1. サーバー準備
 ```bash
+# Docker インストール（公式リポジトリ使用 - 公式ドキュメントと同じ作業）
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# リポジトリ設定
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
 # Docker インストール
 sudo apt update
-sudo apt install docker.io docker-compose-v2
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable docker
 sudo usermod -aG docker $USER
 # ログアウト・ログインして権限反映
@@ -56,10 +69,10 @@ chmod +x scripts/deploy.sh
 ### 4. 動作確認
 ```bash
 # サービス状態確認
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # ログ確認
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # API動作確認
 curl http://localhost:8000/api/v1/health
@@ -102,10 +115,10 @@ curl http://localhost:8080/v1/meta
 ### サービス管理
 ```bash
 # 停止
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # 再起動
-docker-compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart
 
 # 更新デプロイ
 git pull
@@ -115,10 +128,10 @@ git pull
 ### ログ監視
 ```bash
 # リアルタイムログ
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # エラーログのみ
-docker-compose -f docker-compose.prod.yml logs --tail=100 | grep ERROR
+docker compose -f docker-compose.prod.yml logs --tail=100 | grep ERROR
 ```
 
 ### データバックアップ
@@ -143,14 +156,14 @@ cat .env | grep -E "(OPENAI|GOOGLE|JINA|SLACK)"
 **2. コンテナ起動失敗**
 ```bash
 # ログ確認
-docker-compose -f docker-compose.prod.yml logs api
-docker-compose -f docker-compose.prod.yml logs bot
+docker compose -f docker-compose.prod.yml logs api
+docker compose -f docker-compose.prod.yml logs bot
 ```
 
 **3. Slack接続エラー**
 ```bash
 # Bot用環境変数確認
-docker-compose -f docker-compose.prod.yml exec bot env | grep SLACK
+docker compose -f docker-compose.prod.yml exec bot env | grep SLACK
 ```
 
 **4. データベース問題**
