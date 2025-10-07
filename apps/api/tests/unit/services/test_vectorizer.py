@@ -37,7 +37,7 @@ class TestVectorizerService:
         return {
             "page_repo": mock_page_repo,
             "file_repo": mock_file_repo,
-            "text_chunker": MagicMock(),
+            "chunking_service": MagicMock(),
             "weaviate_client": mock_client,
             "mock_collection": mock_collection,
         }
@@ -48,7 +48,7 @@ class TestVectorizerService:
         service = VectorizerService(
             page_repo=mock_dependencies["page_repo"],
             file_repo=mock_dependencies["file_repo"],
-            text_chunker=mock_dependencies["text_chunker"],
+            chunking_service=mock_dependencies["chunking_service"],
             weaviate_host="test-weaviate",
             weaviate_port=8080,
         )
@@ -85,7 +85,7 @@ class TestVectorizerService:
         # モック設定
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
-        mock_dependencies["text_chunker"].chunk_text.return_value = mock_chunks
+        mock_dependencies["chunking_service"].chunk_text.return_value = mock_chunks
         mock_dependencies[
             "mock_collection"
         ].data.insert.return_value = "weaviate-id-123"
@@ -103,7 +103,7 @@ class TestVectorizerService:
         # 各メソッドが呼ばれたことを確認
         mock_dependencies["page_repo"].get_page.assert_called_once_with(page_id)
         mock_dependencies["file_repo"].load_json_file.assert_called_once_with(page_id)
-        mock_dependencies["text_chunker"].chunk_text.assert_called_once_with(
+        mock_dependencies["chunking_service"].chunk_text.assert_called_once_with(
             "This is test content for vectorization."
         )
 
@@ -155,7 +155,7 @@ class TestVectorizerService:
         mock_dependencies["file_repo"].load_json_file.return_value = {
             "data": {"content": ""}
         }
-        mock_dependencies["text_chunker"].chunk_text.return_value = []
+        mock_dependencies["chunking_service"].chunk_text.return_value = []
 
         # エラー確認
         with patch.object(vectorizer_service, "_get_client"):

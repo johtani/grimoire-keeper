@@ -9,8 +9,8 @@ from weaviate.classes.config import Configure, DataType, Property
 from ..config import settings
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
-from ..utils.chunking import TextChunker
 from ..utils.exceptions import VectorizerError
+from .chunking_service import ChunkingService
 
 
 class VectorizerService:
@@ -20,7 +20,7 @@ class VectorizerService:
         self,
         page_repo: PageRepository,
         file_repo: FileRepository,
-        text_chunker: TextChunker,
+        chunking_service: ChunkingService,
         weaviate_host: str | None = None,
         weaviate_port: int | None = None,
     ):
@@ -29,13 +29,13 @@ class VectorizerService:
         Args:
             page_repo: ページリポジトリ
             file_repo: ファイルリポジトリ
-            text_chunker: テキストチャンカー
+            chunking_service: チャンキングサービス
             weaviate_host: Weaviateホスト名
             weaviate_port: Weaviateポート番号
         """
         self.page_repo = page_repo
         self.file_repo = file_repo
-        self.text_chunker = text_chunker
+        self.chunking_service = chunking_service
         self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
         self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
 
@@ -66,7 +66,7 @@ class VectorizerService:
             content = jina_data["data"]["content"]
 
             # チャンキング
-            chunks = self.text_chunker.chunk_text(content)
+            chunks = self.chunking_service.chunk_text(content)
             if not chunks:
                 raise VectorizerError("No chunks generated from content")
 
