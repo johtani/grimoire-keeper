@@ -26,6 +26,8 @@ def parse_url_and_memo(text: str) -> Tuple[str | None, str | None]:
     
     # URLを除いた部分をmemoとする
     memo_text = text.replace(url, '').strip()
+    # 連続する空白を1つにまとめる
+    memo_text = ' '.join(memo_text.split())
     memo = memo_text if memo_text else None
     
     return url, memo
