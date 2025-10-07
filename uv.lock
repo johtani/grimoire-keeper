@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [manifest]
@@ -7,7 +7,6 @@ members = [
     "grimoire-api",
     "grimoire-bot",
     "grimoire-keeper",
-    "grimoire-shared",
 ]
 
 [[package]]
@@ -423,6 +422,7 @@ name = "grimoire-bot"
 version = "0.1.0"
 source = { editable = "apps/bot" }
 dependencies = [
+    { name = "aiohttp" },
     { name = "httpx" },
     { name = "python-dotenv" },
     { name = "slack-bolt" },
@@ -438,6 +438,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.8.0" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.25.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
@@ -474,32 +475,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
 ]
-
-[[package]]
-name = "grimoire-shared"
-version = "0.1.0"
-source = { editable = "shared" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.25.0" },
-    { name = "pydantic", specifier = ">=2.5.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "grpcio"

@@ -194,6 +194,8 @@ class PageRepository:
                 )
                 for row in results
             ]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get all pages: {str(e)}")
 
     async def get_by_id(self, page_id: int) -> dict | None:
         """ページIDで取得 (async).
@@ -262,5 +264,3 @@ class PageRepository:
             return pages, total
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
-        except Exception as e:
-            raise DatabaseError(f"Failed to get all pages: {str(e)}")
