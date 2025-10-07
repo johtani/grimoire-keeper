@@ -17,7 +17,7 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 
 # 依存関係インストール
-RUN uv sync --frozen
+RUN uv sync
 
 # データディレクトリ作成
 RUN mkdir -p /data /app/data/json
