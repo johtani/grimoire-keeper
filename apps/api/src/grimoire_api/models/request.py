@@ -18,3 +18,4 @@ class SearchRequest(BaseModel):
     query: str
     limit: int = 5
     filters: dict | None = None
+    vector_name: str = "content_vector"

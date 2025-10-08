@@ -34,7 +34,11 @@ class SearchService:
         )
 
     async def vector_search(
-        self, query: str, limit: int = 5, filters: dict | None = None
+        self,
+        query: str,
+        limit: int = 5,
+        filters: dict | None = None,
+        vector_name: str = "content_vector",
     ) -> list[SearchResult]:
         """ベクトル検索.
 
@@ -42,6 +46,7 @@ class SearchService:
             query: 検索クエリ
             limit: 結果件数制限
             filters: フィルタ条件
+            vector_name: 使用するベクトル名
 
         Returns:
             検索結果のリスト
@@ -59,6 +64,7 @@ class SearchService:
                 # クエリ実行
                 response = collection.query.near_text(
                     query=query,
+                    target_vector=vector_name,
                     limit=limit,
                     filters=where_filter,
                     return_metadata=MetadataQuery(certainty=True),
