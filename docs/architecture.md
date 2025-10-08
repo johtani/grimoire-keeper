@@ -73,7 +73,7 @@ apps/api/src/grimoire_api/
 
 #### Google Gemini (via LiteLLM)
 - **Purpose**: Content summarization and keyword extraction
-- **Model**: `gemini-2.5-flash`
+- **Model**: `gemini-2.5-flash-lite`
 - **Output**: JSON with summary and 20 keywords
 
 #### OpenAI Embeddings

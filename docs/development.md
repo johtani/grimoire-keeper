@@ -12,7 +12,7 @@ This guide covers the development setup, workflow, and best practices for contri
 ### API Keys Required
 
 - **OpenAI API Key**: For embeddings (`text-embedding-ada-002`)
-- **Google API Key**: For Gemini LLM (`gemini-2.5-flash`)
+- **Google API Key**: For Gemini LLM (`gemini-2.5-flash-lite`)
 - **Jina AI API Key**: For content extraction
 
 ## Quick Setup
