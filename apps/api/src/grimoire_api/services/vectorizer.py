@@ -160,20 +160,20 @@ class VectorizerService:
                             Property(name="summary", data_type=DataType.TEXT),
                             Property(name="keywords", data_type=DataType.TEXT_ARRAY),
                             Property(name="createdAt", data_type=DataType.DATE),
-                            Property(name="isSummary", data_type=DataType.BOOLEAN),
+                            Property(name="isSummary", data_type=DataType.BOOL),
                         ],
-                        vectorizer_config=[
+                        vector_config=[
                             Configure.NamedVectors.text2vec_openai(
                                 name="content_vector",
-                                source_properties=["content"],
+                                source_properties=["content"]
                             ),
                             Configure.NamedVectors.text2vec_openai(
                                 name="title_vector",
-                                source_properties=["title", "summary"],
+                                source_properties=["title", "summary"]
                             ),
                             Configure.NamedVectors.text2vec_openai(
                                 name="memo_vector",
-                                source_properties=["memo"],
+                                source_properties=["memo"]
                             ),
                         ],
                     )
