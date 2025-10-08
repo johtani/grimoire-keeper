@@ -187,7 +187,7 @@ class TestSearchService:
         assert call_args[1]["query"] == "memo query"
         assert call_args[1]["target_vector"] == "memo_vector"
         assert call_args[1]["limit"] == 3
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None  # isSummaryフィルターが追加される
 
     @pytest.mark.asyncio
     async def test_keyword_search(self, search_service: SearchService) -> None:
@@ -392,4 +392,4 @@ class TestSearchService:
         assert call_args[1]["query"] == "title query"
         assert call_args[1]["target_vector"] == "title_vector"
         assert call_args[1]["limit"] == 5
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None  # isSummaryフィルターが追加される

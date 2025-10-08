@@ -61,12 +61,27 @@ class SearchService:
                 # フィルター条件構築
                 where_filter = self._build_weaviate_filter(filters) if filters else None
 
+                # ベクトル別フィルター追加
+                summary_filter = None
+                if vector_name != "content_vector":
+                    from weaviate.classes.query import Filter
+                    summary_filter = Filter.by_property("isSummary").equal(True)
+
+                # フィルター結合
+                final_filter = None
+                if where_filter and summary_filter:
+                    final_filter = Filter.all_of([where_filter, summary_filter])
+                elif where_filter:
+                    final_filter = where_filter
+                elif summary_filter:
+                    final_filter = summary_filter
+
                 # クエリ実行
                 response = collection.query.near_text(
                     query=query,
                     target_vector=vector_name,
                     limit=limit,
-                    filters=where_filter,
+                    filters=final_filter,
                     return_metadata=MetadataQuery(certainty=True),
                 )
 
