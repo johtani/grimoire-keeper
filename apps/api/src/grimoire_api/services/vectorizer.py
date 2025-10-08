@@ -160,7 +160,20 @@ class VectorizerService:
                             Property(name="keywords", data_type=DataType.TEXT_ARRAY),
                             Property(name="createdAt", data_type=DataType.DATE),
                         ],
-                        vectorizer_config=Configure.Vectorizer.text2vec_openai(),
+                        vectorizer_config=[
+                            Configure.NamedVectors.text2vec_openai(
+                                name="content_vector",
+                                source_properties=["content"],
+                            ),
+                            Configure.NamedVectors.text2vec_openai(
+                                name="title_vector",
+                                source_properties=["title", "summary"],
+                            ),
+                            Configure.NamedVectors.text2vec_openai(
+                                name="memo_vector",
+                                source_properties=["memo"],
+                            ),
+                        ],
                     )
 
         except Exception as e:
