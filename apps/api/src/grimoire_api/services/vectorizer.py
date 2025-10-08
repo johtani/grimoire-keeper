@@ -110,6 +110,7 @@ class VectorizerService:
                             if page_data.created_at.tzinfo is None
                             else page_data.created_at.isoformat()
                         ),
+                        "isSummary": i == 0,
                     }
 
                     result = collection.data.insert(properties=weaviate_object)
@@ -159,6 +160,7 @@ class VectorizerService:
                             Property(name="summary", data_type=DataType.TEXT),
                             Property(name="keywords", data_type=DataType.TEXT_ARRAY),
                             Property(name="createdAt", data_type=DataType.DATE),
+                            Property(name="isSummary", data_type=DataType.BOOLEAN),
                         ],
                         vectorizer_config=[
                             Configure.NamedVectors.text2vec_openai(

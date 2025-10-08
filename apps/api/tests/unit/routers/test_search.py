@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from grimoire_api.main import app
 from grimoire_api.models.response import SearchResult
-from grimoire_api.services.search_service import SearchService
 
 client = TestClient(app)
 
@@ -101,7 +100,9 @@ class TestSearchRouter:
         )
 
     @patch("grimoire_api.routers.search.SearchService")
-    def test_search_with_filters_and_vector(self, mock_search_service: MagicMock) -> None:
+    def test_search_with_filters_and_vector(
+        self, mock_search_service: MagicMock
+    ) -> None:
         """フィルターとベクトル指定での検索テスト."""
         # モックサービス設定
         mock_instance = AsyncMock()
