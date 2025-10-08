@@ -326,9 +326,9 @@ class TestVectorizerService:
         # vectorizer_configに3つのnamed vectorsが含まれることを確認
         call_args = mock_dependencies["weaviate_client"].collections.create.call_args
         vectorizer_config = call_args[1]["vectorizer_config"]
-        
+
         assert isinstance(vectorizer_config, list)
         assert len(vectorizer_config) == 3
-        
-        # 各named vectorの名前を確認（実際のオブジェクトはモックではないため、存在確認のみ）
+
+        # 各named vectorの名前を確認（実際のオブジェクトはモックではないため）
         assert vectorizer_config is not None

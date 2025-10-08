@@ -20,7 +20,7 @@ class TestSearchService:
         """デフォルト値での初期化テスト."""
         service = SearchService()
         assert service.weaviate_host == "weaviate"  # settings.WEAVIATE_HOST
-        assert service.weaviate_port == 8080
+        assert service.weaviate_port == 8089
 
     def test_init_custom_values(self: Any) -> None:
         """カスタム値での初期化テスト."""
@@ -70,6 +70,7 @@ class TestSearchService:
         mock_collection.query.near_text.assert_called_once()
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "test query"
+        assert call_args[1]["target_vector"] == "content_vector"
         assert call_args[1]["limit"] == 5
         assert call_args[1]["filters"] is None
 
@@ -124,6 +125,7 @@ class TestSearchService:
         mock_collection.query.near_text.assert_called_once()
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "filtered query"
+        assert call_args[1]["target_vector"] == "content_vector"
         assert call_args[1]["limit"] == 3
         assert call_args[1]["filters"] is not None
 
@@ -137,6 +139,55 @@ class TestSearchService:
         with patch.object(search_service, "_get_client", return_value=mock_client):
             with pytest.raises(VectorizerError, match="Vector search error"):
                 await search_service.vector_search("test query")
+
+    @pytest.mark.asyncio
+    async def test_vector_search_with_memo_vector(
+        self, search_service: SearchService
+    ) -> None:
+        """メモベクトル指定のベクトル検索テスト."""
+        # モックレスポンス
+        mock_obj = MagicMock()
+        mock_obj.metadata.certainty = 0.88
+        mock_obj.properties = {
+            "pageId": 5,
+            "chunkId": 0,
+            "url": "https://memo-search.com",
+            "title": "Memo Search Test",
+            "memo": "Important memo content",
+            "content": "Content for memo search",
+            "summary": "Summary for memo search",
+            "keywords": ["memo", "important"],
+            "createdAt": "2023-05-01T00:00:00Z",
+        }
+
+        mock_response = MagicMock()
+        mock_response.objects = [mock_obj]
+
+        mock_collection = MagicMock()
+        mock_collection.query.near_text.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.collections.get.return_value = mock_collection
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=None)
+
+        with patch.object(search_service, "_get_client", return_value=mock_client):
+            results = await search_service.vector_search(
+                "memo query", limit=3, vector_name="memo_vector"
+            )
+
+        assert len(results) == 1
+        assert results[0].page_id == 5
+        assert results[0].url == "https://memo-search.com"
+        assert results[0].score == 0.88
+
+        # near_textが正しいパラメータで呼ばれたことを確認
+        mock_collection.query.near_text.assert_called_once()
+        call_args = mock_collection.query.near_text.call_args
+        assert call_args[1]["query"] == "memo query"
+        assert call_args[1]["target_vector"] == "memo_vector"
+        assert call_args[1]["limit"] == 3
+        assert call_args[1]["filters"] is None
 
     @pytest.mark.asyncio
     async def test_keyword_search(self, search_service: SearchService) -> None:
@@ -294,3 +345,51 @@ class TestSearchService:
         assert len(results) == 1
         assert results[0].score == 0.8  # 1.0 - 0.2
         assert results[0].memo is None
+
+    @pytest.mark.asyncio
+    async def test_vector_search_with_custom_vector(
+        self, search_service: SearchService
+    ) -> None:
+        """カスタムベクトル指定のベクトル検索テスト."""
+        # モックレスポンス
+        mock_obj = MagicMock()
+        mock_obj.metadata.certainty = 0.92
+        mock_obj.properties = {
+            "pageId": 4,
+            "chunkId": 0,
+            "url": "https://title-search.com",
+            "title": "Title Search Test",
+            "content": "Content for title search",
+            "summary": "Summary for title search",
+            "keywords": ["title", "search"],
+            "createdAt": "2023-04-01T00:00:00Z",
+        }
+
+        mock_response = MagicMock()
+        mock_response.objects = [mock_obj]
+
+        mock_collection = MagicMock()
+        mock_collection.query.near_text.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.collections.get.return_value = mock_collection
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=None)
+
+        with patch.object(search_service, "_get_client", return_value=mock_client):
+            results = await search_service.vector_search(
+                "title query", limit=5, vector_name="title_vector"
+            )
+
+        assert len(results) == 1
+        assert results[0].page_id == 4
+        assert results[0].url == "https://title-search.com"
+        assert results[0].score == 0.92
+
+        # near_textが正しいパラメータで呼ばれたことを確認
+        mock_collection.query.near_text.assert_called_once()
+        call_args = mock_collection.query.near_text.call_args
+        assert call_args[1]["query"] == "title query"
+        assert call_args[1]["target_vector"] == "title_vector"
+        assert call_args[1]["limit"] == 5
+        assert call_args[1]["filters"] is None
