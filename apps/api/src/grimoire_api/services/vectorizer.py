@@ -163,15 +163,15 @@ class VectorizerService:
                             Property(name="isSummary", data_type=DataType.BOOL),
                         ],
                         vector_config=[
-                            Configure.NamedVectors.text2vec_openai(
+                            Configure.Vectors.text2vec_openai(
                                 name="content_vector",
                                 source_properties=["content"]
                             ),
-                            Configure.NamedVectors.text2vec_openai(
+                            Configure.Vectors.text2vec_openai(
                                 name="title_vector",
                                 source_properties=["title", "summary"]
                             ),
-                            Configure.NamedVectors.text2vec_openai(
+                            Configure.Vectors.text2vec_openai(
                                 name="memo_vector",
                                 source_properties=["memo"]
                             ),
