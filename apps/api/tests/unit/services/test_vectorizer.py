@@ -301,3 +301,34 @@ class TestVectorizerService:
 
         # コレクション作成が呼ばれないことを確認
         mock_dependencies["weaviate_client"].collections.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ensure_schema_with_named_vectors(
+        self, vectorizer_service, mock_dependencies
+    ):
+        """Named vectorsを含むスキーマ作成テスト."""
+        # モック設定（既存コレクションなし）
+        mock_dependencies["weaviate_client"].collections.exists.return_value = False
+
+        # _get_clientをモック化
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(
+                return_value=mock_dependencies["weaviate_client"]
+            )
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            # 処理実行
+            await vectorizer_service.ensure_schema()
+
+        # コレクション作成が呼ばれたことを確認
+        mock_dependencies["weaviate_client"].collections.create.assert_called_once()
+
+        # vectorizer_configに3つのnamed vectorsが含まれることを確認
+        call_args = mock_dependencies["weaviate_client"].collections.create.call_args
+        vectorizer_config = call_args[1]["vectorizer_config"]
+        
+        assert isinstance(vectorizer_config, list)
+        assert len(vectorizer_config) == 3
+        
+        # 各named vectorの名前を確認（実際のオブジェクトはモックではないため、存在確認のみ）
+        assert vectorizer_config is not None
