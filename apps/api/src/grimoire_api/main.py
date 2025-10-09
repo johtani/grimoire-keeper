@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import health, pages, process, search
+from .routers import health, pages, process, retry, search
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
@@ -50,6 +50,7 @@ app.include_router(health.router)
 app.include_router(process.router)
 app.include_router(search.router)
 app.include_router(pages.router)
+app.include_router(retry.router)
 
 
 @app.get("/")

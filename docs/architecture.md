@@ -86,6 +86,41 @@ apps/api/src/grimoire_api/
 - **Tables**: `pages`, `process_logs`
 - **Benefits**: Lightweight, serverless, ACID compliance
 
+**Schema Details:**
+```sql
+-- Pages table with processing stage tracking
+CREATE TABLE pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    memo TEXT,
+    summary TEXT,
+    keywords TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    weaviate_id TEXT,
+    last_success_step TEXT DEFAULT NULL  -- New: tracks processing progress
+);
+
+-- Process logs for error tracking and debugging
+CREATE TABLE process_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id INTEGER,
+    url TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_id) REFERENCES pages(id)
+);
+```
+
+**Processing Stage Values:**
+- `NULL`: No processing completed
+- `'downloaded'`: Content extraction completed
+- `'llm_processed'`: Summary/keywords generation completed
+- `'vectorized'`: Vector storage completed
+- `'completed'`: All processing completed
+
 #### File System (JSON)
 - **Purpose**: Raw content storage from Jina AI Reader
 - **Location**: `data/json/{page_id}.json`
@@ -124,10 +159,32 @@ class UrlProcessorService:
     
     async def process_url(self, url: str, memo: str = None):
         # 1. Create processing log
-        # 2. Extract content (Jina AI)
-        # 3. Generate summary/keywords (Gemini)
-        # 4. Vectorize and store (Weaviate)
-        # 5. Update completion status
+        # 2. Extract content (Jina AI) → update last_success_step='downloaded'
+        # 3. Generate summary/keywords (Gemini) → update last_success_step='llm_processed'
+        # 4. Vectorize and store (Weaviate) → update last_success_step='vectorized'
+        # 5. Update completion status → update last_success_step='completed'
+    
+    async def retry_failed_processing(self, page_id: int):
+        """Retry processing from the last successful step"""
+        # 1. Get page and determine last successful step
+        # 2. Resume processing from appropriate step
+        # 3. Update progress tracking
+```
+
+### Retry Processing Service
+```python
+class RetryService:
+    """Handles retry logic for failed URL processing"""
+    
+    def get_retry_start_point(self, page_id: int) -> str:
+        """Determine where to restart processing based on last_success_step"""
+        # Returns: 'download', 'llm', 'vectorize', or 'completed'
+    
+    async def retry_single_page(self, page_id: int):
+        """Retry processing for a single failed page"""
+    
+    async def retry_all_failed(self):
+        """Retry processing for all pages with failed status"""
 ```
 
 ### Search Service
@@ -197,16 +254,31 @@ Optional Slack integration for URL processing and search.
 ### 1. URL Processing Pipeline
 ```
 URL Input → Jina AI Reader → Content Extraction
+    ↓                           ↓
+SQLite Storage ← JSON File Storage + last_success_step='downloaded'
     ↓
-SQLite Storage ← JSON File Storage
+Gemini LLM → Summary/Keywords Generation + last_success_step='llm_processed'
     ↓
-Gemini LLM → Summary/Keywords Generation
-    ↓
-Weaviate → Multi-Vector Storage + Chunking
+Weaviate → Multi-Vector Storage + Chunking + last_success_step='vectorized'
     ↓
 Named Vectors (content/title/memo) + Summary Flag
     ↓
-Completion Status Update
+Completion Status Update + last_success_step='completed'
+```
+
+### 4. Retry Processing Pipeline
+```
+Failed Page Detection → Check last_success_step
+    ↓
+Determine Restart Point:
+  - NULL/empty → Start from content extraction
+  - 'downloaded' → Start from LLM processing
+  - 'llm_processed' → Start from vectorization
+  - 'vectorized' → Start from completion
+    ↓
+Resume Processing → Update Progress Tracking
+    ↓
+Success/Failure Logging
 ```
 
 ### 2. Web Search Pipeline
@@ -272,10 +344,18 @@ Slack Response → Formatted Results
 4. **API Layer**: HTTP status codes and error responses
 
 ### Error Recovery
-- Graceful degradation for external service failures
-- Retry mechanisms for transient errors
-- Comprehensive logging for debugging
-- Status tracking for long-running operations
+- **Graceful degradation** for external service failures
+- **Automatic retry mechanisms** for transient errors
+- **Manual retry functionality** for failed processing
+- **Progress tracking** with `last_success_step` field
+- **Comprehensive logging** for debugging
+- **Status tracking** for long-running operations
+
+### Retry Strategy
+- **Individual retry**: Retry specific failed pages from last successful step
+- **Batch retry**: Retry all failed pages in background
+- **Smart restart**: Resume from appropriate processing step
+- **Progress preservation**: Maintain completed work during retries
 
 ## Monitoring and Observability
 

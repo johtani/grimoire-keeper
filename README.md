@@ -19,6 +19,7 @@
 - 🤖 **AI Summarization / AI要約**: Generate summaries and extract keywords using Google Gemini / Google Geminiを使用した要約とキーワード抽出
 - 🔍 **Vector Search / ベクトル検索**: Semantic search powered by Weaviate and OpenAI embeddings / WeaviateとOpenAI埋め込みによるセマンティック検索
 - 📊 **Flexible Filtering / 柔軟なフィルタリング**: Search by URL, keywords, date ranges / URL、キーワード、日付範囲での検索
+- 🔄 **Smart Retry Processing / スマート再処理**: Intelligent retry from last successful step for failed operations / 失敗した処理を最後の成功ステップから賢く再実行
 - 🏗️ **Modular Architecture / モジュラーアーキテクチャ**: Separate API and bot services / APIとボットサービスの分離
 - 🧪 **Comprehensive Testing / 包括的テスト**: Unit and integration tests included / ユニットテストと統合テストを含む
 
@@ -86,6 +87,16 @@ curl -X GET "http://localhost:8000/api/v1/search?query=machine%20learning&limit=
 
 ```bash
 curl -X GET "http://localhost:8000/api/v1/process-status/{page_id}"
+```
+
+### Retry failed processing / 失敗した処理の再実行
+
+```bash
+# Retry a specific page / 特定のページを再処理
+curl -X POST "http://localhost:8000/api/v1/retry/{page_id}"
+
+# Retry all failed pages / 失敗した全ページを再処理
+curl -X POST "http://localhost:8000/api/v1/retry-failed"
 ```
 
 ## 🏗️ Architecture / アーキテクチャ
@@ -174,6 +185,10 @@ uv run pytest --cov=apps --cov-report=html
 | `POST` | `/api/v1/process-url` | Process a URL and extract content / URLを処理してコンテンツを抽出 |
 | `GET` | `/api/v1/search` | Search processed content / 処理済みコンテンツを検索 |
 | `GET` | `/api/v1/process-status/{id}` | Check processing status / 処理状況を確認 |
+| `POST` | `/api/v1/retry/{id}` | Retry failed processing for specific page / 特定ページの失敗処理を再実行 |
+| `POST` | `/api/v1/retry-failed` | Retry all failed pages / 失敗した全ページを再実行 |
+| `GET` | `/api/v1/pages` | List pages with status filtering / ステータスフィルタ付きページ一覧 |
+| `GET` | `/api/v1/pages/{id}` | Get page details with error info / エラー情報付きページ詳細 |
 | `GET` | `/api/v1/health` | Health check / ヘルスチェック |
 
 ### Request/Response Examples / リクエスト・レスポンス例
@@ -278,7 +293,9 @@ For detailed documentation, see the [docs/](docs/) directory:
 
 - [Backend Architecture / バックエンドアーキテクチャ](docs/architecture.md)
 - [API Reference / APIリファレンス](docs/api-reference.md)
+- [Retry Processing Guide / 再処理ガイド](docs/retry-processing.md)
 - [Development Guide / 開発ガイド](docs/development.md)
+- [Web UI Guide / Web UIガイド](docs/web-ui-guide.md)
 - [Slack Bot Usage / Slack Bot使用方法](docs/slack-bot-usage.md)
 
 ## 🐛 Issues & Support / 問題とサポート
