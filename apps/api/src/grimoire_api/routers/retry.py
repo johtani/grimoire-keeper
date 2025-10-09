@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
+from ..services.chunking_service import ChunkingService
 from ..services.jina_client import JinaClient
 from ..services.llm_service import LLMService
 from ..services.retry_service import RetryService
@@ -25,10 +26,11 @@ def get_retry_service() -> RetryService:
     page_repo = PageRepository()
     log_repo = LogRepository(page_repo.db)
     file_repo = FileRepository()
+    chunking_service = ChunkingService()
 
     jina_client = JinaClient()
     llm_service = LLMService(file_repo)
-    vectorizer = VectorizerService(page_repo, log_repo, file_repo)
+    vectorizer = VectorizerService(page_repo, file_repo, chunking_service)
 
     return RetryService(
         jina_client=jina_client,
