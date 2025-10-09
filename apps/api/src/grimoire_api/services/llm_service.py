@@ -64,10 +64,11 @@ class LLMService:
 
             # レスポンス内容取得（Pydantic警告回避）
             try:
-                # 直接属性アクセスでPydantic警告を回避
-                content = str(response.choices[0].message.content)
+                # 辞書形式に変換してPydantic警告を回避
+                response_dict = response.model_dump()
+                content = str(response_dict["choices"][0]["message"]["content"])
                 logger.info(f"Extracted content: {content[:100]}...")
-            except (AttributeError, IndexError) as e:
+            except (KeyError, IndexError, TypeError) as e:
                 logger.error(f"Failed to extract content from LLM response: {str(e)}")
                 raise LLMServiceError(
                     f"Failed to extract content from LLM response: {str(e)}"
