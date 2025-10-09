@@ -49,6 +49,11 @@ class PageRepository:
                     created_at=datetime.fromisoformat(result["created_at"]),
                     updated_at=datetime.fromisoformat(result["updated_at"]),
                     weaviate_id=result["weaviate_id"],
+                    last_success_step=(
+                        result["last_success_step"]
+                        if "last_success_step" in result.keys()
+                        else None
+                    ),
                 )
             return None
         except Exception as e:
@@ -99,6 +104,11 @@ class PageRepository:
                     created_at=datetime.fromisoformat(result["created_at"]),
                     updated_at=datetime.fromisoformat(result["updated_at"]),
                     weaviate_id=result["weaviate_id"],
+                    last_success_step=(
+                        result["last_success_step"]
+                        if "last_success_step" in result.keys()
+                        else None
+                    ),
                 )
             return None
         except Exception as e:
@@ -158,6 +168,21 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update weaviate_id: {str(e)}")
 
+    def update_success_step(self, page_id: int, step: str) -> None:
+        """成功ステップ更新.
+
+        Args:
+            page_id: ページID
+            step: 成功ステップ
+        """
+        try:
+            query = (
+                "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
+            )
+            self.db.execute(query, (step, datetime.now(), page_id))
+        except Exception as e:
+            raise DatabaseError(f"Failed to update success step: {str(e)}")
+
     def save_json_file(self, page_id: int, data: dict) -> None:
         """JSONファイル保存.
 
@@ -195,7 +220,11 @@ class PageRepository:
                     created_at=datetime.fromisoformat(row["created_at"]),
                     updated_at=datetime.fromisoformat(row["updated_at"]),
                     weaviate_id=row["weaviate_id"],
-                    last_success_step=row["last_success_step"] if "last_success_step" in row.keys() else None,
+                    last_success_step=(
+                        row["last_success_step"]
+                        if "last_success_step" in row.keys()
+                        else None
+                    ),
                 )
                 for row in results
             ]
@@ -318,7 +347,11 @@ class PageRepository:
                     created_at=datetime.fromisoformat(row["created_at"]),
                     updated_at=datetime.fromisoformat(row["updated_at"]),
                     weaviate_id=row["weaviate_id"],
-                    last_success_step=row["last_success_step"] if "last_success_step" in row.keys() else None,
+                    last_success_step=(
+                        row["last_success_step"]
+                        if "last_success_step" in row.keys()
+                        else None
+                    ),
                 )
                 for row in results
             ]
