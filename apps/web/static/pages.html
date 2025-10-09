@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grimoire Keeper - Pages</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">📄 Grimoire Keeper</a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="index.html">Search</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Pages Management</h5>
+                        <button class="btn btn-outline-primary btn-sm" id="refreshBtn">
+                            <span class="spinner-border spinner-border-sm d-none" id="refreshSpinner"></span>
+                            Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="statusFilter" class="form-label">Status Filter</label>
+                                <select class="form-select" id="statusFilter">
+                                    <option value="all">All Pages</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="processing">Processing</option>
+                                    <option value="failed">Failed</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="sortBy" class="form-label">Sort By</label>
+                                <select class="form-select" id="sortBy">
+                                    <option value="created_at">Created Date</option>
+                                    <option value="updated_at">Updated Date</option>
+                                    <option value="title">Title</option>
+                                    <option value="url">URL</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="sortOrder" class="form-label">Sort Order</label>
+                                <select class="form-select" id="sortOrder">
+                                    <option value="desc">Descending</option>
+                                    <option value="asc">Ascending</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="pagesTable">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <nav id="pagination" class="mt-3"></nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Detail Modal -->
+    <div class="modal fade" id="pageDetailModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Page Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="pageDetailContent">
+                    <!-- Content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/pages.js"></script>
+</body>
+</html>
