@@ -129,7 +129,7 @@ curl -X GET "http://localhost:8000/api/v1/process-status/123"
 
 ### Search
 
-#### `GET /api/v1/search`
+#### `POST /api/v1/search`
 
 Search processed content using vector similarity or keyword matching.
 
