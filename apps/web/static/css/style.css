@@ -70,9 +70,17 @@ body {
     color: var(--secondary-color);
 }
 
-.search-result-summary {
+.search-result-summary,
+.search-result-content {
     margin-top: 0.5rem;
     color: var(--dark-color);
+}
+
+.search-result-content {
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border-left: 3px solid var(--primary-color);
+    border-radius: 0.25rem;
 }
 
 .search-result-keywords {
