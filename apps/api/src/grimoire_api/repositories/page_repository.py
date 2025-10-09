@@ -247,6 +247,17 @@ class PageRepository:
         # エラー情報を取得
         error_message = self._get_latest_error(page_id)
 
+        # ステータス判定
+        if page.summary and page.weaviate_id:
+            status = "completed"
+        else:
+            # エラーログがあるかチェック
+            error_check = self.db.fetch_one(
+                "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",
+                (page_id,),
+            )
+            status = "failed" if error_check else "processing"
+
         return {
             "id": page.id,
             "url": page.url,
@@ -257,6 +268,7 @@ class PageRepository:
             "created_at": page.created_at,
             "updated_at": page.updated_at,
             "weaviate_id": page.weaviate_id,
+            "status": status,
             "error_message": error_message,
         }
 
