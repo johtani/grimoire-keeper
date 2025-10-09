@@ -1,10 +1,8 @@
 """Pages management router."""
 
-import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..models.response import PageResponse
 from ..repositories.page_repository import PageRepository
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
@@ -38,35 +36,18 @@ async def get_pages(
         ページ一覧とメタデータ
     """
     try:
-        # ステータスフィルター条件
-        status_filter = None if status == "all" else status
-
         # ページ取得
-        pages = page_repo.get_pages(
+        pages_data, total = await page_repo.list_pages(
             limit=limit,
             offset=offset,
-            sort_by=sort,
+            sort=sort,
             order=order,
-            status_filter=status_filter
         )
 
-        # 総件数取得
-        total = page_repo.count_pages(status_filter=status_filter)
-
-        pages_data = []
-        for page in pages:
-            keywords = json.loads(page.keywords) if page.keywords else []
-            pages_data.append({
-                "id": page.id,
-                "url": page.url,
-                "title": page.title,
-                "memo": page.memo,
-                "summary": page.summary,
-                "keywords": keywords,
-                "status": page.status,
-                "created_at": page.created_at.isoformat() if page.created_at else None,
-                "updated_at": page.updated_at.isoformat() if page.updated_at else None,
-            })
+        # ステータスフィルタリング
+        if status != "all":
+            pages_data = [p for p in pages_data if p.get("status") == status]
+            total = len(pages_data)
 
         return {
             "pages": pages_data,
@@ -80,11 +61,11 @@ async def get_pages(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pages/{page_id}", response_model=PageResponse)
+@router.get("/pages/{page_id}")
 async def get_page_detail(
     page_id: int,
     page_repo: PageRepository = Depends(get_page_repository),
-) -> PageResponse:
+) -> dict:
     """ページ詳細取得.
 
     Args:
@@ -98,24 +79,11 @@ async def get_page_detail(
         HTTPException: ページが見つからない場合
     """
     try:
-        page = page_repo.get_page(page_id)
-        if not page:
+        page_data = await page_repo.get_by_id(page_id)
+        if not page_data:
             raise HTTPException(status_code=404, detail="Page not found")
 
-        keywords = json.loads(page.keywords) if page.keywords else []
-
-        return PageResponse(
-            id=page.id,
-            url=page.url,
-            title=page.title,
-            memo=page.memo,
-            summary=page.summary,
-            keywords=json.dumps(keywords) if keywords else None,
-            status=page.status,
-            created_at=page.created_at.isoformat() if page.created_at else None,
-            updated_at=page.updated_at.isoformat() if page.updated_at else None,
-            weaviate_id=page.weaviate_id,
-        )
+        return page_data
 
     except HTTPException:
         raise

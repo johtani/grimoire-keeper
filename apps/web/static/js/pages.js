@@ -220,6 +220,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             ` : ''}
             
+            ${page.error_message ? `
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>Error Details</h6>
+                        <div class="alert alert-danger">
+                            ${escapeHtml(page.error_message)}
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
             ${page.summary ? `
                 <div class="row mt-3">
                     <div class="col-12">
