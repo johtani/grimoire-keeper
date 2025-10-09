@@ -41,12 +41,13 @@ class PageResponse(BaseModel):
 
     id: int
     url: str
-    title: str
+    title: str | None
     memo: str | None
-    summary: str
-    keywords: list[str]
-    created_at: datetime
-    updated_at: datetime | None
+    summary: str | None
+    keywords: str | None
+    status: str
+    created_at: str | None
+    updated_at: str | None
     weaviate_id: str | None
 
 

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import health, process, search
 from .routers import pages
@@ -34,6 +35,15 @@ app = FastAPI(
     description="URL content summarization and search system",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# CORS設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ルーター登録

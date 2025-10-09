@@ -2,7 +2,8 @@
 
 class ApiClient {
     constructor() {
-        this.baseUrl = 'http://localhost:8000';
+        // nginxプロキシ経由でAPIにアクセス
+        this.baseUrl = '';
     }
 
     async request(endpoint, options = {}) {

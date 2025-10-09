@@ -53,17 +53,20 @@ async def get_pages(
         
         return {
             "pages": [
+                import json
+                keywords = json.loads(page.keywords) if page.keywords else []
                 {
                     "id": page.id,
                     "url": page.url,
                     "title": page.title,
                     "memo": page.memo,
                     "summary": page.summary,
-                    "keywords": page.keywords,
+                    "keywords": keywords,
                     "status": page.status,
                     "created_at": page.created_at.isoformat() if page.created_at else None,
                     "updated_at": page.updated_at.isoformat() if page.updated_at else None,
                 }
+
                 for page in pages
             ],
             "total": total,
@@ -98,13 +101,16 @@ async def get_page_detail(
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
 
+        import json
+        keywords = json.loads(page.keywords) if page.keywords else []
+        
         return PageResponse(
             id=page.id,
             url=page.url,
             title=page.title,
             memo=page.memo,
             summary=page.summary,
-            keywords=page.keywords,
+            keywords=json.dumps(keywords) if keywords else None,
             status=page.status,
             created_at=page.created_at.isoformat() if page.created_at else None,
             updated_at=page.updated_at.isoformat() if page.updated_at else None,
