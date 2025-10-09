@@ -6,26 +6,55 @@ Grimoire Keeper follows a modular, service-oriented architecture designed for sc
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Client    │───▶│  FastAPI    │───▶│  Weaviate   │
-│             │    │     API     │    │ (Vector DB) │
+│  Web UI     │───▶│  FastAPI    │───▶│  Weaviate   │
+│ (Static)    │    │     API     │    │ (Vector DB) │
 └─────────────┘    └─────────────┘    └─────────────┘
-                           │
-                           ▼
-                   ┌─────────────┐
-                   │   SQLite    │
-                   │ (Metadata)  │
-                   └─────────────┘
-                           │
-                           ▼
-                   ┌─────────────┐
-                   │ File System │
-                   │ (JSON Data) │
-                   └─────────────┘
+       │                   │
+       │                   ▼
+       │           ┌─────────────┐
+       │           │   SQLite    │
+       │           │ (Metadata)  │
+       │           └─────────────┘
+       │                   │
+       │                   ▼
+       │           ┌─────────────┐
+       │           │ File System │
+       │           │ (JSON Data) │
+       │           └─────────────┘
+       │
+       ▼
+┌─────────────┐
+│ Slack Bot   │
+│ (Optional)  │
+└─────────────┘
 ```
 
 ## Core Components
 
-### 1. FastAPI Backend (`apps/api/`)
+### 1. Web UI (`apps/web/`)
+
+Static HTML/CSS/JavaScript frontend providing search and management interfaces.
+
+**Key Features:**
+- Vector search with configurable target vectors
+- Advanced filtering (date range, URL, keywords)
+- Page management and status monitoring
+- Real-time API integration
+
+**Components:**
+```
+apps/web/static/
+├── index.html           # Search interface
+├── pages.html           # Page management
+├── css/
+│   └── style.css        # Styling
+└── js/
+    ├── search.js        # Search functionality
+    ├── pages.js         # Page management
+    └── api.js           # API client
+```
+
+### 2. FastAPI Backend (`apps/api/`)
 
 The main application server providing RESTful APIs for URL processing and search functionality.
 
@@ -45,6 +74,9 @@ apps/api/src/grimoire_api/
 ├── repositories/        # Data access layer
 ├── utils/               # Utilities
 └── routers/             # API endpoints
+    ├── search.py        # Search endpoints
+    ├── pages.py         # Page management
+    └── process.py       # URL processing
 ```
 
 ### 2. Data Storage Layer
@@ -61,7 +93,9 @@ apps/api/src/grimoire_api/
 
 #### Weaviate Vector Database
 - **Purpose**: Semantic search and vector storage
-- **Schema**: `GrimoireChunk` collection
+- **Schema**: `GrimoireChunk` collection with named vectors
+- **Vectors**: `content_vector`, `title_vector`, `memo_vector`
+- **Features**: Multi-vector search, summary filtering (`isSummary` flag)
 - **Benefits**: Scalable vector search, metadata filtering
 
 ### 3. External Services Integration
@@ -101,8 +135,9 @@ class UrlProcessorService:
 class SearchService:
     """Handles vector and keyword search operations"""
     
-    async def vector_search(self, query: str, filters: dict = None):
-        # Semantic search with optional filtering
+    async def vector_search(self, query: str, vector_name: str = "content_vector", filters: dict = None):
+        # Multi-vector semantic search with optional filtering
+        # Supports content_vector, title_vector, memo_vector
     
     async def keyword_search(self, keywords: list[str]):
         # Exact keyword matching
@@ -120,6 +155,43 @@ class FileRepository:
     """File system operations for JSON storage"""
 ```
 
+### 3. Slack Bot (`apps/bot/`)
+
+Optional Slack integration for URL processing and search.
+
+**Key Features:**
+- URL processing via slash commands
+- Search using `title_vector` for relevant results
+- Real-time status updates
+
+## User Interfaces
+
+### 1. Web Search Interface
+```
+┌─────────────────────────────────────┐
+│ 🔍 Grimoire Search                  │
+├─────────────────────────────────────┤
+│ Query: [___________________] [検索]  │
+│ Vector: [content_vector ▼]          │
+│ Filters:                            │
+│   Date: [2024-01-01] ～ [2024-12-31]│
+│   URL: [________________]           │
+│   Keywords: [___________]           │
+├─────────────────────────────────────┤
+│ Results with relevance scores       │
+└─────────────────────────────────────┘
+```
+
+### 2. Page Management Interface
+```
+┌─────────────────────────────────────┐
+│ 📄 Pages Management                 │
+├─────────────────────────────────────┤
+│ Status filtering and real-time      │
+│ processing status monitoring        │
+└─────────────────────────────────────┘
+```
+
 ## Data Flow
 
 ### 1. URL Processing Pipeline
@@ -130,18 +202,31 @@ SQLite Storage ← JSON File Storage
     ↓
 Gemini LLM → Summary/Keywords Generation
     ↓
-Weaviate → Vector Storage + Chunking
+Weaviate → Multi-Vector Storage + Chunking
+    ↓
+Named Vectors (content/title/memo) + Summary Flag
     ↓
 Completion Status Update
 ```
 
-### 2. Search Pipeline
+### 2. Web Search Pipeline
 ```
-Search Query → Weaviate Vector Search
+Web UI → Search Form (Vector Selection + Filters)
     ↓
-Result Ranking → Metadata Enrichment
+FastAPI → Multi-Vector Search (content/title/memo)
     ↓
-Response Formatting → Client Response
+Weaviate → Filtered Results (isSummary for title/memo)
+    ↓
+Web UI → Formatted Results Display
+```
+
+### 3. Slack Bot Pipeline
+```
+Slack Command → Bot Handler
+    ↓
+FastAPI → Title Vector Search
+    ↓
+Slack Response → Formatted Results
 ```
 
 ## Scalability Considerations
@@ -212,6 +297,25 @@ Response Formatting → Client Response
 - Error rates and types
 - Resource utilization
 
+## Deployment Architecture
+
+### Container Services
+```yaml
+services:
+  web:           # Static file server (nginx)
+    ports: 8001:80
+  api:           # FastAPI backend
+    ports: 8000:8000
+  bot:           # Slack bot (optional)
+  weaviate:      # Vector database
+    ports: 8089:8080
+```
+
+### Service Communication
+- **Web UI**: Direct API calls to `http://api:8000`
+- **Slack Bot**: API calls to `http://api:8000`
+- **API**: Direct Weaviate connection
+
 ## Technology Choices Rationale
 
 ### Python 3.13
@@ -232,9 +336,16 @@ Response Formatting → Client Response
 - **Portability**: Single file database
 
 ### Weaviate
-- **Vector Search**: Purpose-built for semantic search
+- **Multi-Vector Search**: Named vectors for different content types
+- **Advanced Filtering**: Summary flags and metadata filtering
 - **Scalability**: Horizontal scaling capabilities
 - **Integration**: Native OpenAI embeddings support
 - **Flexibility**: Rich query capabilities and filtering
+
+### Static Web UI
+- **Simplicity**: No server-side rendering complexity
+- **Performance**: Fast loading and minimal resource usage
+- **Deployment**: Easy nginx-based static file serving
+- **Maintenance**: Minimal backend dependencies for UI
 
 This architecture provides a solid foundation for the current requirements while maintaining flexibility for future enhancements and scaling needs.

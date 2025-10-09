@@ -9,6 +9,10 @@ This directory contains detailed documentation for the Grimoire Keeper project.
 - [**Architecture Overview**](architecture.md) - System architecture and component design / システムアーキテクチャとコンポーネント設計
 - [**API Reference**](api-reference.md) - Complete API documentation / 完全なAPIドキュメント
 
+### User Guides / ユーザーガイド
+- [**Web UI Guide**](web-ui-guide.md) - Web interface usage guide / Web インターフェース使用ガイド
+- [**Slack Bot Usage**](slack-bot-usage.md) - Slack bot commands and features / Slack ボットコマンドと機能
+
 ### Development / 開発
 - [**Development Guide**](development.md) - Setup and development workflow / セットアップと開発ワークフロー
 
@@ -19,6 +23,10 @@ This directory contains detailed documentation for the Grimoire Keeper project.
 - **Development Setup / 開発環境構築**: [Development Guide](development.md)
 
 ## 📖 Reading Order / 読み進め方
+
+For new users / 新しいユーザー向け:
+1. Start with [Web UI Guide](web-ui-guide.md) / Web UIガイドから始める
+2. Try [Slack Bot Usage](slack-bot-usage.md) for integration / 統合にはSlack Bot使用方法を試す
 
 For new developers / 新しい開発者向け:
 1. Start with [Architecture Overview](architecture.md) / アーキテクチャ概要から始める
