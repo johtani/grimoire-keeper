@@ -65,6 +65,7 @@ class SearchService:
                 summary_filter = None
                 if vector_name != "content_vector":
                     from weaviate.classes.query import Filter
+
                     summary_filter = Filter.by_property("isSummary").equal(True)
 
                 # フィルター結合

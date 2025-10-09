@@ -164,16 +164,14 @@ class VectorizerService:
                         ],
                         vector_config=[
                             Configure.Vectors.text2vec_openai(
-                                name="content_vector",
-                                source_properties=["content"]
+                                name="content_vector", source_properties=["content"]
                             ),
                             Configure.Vectors.text2vec_openai(
                                 name="title_vector",
-                                source_properties=["title", "summary"]
+                                source_properties=["title", "summary"],
                             ),
                             Configure.Vectors.text2vec_openai(
-                                name="memo_vector",
-                                source_properties=["memo"]
+                                name="memo_vector", source_properties=["memo"]
                             ),
                         ],
                     )

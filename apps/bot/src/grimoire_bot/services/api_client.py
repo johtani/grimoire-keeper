@@ -31,7 +31,7 @@ class ApiClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
                 f"{self.base_url}/api/v1/search",
-                json={"query": query, "limit": limit, "vector_name": "title_vector"}
+                json={"query": query, "limit": limit, "vector_name": "title_vector"},
             )
             response.raise_for_status()
             return response.json()

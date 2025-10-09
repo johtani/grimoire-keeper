@@ -214,6 +214,9 @@ class PageRepository:
         if not page:
             return None
 
+        # エラー情報を取得
+        error_message = self._get_latest_error(page_id)
+
         return {
             "id": page.id,
             "url": page.url,
@@ -224,7 +227,29 @@ class PageRepository:
             "created_at": page.created_at,
             "updated_at": page.updated_at,
             "weaviate_id": page.weaviate_id,
+            "error_message": error_message,
         }
+
+    def _get_latest_error(self, page_id: int) -> str | None:
+        """最新のエラーメッセージを取得.
+
+        Args:
+            page_id: ページID
+
+        Returns:
+            エラーメッセージ
+        """
+        try:
+            query = """
+            SELECT error_message FROM process_logs
+            WHERE page_id = ? AND status = 'failed' AND error_message IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+            result = self.db.fetch_one(query, (page_id,))
+            return result["error_message"] if result else None
+        except Exception:
+            return None
 
     def get_pages(
         self,
@@ -251,15 +276,25 @@ class PageRepository:
             params = []
 
             if status_filter:
-                # ステータス判定ロジック（簡易版）
                 if status_filter == "completed":
                     where_clause = (
                         "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
                     )
                 elif status_filter == "processing":
-                    where_clause = "WHERE summary IS NULL OR weaviate_id IS NULL"
+                    where_clause = """
+                    WHERE (summary IS NULL OR weaviate_id IS NULL)
+                    AND id NOT IN (
+                        SELECT DISTINCT page_id FROM process_logs
+                        WHERE status = 'failed' AND page_id IS NOT NULL
+                    )
+                    """
                 elif status_filter == "failed":
-                    where_clause = "WHERE summary IS NULL AND weaviate_id IS NULL"
+                    where_clause = """
+                    WHERE id IN (
+                        SELECT DISTINCT page_id FROM process_logs
+                        WHERE status = 'failed' AND page_id IS NOT NULL
+                    )
+                    """
 
             order_clause = f"ORDER BY {sort_by} {order.upper()}"
             query = f"""
@@ -306,9 +341,20 @@ class PageRepository:
                         "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
                     )
                 elif status_filter == "processing":
-                    where_clause = "WHERE summary IS NULL OR weaviate_id IS NULL"
+                    where_clause = """
+                    WHERE (summary IS NULL OR weaviate_id IS NULL)
+                    AND id NOT IN (
+                        SELECT DISTINCT page_id FROM process_logs
+                        WHERE status = 'failed' AND page_id IS NOT NULL
+                    )
+                    """
                 elif status_filter == "failed":
-                    where_clause = "WHERE summary IS NULL AND weaviate_id IS NULL"
+                    where_clause = """
+                    WHERE id IN (
+                        SELECT DISTINCT page_id FROM process_logs
+                        WHERE status = 'failed' AND page_id IS NOT NULL
+                    )
+                    """
 
             query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
             result = self.db.fetch_one(query)
@@ -351,6 +397,17 @@ class PageRepository:
 
             pages = []
             for row in results:
+                # ステータス判定
+                if row["summary"] and row["weaviate_id"]:
+                    status = "completed"
+                else:
+                    # エラーログがあるかチェック
+                    error_check = self.db.fetch_one(
+                        "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",  # noqa: E501
+                        (row["id"],),
+                    )
+                    status = "failed" if error_check else "processing"
+
                 pages.append(
                     {
                         "id": row["id"],
@@ -362,11 +419,7 @@ class PageRepository:
                         if row["keywords"]
                         else [],
                         "created_at": datetime.fromisoformat(row["created_at"]),
-                        "status": (
-                            "completed"
-                            if row["summary"] and row["weaviate_id"]
-                            else "processing"
-                        ),
+                        "status": status,
                     }
                 )
 
