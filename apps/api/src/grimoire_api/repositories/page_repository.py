@@ -249,16 +249,18 @@ class PageRepository:
         try:
             where_clause = ""
             params = []
-            
+
             if status_filter:
                 # ステータス判定ロジック（簡易版）
                 if status_filter == "completed":
-                    where_clause = "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+                    where_clause = (
+                        "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+                    )
                 elif status_filter == "processing":
                     where_clause = "WHERE summary IS NULL OR weaviate_id IS NULL"
                 elif status_filter == "failed":
                     where_clause = "WHERE summary IS NULL AND weaviate_id IS NULL"
-            
+
             order_clause = f"ORDER BY {sort_by} {order.upper()}"
             query = f"""
             SELECT * FROM pages
@@ -267,7 +269,7 @@ class PageRepository:
             LIMIT ? OFFSET ?
             """
             params.extend([limit, offset])
-            
+
             results = self.db.fetch_all(query, tuple(params))
             return [
                 Page(
@@ -297,15 +299,17 @@ class PageRepository:
         """
         try:
             where_clause = ""
-            
+
             if status_filter:
                 if status_filter == "completed":
-                    where_clause = "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+                    where_clause = (
+                        "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+                    )
                 elif status_filter == "processing":
                     where_clause = "WHERE summary IS NULL OR weaviate_id IS NULL"
                 elif status_filter == "failed":
                     where_clause = "WHERE summary IS NULL AND weaviate_id IS NULL"
-            
+
             query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
             result = self.db.fetch_one(query)
             return result["total"] if result else 0
@@ -358,7 +362,11 @@ class PageRepository:
                         if row["keywords"]
                         else [],
                         "created_at": datetime.fromisoformat(row["created_at"]),
-                        "status": "completed" if row["summary"] and row["weaviate_id"] else "processing",
+                        "status": (
+                            "completed"
+                            if row["summary"] and row["weaviate_id"]
+                            else "processing"
+                        ),
                     }
                 )
 

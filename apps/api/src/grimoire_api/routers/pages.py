@@ -1,5 +1,7 @@
 """Pages management router."""
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..models.response import PageResponse
@@ -38,7 +40,7 @@ async def get_pages(
     try:
         # ステータスフィルター条件
         status_filter = None if status == "all" else status
-        
+
         # ページ取得
         pages = page_repo.get_pages(
             limit=limit,
@@ -47,28 +49,27 @@ async def get_pages(
             order=order,
             status_filter=status_filter
         )
-        
+
         # 総件数取得
         total = page_repo.count_pages(status_filter=status_filter)
-        
-        return {
-            "pages": [
-                import json
-                keywords = json.loads(page.keywords) if page.keywords else []
-                {
-                    "id": page.id,
-                    "url": page.url,
-                    "title": page.title,
-                    "memo": page.memo,
-                    "summary": page.summary,
-                    "keywords": keywords,
-                    "status": page.status,
-                    "created_at": page.created_at.isoformat() if page.created_at else None,
-                    "updated_at": page.updated_at.isoformat() if page.updated_at else None,
-                }
 
-                for page in pages
-            ],
+        pages_data = []
+        for page in pages:
+            keywords = json.loads(page.keywords) if page.keywords else []
+            pages_data.append({
+                "id": page.id,
+                "url": page.url,
+                "title": page.title,
+                "memo": page.memo,
+                "summary": page.summary,
+                "keywords": keywords,
+                "status": page.status,
+                "created_at": page.created_at.isoformat() if page.created_at else None,
+                "updated_at": page.updated_at.isoformat() if page.updated_at else None,
+            })
+
+        return {
+            "pages": pages_data,
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -101,9 +102,8 @@ async def get_page_detail(
         if not page:
             raise HTTPException(status_code=404, detail="Page not found")
 
-        import json
         keywords = json.loads(page.keywords) if page.keywords else []
-        
+
         return PageResponse(
             id=page.id,
             url=page.url,

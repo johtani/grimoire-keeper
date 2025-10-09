@@ -21,7 +21,7 @@ class Page:
     created_at: datetime
     updated_at: datetime
     weaviate_id: str | None
-    
+
     @property
     def status(self) -> str:
         """処理ステータスを取得."""

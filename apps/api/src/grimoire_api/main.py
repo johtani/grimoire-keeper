@@ -6,8 +6,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import health, process, search
-from .routers import pages
+from .routers import health, pages, process, search
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
