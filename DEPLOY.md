@@ -98,6 +98,13 @@ nano .env  # 上記で取得したAPIキー・トークンを設定
 # 自動デプロイ
 chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
+
+# デプロイスクリプトは以下を自動実行:
+# - コンテナビルド・起動
+# - Weaviate接続確認
+# - SQLiteテーブル作成
+# - Weaviateスキーマ作成
+# - 全サービス動作確認
 ```
 
 ### 5. 動作確認
