@@ -90,6 +90,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const scoreColor = result.score >= 0.8 ? 'text-success' : 
                           result.score >= 0.6 ? 'text-warning' : 'text-secondary';
 
+        // content_vectorの場合はコンテンツも表示
+        const vectorName = document.getElementById('vectorName').value;
+        const contentHtml = (vectorName === 'content_vector' && result.content) ? `
+            <div class="search-result-content mt-2">
+                <strong>Content:</strong>
+                <div class="text-truncate-2">${escapeHtml(result.content)}</div>
+            </div>
+        ` : '';
+
         return `
             <div class="search-result">
                 <a href="${escapeHtml(result.url)}" target="_blank" class="search-result-title">
@@ -97,13 +106,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 </a>
                 <div class="search-result-url">${escapeHtml(result.url)}</div>
                 <div class="search-result-score ${scoreColor}">
-                    Score: ${(result.score * 100).toFixed(1)}%
+                    Score: ${result.score.toFixed(3)}
                 </div>
                 ${result.summary ? `
                     <div class="search-result-summary text-truncate-2">
-                        ${escapeHtml(result.summary)}
+                        <strong>Summary:</strong> ${escapeHtml(result.summary)}
                     </div>
                 ` : ''}
+                ${contentHtml}
                 ${keywordBadges ? `
                     <div class="search-result-keywords">
                         ${keywordBadges}
