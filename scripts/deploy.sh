@@ -82,6 +82,7 @@ else
 fi
 
 echo "🎉 デプロイ完了！"
+echo "Web UI: http://localhost:8001"
 echo "API: http://localhost:8000"
 echo "Weaviate: http://localhost:8089"
 echo "Slack Bot: コンテナ内で実行中"

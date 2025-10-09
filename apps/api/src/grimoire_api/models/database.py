@@ -21,6 +21,16 @@ class Page:
     created_at: datetime
     updated_at: datetime
     weaviate_id: str | None
+    
+    @property
+    def status(self) -> str:
+        """処理ステータスを取得."""
+        if self.summary and self.weaviate_id:
+            return "completed"
+        elif self.summary or self.weaviate_id:
+            return "processing"
+        else:
+            return "failed"
 
 
 @dataclass

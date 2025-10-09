@@ -226,6 +226,92 @@ class PageRepository:
             "weaviate_id": page.weaviate_id,
         }
 
+    def get_pages(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        sort_by: str = "created_at",
+        order: str = "desc",
+        status_filter: str | None = None,
+    ) -> list[Page]:
+        """ページ一覧取得.
+
+        Args:
+            limit: 取得件数
+            offset: オフセット
+            sort_by: ソートフィールド
+            order: ソート順序
+            status_filter: ステータスフィルター
+
+        Returns:
+            ページリスト
+        """
+        try:
+            where_clause = ""
+            params = []
+            
+            if status_filter:
+                # ステータス判定ロジック（簡易版）
+                if status_filter == "completed":
+                    where_clause = "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+                elif status_filter == "processing":
+                    where_clause = "WHERE summary IS NULL OR weaviate_id IS NULL"
+                elif status_filter == "failed":
+                    where_clause = "WHERE summary IS NULL AND weaviate_id IS NULL"
+            
+            order_clause = f"ORDER BY {sort_by} {order.upper()}"
+            query = f"""
+            SELECT * FROM pages
+            {where_clause}
+            {order_clause}
+            LIMIT ? OFFSET ?
+            """
+            params.extend([limit, offset])
+            
+            results = self.db.fetch_all(query, tuple(params))
+            return [
+                Page(
+                    id=row["id"],
+                    url=row["url"],
+                    title=row["title"],
+                    memo=row["memo"],
+                    summary=row["summary"],
+                    keywords=row["keywords"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    updated_at=datetime.fromisoformat(row["updated_at"]),
+                    weaviate_id=row["weaviate_id"],
+                )
+                for row in results
+            ]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get pages: {str(e)}")
+
+    def count_pages(self, status_filter: str | None = None) -> int:
+        """ページ総数取得.
+
+        Args:
+            status_filter: ステータスフィルター
+
+        Returns:
+            ページ総数
+        """
+        try:
+            where_clause = ""
+            
+            if status_filter:
+                if status_filter == "completed":
+                    where_clause = "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+                elif status_filter == "processing":
+                    where_clause = "WHERE summary IS NULL OR weaviate_id IS NULL"
+                elif status_filter == "failed":
+                    where_clause = "WHERE summary IS NULL AND weaviate_id IS NULL"
+            
+            query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
+            result = self.db.fetch_one(query)
+            return result["total"] if result else 0
+        except Exception as e:
+            raise DatabaseError(f"Failed to count pages: {str(e)}")
+
     async def list_pages(
         self,
         limit: int = 20,
@@ -272,6 +358,7 @@ class PageRepository:
                         if row["keywords"]
                         else [],
                         "created_at": datetime.fromisoformat(row["created_at"]),
+                        "status": "completed" if row["summary"] and row["weaviate_id"] else "processing",
                     }
                 )
 
