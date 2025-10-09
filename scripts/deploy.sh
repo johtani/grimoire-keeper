@@ -57,7 +57,7 @@ fi
 
 # データベース・スキーマ初期化
 echo "🔧 データベース・スキーマ初期化中..."
-docker compose -f docker-compose.prod.yml exec -T api python scripts/init_database.py init
+docker compose -f docker-compose.prod.yml exec -T api uv run python scripts/init_database.py init
 if [ $? -eq 0 ]; then
     echo "✅ データベース・スキーマ初期化完了"
 else
