@@ -17,6 +17,12 @@ document.addEventListener('DOMContentLoaded', function() {
     sortBy.addEventListener('change', loadPages);
     sortOrder.addEventListener('change', loadPages);
     refreshBtn.addEventListener('click', loadPages);
+    
+    // Retry all failed button
+    const retryAllBtn = document.getElementById('retryAllBtn');
+    if (retryAllBtn) {
+        retryAllBtn.addEventListener('click', retryAllFailed);
+    }
 
     // Initial load
     loadPages();
@@ -110,9 +116,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 </td>
                 <td>${formatDate(page.created_at)}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="showPageDetail(${page.id})">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="showPageDetail(${page.id})">
                         View
                     </button>
+                    ${page.status === 'failed' ? `
+                        <button class="btn btn-sm btn-outline-warning" onclick="retryPage(${page.id})">
+                            Retry
+                        </button>
+                    ` : ''}
                 </td>
             </tr>
         `;
@@ -185,6 +196,34 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error loading page details: ' + error.message);
         }
     };
+    
+    window.retryPage = async function(pageId) {
+        if (!confirm('Are you sure you want to retry processing this page?')) {
+            return;
+        }
+        
+        try {
+            const result = await window.api.retryPage(pageId);
+            alert(`Retry started: ${result.message}`);
+            loadPages(); // Refresh the page list
+        } catch (error) {
+            alert('Error retrying page: ' + error.message);
+        }
+    };
+    
+    async function retryAllFailed() {
+        if (!confirm('Are you sure you want to retry all failed pages?')) {
+            return;
+        }
+        
+        try {
+            const result = await window.api.retryAllFailed();
+            alert(`Batch retry started: ${result.message}`);
+            loadPages(); // Refresh the page list
+        } catch (error) {
+            alert('Error retrying failed pages: ' + error.message);
+        }
+    }
 
     function displayPageDetailModal(page) {
         const keywords = Array.isArray(page.keywords) ? page.keywords : 

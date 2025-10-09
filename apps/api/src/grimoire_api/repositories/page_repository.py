@@ -195,6 +195,7 @@ class PageRepository:
                     created_at=datetime.fromisoformat(row["created_at"]),
                     updated_at=datetime.fromisoformat(row["updated_at"]),
                     weaviate_id=row["weaviate_id"],
+                    last_success_step=row["last_success_step"] if "last_success_step" in row.keys() else None,
                 )
                 for row in results
             ]
@@ -317,6 +318,7 @@ class PageRepository:
                     created_at=datetime.fromisoformat(row["created_at"]),
                     updated_at=datetime.fromisoformat(row["updated_at"]),
                     weaviate_id=row["weaviate_id"],
+                    last_success_step=row["last_success_step"] if "last_success_step" in row.keys() else None,
                 )
                 for row in results
             ]

@@ -101,8 +101,14 @@ class DatabaseConnection:
             keywords TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            weaviate_id TEXT
+            weaviate_id TEXT,
+            last_success_step TEXT DEFAULT NULL
         )
+        """
+
+        # 既存テーブルに新しいカラムを追加（マイグレーション）
+        migration_query = """
+        ALTER TABLE pages ADD COLUMN last_success_step TEXT DEFAULT NULL
         """
 
         process_logs_table = """
@@ -120,6 +126,14 @@ class DatabaseConnection:
         conn = sqlite3.connect(self.db_path)
         conn.execute(pages_table)
         conn.execute(process_logs_table)
+
+        # マイグレーション実行（カラムが既に存在する場合はエラーを無視）
+        try:
+            conn.execute(migration_query)
+        except sqlite3.OperationalError:
+            # カラムが既に存在する場合は無視
+            pass
+
         conn.commit()
         conn.close()
 

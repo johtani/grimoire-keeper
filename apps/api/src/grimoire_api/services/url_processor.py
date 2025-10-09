@@ -96,9 +96,11 @@ class UrlProcessorService:
 
             # 5. ベクトル化処理
             await self.vectorizer.vectorize_content(page_id)
+            self.page_repo.update_success_step(page_id, "vectorized")
             self.log_repo.update_status(log_id, "vectorize_complete")
 
             # 6. 完了ログ
+            self.page_repo.update_success_step(page_id, "completed")
             self.log_repo.update_status(log_id, "completed")
 
         except Exception as e:
@@ -149,6 +151,9 @@ class UrlProcessorService:
             # JSONファイル保存
             self.page_repo.save_json_file(page_id, result)
 
+            # 成功ステップ更新
+            self.page_repo.update_success_step(page_id, "downloaded")
+
             # ステータス更新
             self.log_repo.update_status(log_id, "download_complete")
 
@@ -168,6 +173,10 @@ class UrlProcessorService:
             self.page_repo.update_summary_keywords(
                 page_id=page_id, summary=result["summary"], keywords=result["keywords"]
             )
+
+            # 成功ステップ更新
+            self.page_repo.update_success_step(page_id, "llm_processed")
+
             self.log_repo.update_status(log_id, "llm_complete")
 
         except Exception as e:

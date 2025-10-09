@@ -61,7 +61,29 @@ class ApiClient {
     async getPageDetail(pageId) {
         return this.request(`/api/v1/pages/${pageId}`);
     }
+    
+    // Retry API
+    async retryPage(pageId) {
+        return this.request(`/api/v1/retry/${pageId}`, {
+            method: 'POST'
+        });
+    }
+    
+    async retryAllFailed(options = {}) {
+        return this.request('/api/v1/retry-failed', {
+            method: 'POST',
+            body: JSON.stringify(options)
+        });
+    }
 
+    // Process URL API
+    async processUrl(url, memo = '') {
+        return this.request('/api/v1/process-url', {
+            method: 'POST',
+            body: JSON.stringify({ url, memo })
+        });
+    }
+    
     // Health Check
     async healthCheck() {
         try {

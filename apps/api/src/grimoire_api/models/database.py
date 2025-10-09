@@ -21,6 +21,7 @@ class Page:
     created_at: datetime
     updated_at: datetime
     weaviate_id: str | None
+    last_success_step: str | None = None
 
     @property
     def status(self) -> str:
