@@ -55,6 +55,16 @@ else
     exit 1
 fi
 
+# データベース・スキーマ初期化
+echo "🔧 データベース・スキーマ初期化中..."
+docker compose -f docker-compose.prod.yml exec -T api python scripts/init_database.py init
+if [ $? -eq 0 ]; then
+    echo "✅ データベース・スキーマ初期化完了"
+else
+    echo "❌ データベース・スキーマ初期化失敗"
+    exit 1
+fi
+
 # API確認
 if curl -f http://localhost:8000/api/v1/health >/dev/null 2>&1; then
     echo "✅ API起動完了"
