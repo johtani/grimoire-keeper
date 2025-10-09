@@ -13,9 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install uv
 
 # プロジェクトファイルコピー
-COPY pyproject.toml ./
-COPY src/ ./src/
-COPY ../../scripts/ ./scripts/
+COPY ./apps/api/pyproject.toml ./
+COPY ./apps/api/src/ ./src/
+COPY ./scripts/ ./scripts/
 
 # 依存関係インストール
 RUN uv sync

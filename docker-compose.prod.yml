@@ -1,8 +1,8 @@
 services:
   bot:
     build:
-      context: ./apps/bot
-      dockerfile: Dockerfile.prod
+      context: .
+      dockerfile: ./apps/bot/Dockerfile.prod
     environment:
       - PYTHONPATH=/app
       - BACKEND_API_URL=http://api:8000
@@ -16,8 +16,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile.prod
+      context: .
+      dockerfile: ./apps/api/Dockerfile.prod
     ports:
       - "8000:8000"
     volumes:
