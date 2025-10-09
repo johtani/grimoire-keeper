@@ -15,6 +15,7 @@ RUN pip install uv
 # プロジェクトファイルコピー
 COPY pyproject.toml ./
 COPY src/ ./src/
+COPY ../../scripts/ ./scripts/
 
 # 依存関係インストール
 RUN uv sync
