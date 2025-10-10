@@ -83,6 +83,10 @@ class ApiClient {
             body: JSON.stringify({ url, memo })
         });
     }
+
+    async getProcessStatus(pageId) {
+        return this.request(`/api/v1/process-status/${pageId}`);
+    }
     
     // Health Check
     async healthCheck() {
