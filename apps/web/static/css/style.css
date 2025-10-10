@@ -186,3 +186,34 @@ body {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* Register page styles */
+.register-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.progress {
+    height: 0.5rem;
+}
+
+.recent-pages .page-item {
+    border-bottom: 1px solid #dee2e6;
+    padding: 0.75rem 0;
+}
+
+.recent-pages .page-item:last-child {
+    border-bottom: none;
+}
+
+.recent-pages .page-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.recent-pages .page-url {
+    font-size: 0.8rem;
+    color: #6c757d;
+    word-break: break-all;
+}
