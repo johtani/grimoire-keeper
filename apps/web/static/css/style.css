@@ -177,6 +177,31 @@ body {
     cursor: pointer;
 }
 
+.expandable-text {
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.expandable-text:hover {
+    background-color: #f8f9fa;
+    border-radius: 0.25rem;
+    padding: 0.25rem;
+}
+
+.expandable-text.text-truncate-2::after {
+    content: ' [クリックして展開]';
+    color: #6c757d;
+    font-size: 0.8em;
+    font-style: italic;
+}
+
+.expandable-text:not(.text-truncate-2)::after {
+    content: ' [クリックして折りたたみ]';
+    color: #6c757d;
+    font-size: 0.8em;
+    font-style: italic;
+}
+
 /* Animation */
 .fade-in {
     animation: fadeIn 0.3s ease-in;

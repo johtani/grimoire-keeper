@@ -73,6 +73,9 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
 
         resultsContainer.innerHTML = resultsHtml;
+        
+        // Add click handlers for expandable text
+        addExpandableTextHandlers();
     }
 
     function createResultHtml(result) {
@@ -95,7 +98,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const contentHtml = (vectorName === 'content_vector' && result.content) ? `
             <div class="search-result-content mt-2">
                 <strong>Content:</strong>
-                <div class="text-truncate-2">${escapeHtml(result.content)}</div>
+                <div class="expandable-text text-truncate-2 cursor-pointer" data-full-text="${escapeHtml(result.content)}">
+                    ${escapeHtml(result.content)}
+                </div>
             </div>
         ` : '';
 
@@ -109,8 +114,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     Score: ${result.score.toFixed(3)}
                 </div>
                 ${result.summary ? `
-                    <div class="search-result-summary text-truncate-2">
-                        <strong>Summary:</strong> ${escapeHtml(result.summary)}
+                    <div class="search-result-summary">
+                        <strong>Summary:</strong>
+                        <div class="expandable-text text-truncate-2 cursor-pointer" data-full-text="${escapeHtml(result.summary)}">
+                            ${escapeHtml(result.summary)}
+                        </div>
                     </div>
                 ` : ''}
                 ${contentHtml}
@@ -150,6 +158,23 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch {
             return dateString;
         }
+    }
+
+    function addExpandableTextHandlers() {
+        const expandableTexts = document.querySelectorAll('.expandable-text');
+        expandableTexts.forEach(element => {
+            element.addEventListener('click', function() {
+                const isExpanded = !element.classList.contains('text-truncate-2');
+                
+                if (isExpanded) {
+                    // Collapse: restore truncated view
+                    element.classList.add('text-truncate-2');
+                } else {
+                    // Expand: show full text
+                    element.classList.remove('text-truncate-2');
+                }
+            });
+        });
     }
 
     // Keyboard shortcuts
