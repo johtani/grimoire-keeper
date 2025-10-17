@@ -63,19 +63,6 @@ services:
     networks:
       - grimoire-network
 
-  elysia:
-    build:
-      context: ..
-      dockerfile: ./apps/elysia/Dockerfile
-    ports:
-      - "3009:3000"
-    environment:
-      - WEAVIATE_URL=http://weaviate:8080
-    depends_on:
-      - weaviate
-    networks:
-      - grimoire-network
-
 volumes:
   weaviate_data:
   sqlite_data:
