@@ -68,7 +68,9 @@ services:
       - grimoire-network
 
   elysia:
-    image: weaviate/elysia:latest
+    build:
+      context: .
+      dockerfile: ./apps/elysia/Dockerfile
     ports:
       - "3009:3000"
     environment:
