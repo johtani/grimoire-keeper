@@ -67,6 +67,18 @@ services:
     networks:
       - grimoire-network
 
+  elysia:
+    image: weaviate/elysia:latest
+    ports:
+      - "3009:3000"
+    environment:
+      - WEAVIATE_URL=http://weaviate:8080
+    depends_on:
+      - weaviate
+    restart: unless-stopped
+    networks:
+      - grimoire-network
+
 
 
 networks:
