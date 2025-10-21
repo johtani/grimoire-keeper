@@ -202,7 +202,7 @@ class SearchService:
             return None
             
         # keywordsフィールドに除外キーワードが含まれないものを選択
-        return Filter.by_property("keywords").contains_any(valid_keywords).Not()
+        return Filter.by_property("keywords").contains_none(valid_keywords)
 
     def _convert_search_results_v4(self, response: Any) -> list[SearchResult]:
         """検索結果変換 (Weaviate v4).
