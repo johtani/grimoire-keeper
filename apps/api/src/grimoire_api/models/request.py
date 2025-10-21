@@ -19,3 +19,4 @@ class SearchRequest(BaseModel):
     limit: int = 5
     filters: dict | None = None
     vector_name: str = "content_vector"
+    exclude_keywords: list[str] | None = None

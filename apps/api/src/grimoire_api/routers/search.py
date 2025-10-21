@@ -37,6 +37,7 @@ async def search(
             limit=request.limit,
             filters=request.filters,
             vector_name=request.vector_name,
+            exclude_keywords=request.exclude_keywords,
         )
 
         return SearchResponse(
