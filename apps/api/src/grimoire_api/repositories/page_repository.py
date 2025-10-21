@@ -455,6 +455,9 @@ class PageRepository:
                     )
                     status = "failed" if error_check else "processing"
 
+                # JSONファイル存在チェック
+                has_json_file = await self.file_repo.file_exists(row["id"])
+                
                 pages.append(
                     {
                         "id": row["id"],
@@ -467,6 +470,7 @@ class PageRepository:
                         else [],
                         "created_at": datetime.fromisoformat(row["created_at"]),
                         "status": status,
+                        "has_json_file": has_json_file,
                     }
                 )
 

@@ -24,7 +24,13 @@ class ApiClient {
                 throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
             }
 
-            return await response.json();
+            // Content-Typeをチェックしてレスポンスを適切に処理
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return await response.json();
+            } else {
+                return await response.text();
+            }
         } catch (error) {
             console.error('API Request failed:', error);
             throw error;
@@ -62,6 +68,10 @@ class ApiClient {
         return this.request(`/api/v1/pages/${pageId}`);
     }
     
+    async getPageJson(pageId) {
+        return this.request(`/api/v1/pages/${pageId}/json`);
+    }
+    
     // Retry API
     async retryPage(pageId) {
         return this.request(`/api/v1/retry/${pageId}`, {
@@ -96,6 +106,12 @@ class ApiClient {
         } catch {
             return false;
         }
+    }
+    
+    // JSON file display helper
+    openJsonInNewWindow(pageId) {
+        const url = `${this.baseUrl}/api/v1/pages/${pageId}/json`;
+        window.open(url, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
     }
 }
 
