@@ -2,7 +2,9 @@
 
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 
+from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
@@ -11,6 +13,11 @@ router = APIRouter(prefix="/api/v1", tags=["pages"])
 def get_page_repository() -> PageRepository:
     """ページリポジトリ依存性注入."""
     return PageRepository()
+
+
+def get_file_repository() -> FileRepository:
+    """ファイルリポジトリ依存性注入."""
+    return FileRepository()
 
 
 @router.get("/pages", response_model=dict)
@@ -65,12 +72,14 @@ async def get_pages(
 async def get_page_detail(
     page_id: int,
     page_repo: PageRepository = Depends(get_page_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
 ) -> dict:
     """ページ詳細取得.
 
     Args:
         page_id: ページID
         page_repo: ページリポジトリ
+        file_repo: ファイルリポジトリ
 
     Returns:
         ページ詳細
@@ -83,7 +92,44 @@ async def get_page_detail(
         if not page_data:
             raise HTTPException(status_code=404, detail="Page not found")
 
+        # JSONファイルの存在チェックを追加
+        page_data["has_json_file"] = await file_repo.file_exists(page_id)
+
         return page_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pages/{page_id}/json")
+async def get_page_json(
+    page_id: int,
+    file_repo: FileRepository = Depends(get_file_repository),
+) -> JSONResponse:
+    """ページのJSONファイル取得.
+
+    Args:
+        page_id: ページID
+        file_repo: ファイルリポジトリ
+
+    Returns:
+        JSONファイルの内容
+
+    Raises:
+        HTTPException: ファイルが見つからない場合
+    """
+    try:
+        if not await file_repo.file_exists(page_id):
+            raise HTTPException(status_code=404, detail="JSON file not found")
+
+        json_data = await file_repo.load_json_file(page_id)
+        # ブラウザで見やすくするためのheaderを追加
+        return JSONResponse(
+            content=json_data,
+            headers={"Content-Type": "application/json; charset=utf-8"}
+        )
 
     except HTTPException:
         raise

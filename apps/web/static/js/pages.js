@@ -120,8 +120,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         View
                     </button>
                     ${page.status === 'failed' ? `
-                        <button class="btn btn-sm btn-outline-warning" onclick="retryPage(${page.id})">
+                        <button class="btn btn-sm btn-outline-warning me-1" onclick="retryPage(${page.id})">
                             Retry
+                        </button>
+                    ` : ''}
+                    ${page.has_json_file ? `
+                        <button class="btn btn-sm btn-outline-info" onclick="window.api.openJsonInNewWindow(${page.id})" title="View JSON Data">
+                            📄
                         </button>
                     ` : ''}
                 </td>
@@ -244,6 +249,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <tr><th>Status:</th><td><span class="badge status-${page.status}">${page.status}</span></td></tr>
                         <tr><th>Created:</th><td>${formatDate(page.created_at)}</td></tr>
                         <tr><th>Updated:</th><td>${formatDate(page.updated_at)}</td></tr>
+                        ${page.has_json_file ? `
+                            <tr><th>Raw Data:</th><td>
+                                <button class="btn btn-sm btn-outline-info" onclick="window.api.openJsonInNewWindow(${page.id})">
+                                    📄 View JSON Data
+                                </button>
+                            </td></tr>
+                        ` : ''}
                     </table>
                 </div>
             </div>
@@ -284,6 +296,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="col-12">
                         <h6>Keywords</h6>
                         <div>${keywordBadges}</div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${page.has_json_file ? `
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>Actions</h6>
+                        <button class="btn btn-outline-info" onclick="window.api.openJsonInNewWindow(${page.id})">
+                            📄 View Raw JSON Data
+                        </button>
                     </div>
                 </div>
             ` : ''}

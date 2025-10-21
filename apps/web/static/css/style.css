@@ -212,6 +212,17 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* JSON file indicator */
+.has-json-indicator {
+    color: #0dcaf0;
+    font-size: 0.8rem;
+    margin-left: 0.25rem;
+}
+
+.has-json-indicator:hover {
+    color: #0aa2c0;
+}
+
 /* Register page styles */
 .register-form {
     max-width: 600px;
@@ -241,4 +252,33 @@ body {
     font-size: 0.8rem;
     color: #6c757d;
     word-break: break-all;
+}
+
+/* JSON file button styles */
+.btn-outline-info {
+    border-color: #0dcaf0;
+    color: #0dcaf0;
+}
+
+.btn-outline-info:hover {
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+    color: #fff;
+}
+
+.btn-sm.btn-outline-info {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* JSON data display in new window */
+.json-display {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    overflow-x: auto;
 }
