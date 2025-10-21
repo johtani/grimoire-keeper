@@ -38,15 +38,21 @@ class ApiClient {
     }
 
     // Search API
-    async search(query, vectorName = 'content_vector', limit = 5, filters = {}) {
+    async search(query, vectorName = 'content_vector', limit = 5, filters = {}, excludeKeywords = null) {
+        const requestBody = {
+            query,
+            vector_name: vectorName,
+            limit: parseInt(limit),
+            filters
+        };
+        
+        if (excludeKeywords && excludeKeywords.length > 0) {
+            requestBody.exclude_keywords = excludeKeywords;
+        }
+        
         return this.request('/api/v1/search', {
             method: 'POST',
-            body: JSON.stringify({
-                query,
-                vector_name: vectorName,
-                limit: parseInt(limit),
-                filters
-            })
+            body: JSON.stringify(requestBody)
         });
     }
 

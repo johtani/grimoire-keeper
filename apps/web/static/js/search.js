@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const dateTo = document.getElementById('dateTo').value;
             const urlFilter = document.getElementById('urlFilter').value.trim();
             const keywordsFilter = document.getElementById('keywordsFilter').value.trim();
+            const excludeKeywords = document.getElementById('excludeKeywords').value.trim();
 
             if (dateFrom) filters.date_from = dateFrom;
             if (dateTo) filters.date_to = dateTo;
@@ -35,9 +36,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (keywordsFilter) {
                 filters.keywords = keywordsFilter.split(',').map(k => k.trim()).filter(k => k);
             }
+            
+            // 除外キーワードを処理
+            const excludeKeywordsList = excludeKeywords ? 
+                excludeKeywords.split(',').map(k => k.trim()).filter(k => k) : null;
 
             // Perform search
-            const response = await window.api.search(query, vectorName, limit, filters);
+            const response = await window.api.search(query, vectorName, limit, filters, excludeKeywordsList);
             
             // Display results
             displayResults(response);

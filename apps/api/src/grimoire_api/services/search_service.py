@@ -39,6 +39,7 @@ class SearchService:
         limit: int = 5,
         filters: dict | None = None,
         vector_name: str = "content_vector",
+        exclude_keywords: list[str] | None = None,
     ) -> list[SearchResult]:
         """ベクトル検索.
 
@@ -47,6 +48,7 @@ class SearchService:
             limit: 結果件数制限
             filters: フィルタ条件
             vector_name: 使用するベクトル名
+            exclude_keywords: 除外キーワード
 
         Returns:
             検索結果のリスト
@@ -60,6 +62,7 @@ class SearchService:
 
                 # フィルター条件構築
                 where_filter = self._build_weaviate_filter(filters) if filters else None
+                exclude_filter = self._build_exclude_filter(exclude_keywords) if exclude_keywords else None
 
                 # ベクトル別フィルター追加
                 summary_filter = None
@@ -69,13 +72,19 @@ class SearchService:
                     summary_filter = Filter.by_property("isSummary").equal(True)
 
                 # フィルター結合
+                filters_list = []
+                if where_filter:
+                    filters_list.append(where_filter)
+                if summary_filter:
+                    filters_list.append(summary_filter)
+                if exclude_filter:
+                    filters_list.append(exclude_filter)
+                
                 final_filter = None
-                if where_filter and summary_filter:
-                    final_filter = Filter.all_of([where_filter, summary_filter])
-                elif where_filter:
-                    final_filter = where_filter
-                elif summary_filter:
-                    final_filter = summary_filter
+                if len(filters_list) == 1:
+                    final_filter = filters_list[0]
+                elif len(filters_list) > 1:
+                    final_filter = Filter.all_of(filters_list)
 
                 # クエリ実行
                 response = collection.query.near_text(
@@ -172,6 +181,28 @@ class SearchService:
             return Filter.all_of(conditions)
         else:
             return None
+    
+    def _build_exclude_filter(self, exclude_keywords: list[str]) -> Any:
+        """除外キーワードフィルター構築.
+
+        Args:
+            exclude_keywords: 除外キーワードリスト
+
+        Returns:
+            Weaviate v4 Filterオブジェクト
+        """
+        from weaviate.classes.query import Filter
+        
+        if not exclude_keywords:
+            return None
+            
+        # 空文字列を除外
+        valid_keywords = [k.strip() for k in exclude_keywords if k and k.strip()]
+        if not valid_keywords:
+            return None
+            
+        # keywordsフィールドに除外キーワードが含まれないものを選択
+        return Filter.by_property("keywords").contains_any(valid_keywords).Not()
 
     def _convert_search_results_v4(self, response: Any) -> list[SearchResult]:
         """検索結果変換 (Weaviate v4).
@@ -212,3 +243,5 @@ class SearchService:
             search_results.append(search_result)
 
         return search_results
+    
+
