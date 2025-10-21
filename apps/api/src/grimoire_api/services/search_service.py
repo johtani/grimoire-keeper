@@ -79,7 +79,7 @@ class SearchService:
                     filters_list.append(summary_filter)
                 if exclude_filter:
                     filters_list.append(exclude_filter)
-                
+
                 final_filter = None
                 if len(filters_list) == 1:
                     final_filter = filters_list[0]
@@ -181,7 +181,7 @@ class SearchService:
             return Filter.all_of(conditions)
         else:
             return None
-    
+
     def _build_exclude_filter(self, exclude_keywords: list[str]) -> Any:
         """除外キーワードフィルター構築.
 
@@ -192,15 +192,15 @@ class SearchService:
             Weaviate v4 Filterオブジェクト
         """
         from weaviate.classes.query import Filter
-        
+
         if not exclude_keywords:
             return None
-            
+
         # 空文字列を除外
         valid_keywords = [k.strip() for k in exclude_keywords if k and k.strip()]
         if not valid_keywords:
             return None
-            
+
         # keywordsフィールドに除外キーワードが含まれないものを選択
         return Filter.by_property("keywords").contains_none(valid_keywords)
 
@@ -243,5 +243,5 @@ class SearchService:
             search_results.append(search_result)
 
         return search_results
-    
+
 
