@@ -270,6 +270,7 @@ class PageRepository:
             "weaviate_id": page.weaviate_id,
             "status": status,
             "error_message": error_message,
+            "last_success_step": page.last_success_step,
         }
 
     def _get_latest_error(self, page_id: int) -> str | None:
