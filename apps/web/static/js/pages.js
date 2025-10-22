@@ -277,6 +277,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         <h6>Error Details</h6>
                         <div class="alert alert-danger">
                             ${escapeHtml(page.error_message)}
+                            ${page.last_success_step ? `
+                                <hr class="my-2">
+                                <small><strong>Last Success Step:</strong> ${escapeHtml(page.last_success_step)}</small>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
