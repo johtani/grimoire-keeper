@@ -39,7 +39,9 @@ class JinaClient:
             "Accept": "application/json",
             "Authorization": f"Bearer {self.api_key}",
             "X-Return-Format": "markdown",
+            "X-Md-Link-Style": "discarded",
             "X-With-Images-Summary": "true",
+            "X-With-Links-Summary": "true",
         }
 
         async with httpx.AsyncClient() as client:
