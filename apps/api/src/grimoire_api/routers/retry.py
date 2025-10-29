@@ -21,6 +21,11 @@ class RetryAllRequest(BaseModel):
     delay_seconds: int = 1
 
 
+class ReprocessRequest(BaseModel):
+    """再処理リクエスト."""
+    from_step: str = "auto"  # "auto", "download", "llm", "vectorize"
+
+
 def get_retry_service() -> RetryService:
     """再処理サービス依存性注入."""
     page_repo = PageRepository()
@@ -57,6 +62,30 @@ async def retry_page(
     """
     try:
         result = await retry_service.retry_single_page(page_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reprocess/{page_id}")
+async def reprocess_page(
+    page_id: int,
+    request: ReprocessRequest | None = None,
+    retry_service: RetryService = Depends(get_retry_service),
+) -> dict:
+    """ページ再処理（成功済みも対象）.
+
+    Args:
+        page_id: ページID
+        request: 再処理リクエスト
+        retry_service: 再処理サービス
+
+    Returns:
+        再処理結果
+    """
+    try:
+        from_step = request.from_step if request else "auto"
+        result = await retry_service.reprocess_page(page_id, from_step)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
