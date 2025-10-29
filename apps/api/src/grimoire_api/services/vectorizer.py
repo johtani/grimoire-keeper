@@ -5,6 +5,7 @@ from typing import Any
 
 import weaviate
 from weaviate.classes.config import Configure, DataType, Property
+from weaviate.util import generate_uuid5
 
 from ..config import settings
 from ..repositories.file_repository import FileRepository
@@ -113,10 +114,17 @@ class VectorizerService:
                         "isSummary": i == 0,
                     }
 
-                    result = collection.data.insert(properties=weaviate_object)
+                    # UUID生成: pageId-chunkIdの文字列からUUID5を生成
+                    uuid_source = f"{page_data.id}-{i}"
+                    chunk_uuid = generate_uuid5(uuid_source)
+                    
+                    result = collection.data.insert(
+                        properties=weaviate_object,
+                        uuid=chunk_uuid
+                    )
 
                     if i == 0:
-                        first_chunk_id = str(result)
+                        first_chunk_id = str(chunk_uuid)
 
                 return first_chunk_id or ""
 
