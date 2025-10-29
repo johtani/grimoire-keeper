@@ -111,6 +111,47 @@ class RetryService:
         except Exception as e:
             raise GrimoireAPIError(f"Retry failed: {str(e)}")
 
+    async def reprocess_page(
+        self, page_id: int, from_step: str = "auto"
+    ) -> dict[str, Any]:
+        """ページの再処理（成功済みも対象）.
+
+        Args:
+            page_id: ページID
+            from_step: 開始ステップ ("auto", "download", "llm", "vectorize")
+
+        Returns:
+            再処理結果
+        """
+        try:
+            page = self.page_repo.get_page(page_id)
+            if not page:
+                raise GrimoireAPIError(f"Page {page_id} not found")
+
+            # 開始ポイントを決定
+            if from_step == "auto":
+                start_point = self.get_retry_start_point(page_id)
+                if start_point == "complete":
+                    start_point = "vectorize"  # 完了済みの場合はvectorizeから
+            else:
+                start_point = from_step
+
+            # 新しいログ作成
+            log_id = self.log_repo.create_log(page.url, "reprocess_started", page_id)
+
+            # 再処理実行
+            await self._execute_retry_from_point(page_id, log_id, page.url, start_point)
+
+            return {
+                "status": "reprocess_started",
+                "page_id": page_id,
+                "restart_from": start_point,
+                "message": f"Reprocessing started from {start_point} step",
+            }
+
+        except Exception as e:
+            raise GrimoireAPIError(f"Reprocess failed: {str(e)}")
+
     async def retry_all_failed(
         self, max_retries: int | None = None, delay_seconds: int = 1
     ) -> dict[str, Any]:
