@@ -96,6 +96,9 @@ class VectorizerService:
             with self._get_client() as client:
                 collection = client.collections.get("GrimoireChunk")
 
+                # 既存データを削除
+                await self._delete_existing_chunks(collection, page_data.id)
+
                 for i, chunk in enumerate(chunks):
                     weaviate_object = {
                         "pageId": page_data.id,
@@ -130,6 +133,22 @@ class VectorizerService:
 
         except Exception as e:
             raise VectorizerError(f"Failed to save chunks to Weaviate: {str(e)}")
+
+    async def _delete_existing_chunks(self, collection: Any, page_id: int) -> None:
+        """既存チャンクを削除.
+
+        Args:
+            collection: Weaviateコレクション
+            page_id: ページID
+        """
+        try:
+            # pageIdでフィルタリングして既存データを削除
+            collection.data.delete_many(
+                where={"path": ["pageId"], "operator": "Equal", "valueInt": page_id}
+            )
+        except Exception:
+            # 削除エラーは無視（既存データがない場合など）
+            pass
 
     async def health_check(self) -> bool:
         """Weaviateヘルスチェック.
