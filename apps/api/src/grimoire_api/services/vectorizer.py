@@ -98,6 +98,10 @@ class VectorizerService:
 
                 # 既存データを削除
                 await self._delete_existing_chunks(collection, page_data.id)
+                
+                # 削除処理の完了を待つ
+                import asyncio
+                await asyncio.sleep(0.1)
 
                 for i, chunk in enumerate(chunks):
                     weaviate_object = {
@@ -143,11 +147,17 @@ class VectorizerService:
         """
         try:
             # pageIdでフィルタリングして既存データを削除
-            collection.data.delete_many(
-                where={"path": ["pageId"], "operator": "Equal", "valueInt": page_id}
+            from weaviate.classes.query import Filter
+            
+            result = collection.data.delete_many(
+                where=Filter.by_property("pageId").equal(page_id)
             )
-        except Exception:
+            # 削除結果をログ出力（デバッグ用）
+            if hasattr(result, 'matches'):
+                print(f"Deleted {result.matches} chunks for page {page_id}")
+        except Exception as e:
             # 削除エラーは無視（既存データがない場合など）
+            print(f"Delete error (ignored): {e}")
             pass
 
     async def health_check(self) -> bool:
