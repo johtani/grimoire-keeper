@@ -26,6 +26,17 @@ class SearchResult(BaseModel):
     keywords: list[str]
     created_at: datetime
     score: float
+    
+    @property
+    def display_title(self) -> str:
+        """表示用タイトル（pageIdとchunkId付き）."""
+        return f"{self.title} (p{self.page_id}-c{self.chunk_id})"
+    
+    def model_dump(self, **kwargs) -> dict:
+        """モデルを辞書に変換し、display_titleを含める."""
+        data = super().model_dump(**kwargs)
+        data["display_title"] = self.display_title
+        return data
 
 
 class SearchResponse(BaseModel):
