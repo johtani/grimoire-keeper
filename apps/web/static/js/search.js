@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return `
             <div class="search-result">
                 <a href="${escapeHtml(result.url)}" target="_blank" class="search-result-title">
-                    ${escapeHtml(result.title || 'Untitled')}
+                    ${escapeHtml(result.display_title || result.title || 'Untitled')}
                 </a>
                 <div class="search-result-url">${escapeHtml(result.url)}</div>
                 <div class="search-result-score ${scoreColor}">
