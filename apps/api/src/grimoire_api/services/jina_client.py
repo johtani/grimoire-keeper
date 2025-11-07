@@ -42,6 +42,7 @@ class JinaClient:
             "X-Md-Link-Style": "discarded",
             "X-With-Images-Summary": "true",
             "X-With-Links-Summary": "true",
+            "X-With-Generated-Alt": "true",
         }
 
         async with httpx.AsyncClient() as client:
