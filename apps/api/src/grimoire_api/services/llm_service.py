@@ -78,7 +78,17 @@ class LLMService:
                 raise LLMServiceError("Empty response from LLM")
 
             # JSON解析
-            result = json.loads(content)
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parse error. Raw content: '{content}'")
+                logger.error(f"Content length: {len(content)}")
+                logger.error(f"Content type: {type(content)}")
+                logger.error(f"First 500 chars: {content[:500]}")
+                raise LLMServiceError(
+                    f"Failed to parse LLM response as JSON: {str(e)}. "
+                    f"Raw content: '{content[:200]}...'"
+                )
 
             # 結果検証
             if (
@@ -86,14 +96,17 @@ class LLMService:
                 or "summary" not in result
                 or "keywords" not in result
             ):
-                raise LLMServiceError("Invalid LLM response format")
+                logger.error(f"Invalid response format: {result}")
+                raise LLMServiceError(f"Invalid LLM response format: {result}")
 
             if not isinstance(result["keywords"], list):
-                raise LLMServiceError("Keywords must be a list")
+                logger.error(f"Keywords not a list: {result['keywords']}")
+                raise LLMServiceError(f"Keywords must be a list: {result['keywords']}")
 
             return result
 
         except json.JSONDecodeError as e:
+            # この部分は上で処理されるため到達しないが、念のため残す
             raise LLMServiceError(f"Failed to parse LLM response as JSON: {str(e)}")
         except Exception as e:
             raise LLMServiceError(f"LLM processing error: {str(e)}")

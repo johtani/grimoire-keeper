@@ -66,8 +66,8 @@ class VectorizerService:
             jina_data = await self.file_repo.load_json_file(page_id)
             content = jina_data["data"]["content"]
 
-            # チャンキング
-            chunks = self.chunking_service.chunk_text(content)
+            # チャンキング（言語情報を使用）
+            chunks = self.chunking_service.chunk_text_with_jina_data(content, jina_data)
             if not chunks:
                 raise VectorizerError("No chunks generated from content")
 
