@@ -17,12 +17,14 @@ router = APIRouter(prefix="/api/v1", tags=["retry"])
 
 class RetryAllRequest(BaseModel):
     """一括再処理リクエスト."""
+
     max_retries: int | None = None
     delay_seconds: int = 1
 
 
 class ReprocessRequest(BaseModel):
     """再処理リクエスト."""
+
     from_step: str = "auto"  # "auto", "download", "llm", "vectorize"
 
 

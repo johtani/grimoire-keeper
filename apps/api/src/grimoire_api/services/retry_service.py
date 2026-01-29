@@ -192,6 +192,7 @@ class RetryService:
                     # 遅延
                     if delay_seconds > 0:
                         import asyncio
+
                         await asyncio.sleep(delay_seconds)
 
                 except Exception:
