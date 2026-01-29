@@ -12,16 +12,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uvインストール
 RUN pip install uv
 
-# プロジェクトファイルコピー
-COPY ./apps/api/pyproject.toml ./
-COPY ./apps/api/src/ ./src/
+# ワークスペース構造をコピー
+COPY ./pyproject.toml ./
+COPY ./shared/ ./shared/
+COPY ./apps/api/pyproject.toml ./apps/api/
+COPY ./apps/api/src/ ./apps/api/src/
 COPY ./scripts/ ./scripts/
+
+WORKDIR /app/apps/api
 
 # 依存関係インストール
 RUN uv sync
 
 # データディレクトリ作成
-RUN mkdir -p /data /app/data/json
+RUN mkdir -p /data /app/apps/api/data/json
 
 # ポート公開
 EXPOSE 8000

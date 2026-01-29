@@ -12,10 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uvインストール
 RUN pip install uv
 
-# プロジェクトファイルコピー
-COPY ./apps/bot/pyproject.toml ./
-COPY ./apps/bot/src/ ./src/
+# ワークスペース構造をコピー
+COPY ./pyproject.toml ./
+COPY ./shared/ ./shared/
+COPY ./apps/bot/pyproject.toml ./apps/bot/
+COPY ./apps/bot/src/ ./apps/bot/src/
 COPY ./scripts/ ./scripts/
+
+WORKDIR /app/apps/bot
 
 # 依存関係インストール
 RUN uv sync
