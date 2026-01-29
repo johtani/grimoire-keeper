@@ -19,7 +19,19 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "chonkie>=1.4.0",
     "numpy>=1.24.0",
+    # OpenTelemetry
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-instrumentation-fastapi>=0.42b0",
+    "opentelemetry-instrumentation-httpx>=0.42b0",
+    "opentelemetry-instrumentation-sqlite3>=0.42b0",
+    # Shared module
+    "grimoire-shared",
 ]
+
+[tool.uv.sources]
+grimoire-shared = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

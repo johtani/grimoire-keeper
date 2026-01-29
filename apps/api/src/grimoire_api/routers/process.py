@@ -1,5 +1,6 @@
 """URL processing router."""
 
+import time
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -15,6 +16,7 @@ from ..services.jina_client import JinaClient
 from ..services.llm_service import LLMService
 from ..services.url_processor import UrlProcessorService
 from ..services.vectorizer import VectorizerService
+from ..utils.metrics import url_processing_duration, url_processing_requests
 
 router = APIRouter(prefix="/api/v1", tags=["process"])
 
@@ -59,11 +61,17 @@ async def process_url(
     Raises:
         HTTPException: 処理エラー
     """
+    start_time = time.time()
+
     try:
         # 同期処理部分を実行
         result = processor.prepare_url_processing(str(request.url), request.memo)
 
+        has_memo = bool(request.memo)
+        url_processing_requests.add(1, {"has_memo": str(has_memo)})
+
         if result["status"] == "already_exists":
+            url_processing_requests.add(1, {"status": "already_exists"})
             return ProcessUrlResponse(
                 status=result["status"],
                 page_id=result["page_id"],
@@ -78,6 +86,7 @@ async def process_url(
             str(request.url),
         )
 
+        url_processing_requests.add(1, {"status": "processing"})
         return ProcessUrlResponse(
             status="processing",
             page_id=result["page_id"],
@@ -85,7 +94,12 @@ async def process_url(
         )
 
     except Exception as e:
+        url_processing_requests.add(1, {"status": "error"})
         raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        duration = time.time() - start_time
+        url_processing_duration.record(duration)
 
 
 @router.get("/process-status/{page_id}")

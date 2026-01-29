@@ -5,12 +5,23 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from grimoire_shared.telemetry import setup_telemetry
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 
 from .routers import health, pages, process, retry, search
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
 from .utils.warnings_filter import *  # noqa: F403, F401
+
+# OpenTelemetryの初期化
+setup_telemetry("grimoire-api")
+
+# 自動計装の設定
+HTTPXClientInstrumentor().instrument()
+SQLite3Instrumentor().instrument()
 
 
 @asynccontextmanager
@@ -35,6 +46,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# FastAPI自動計装
+FastAPIInstrumentor.instrument_app(app)
 
 # CORS設定
 app.add_middleware(

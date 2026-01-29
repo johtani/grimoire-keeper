@@ -126,9 +126,7 @@ class VectorizerService:
                     uuid_source = f"{page_data.id}-{i}"
                     chunk_uuid = generate_uuid5(uuid_source)
 
-                    collection.data.insert(
-                        properties=weaviate_object, uuid=chunk_uuid
-                    )
+                    collection.data.insert(properties=weaviate_object, uuid=chunk_uuid)
 
                     if i == 0:
                         first_chunk_id = str(chunk_uuid)

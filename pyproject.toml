@@ -21,7 +21,8 @@ classifiers = [
 [tool.uv.workspace]
 members = [
     "apps/bot",
-    "apps/api"
+    "apps/api",
+    "shared"
 ]
 
 [tool.uv]

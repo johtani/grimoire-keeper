@@ -1,10 +1,12 @@
 """Search router."""
 
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..models.request import SearchRequest
 from ..models.response import SearchResponse
 from ..services.search_service import SearchService
+from ..utils.metrics import search_requests, search_results_count
 
 router = APIRouter(prefix="/api/v1", tags=["search"])
 
@@ -40,6 +42,17 @@ async def search(
             exclude_keywords=request.exclude_keywords,
         )
 
+        # メトリクス記録
+        search_requests.add(
+            1,
+            {
+                "search_type": "vector",
+                "query_length": str(len(request.query)),
+                "has_filters": str(bool(request.filters)),
+            },
+        )
+        search_results_count.record(len(results), {"search_type": "vector"})
+
         return SearchResponse(
             results=results,
             total=len(results),
@@ -47,6 +60,7 @@ async def search(
         )
 
     except Exception as e:
+        search_requests.add(1, {"search_type": "vector", "status": "error"})
         raise HTTPException(status_code=500, detail=str(e))
 
 
