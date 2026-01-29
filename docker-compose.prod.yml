@@ -20,6 +20,8 @@ services:
       - PYTHONPATH=/app
       - BACKEND_API_URL=http://api:8000
     env_file:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
       - .env
     depends_on:
       - api
@@ -43,6 +45,8 @@ services:
       - DATABASE_PATH=/data/grimoire.db
       - JSON_STORAGE_PATH=/app/data/json
     env_file:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
       - .env
     depends_on:
       - weaviate
