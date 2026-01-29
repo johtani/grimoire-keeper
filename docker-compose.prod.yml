@@ -35,7 +35,7 @@ services:
       - "8000:8000"
     volumes:
       - /opt/grimoire-keeper-data/database:/data
-      - /opt/grimoire-keeper-data/json:/app/data/json
+      - /opt/grimoire-keeper-data/json:/app/apps/api/data/json
     environment:
       - PYTHONPATH=/app
       - WEAVIATE_HOST=weaviate
