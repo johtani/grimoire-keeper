@@ -458,7 +458,7 @@ class PageRepository:
 
                 # JSONファイル存在チェック
                 has_json_file = await self.file_repo.file_exists(row["id"])
-                
+
                 pages.append(
                     {
                         "id": row["id"],
@@ -478,3 +478,37 @@ class PageRepository:
             return pages, total
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
+
+    def get_pages_by_status(self, last_success_step: str) -> list[Page]:
+        """最後の成功ステップでページを取得.
+
+        Args:
+            last_success_step: 最後の成功ステップ
+
+        Returns:
+            ページリスト
+        """
+        try:
+            query = """
+            SELECT * FROM pages
+            WHERE last_success_step = ?
+            ORDER BY created_at ASC
+            """
+            results = self.db.fetch_all(query, (last_success_step,))
+            return [
+                Page(
+                    id=row["id"],
+                    url=row["url"],
+                    title=row["title"],
+                    memo=row["memo"],
+                    summary=row["summary"],
+                    keywords=row["keywords"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    updated_at=datetime.fromisoformat(row["updated_at"]),
+                    weaviate_id=row["weaviate_id"],
+                    last_success_step=row["last_success_step"],
+                )
+                for row in results
+            ]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get pages by status: {str(e)}")

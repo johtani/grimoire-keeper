@@ -98,9 +98,10 @@ class VectorizerService:
 
                 # 既存データを削除
                 await self._delete_existing_chunks(collection, page_data.id)
-                
+
                 # 削除処理の完了を待つ
                 import asyncio
+
                 await asyncio.sleep(0.1)
 
                 for i, chunk in enumerate(chunks):
@@ -124,10 +125,9 @@ class VectorizerService:
                     # UUID生成: pageId-chunkIdの文字列からUUID5を生成
                     uuid_source = f"{page_data.id}-{i}"
                     chunk_uuid = generate_uuid5(uuid_source)
-                    
-                    result = collection.data.insert(
-                        properties=weaviate_object,
-                        uuid=chunk_uuid
+
+                    collection.data.insert(
+                        properties=weaviate_object, uuid=chunk_uuid
                     )
 
                     if i == 0:
@@ -148,12 +148,12 @@ class VectorizerService:
         try:
             # pageIdでフィルタリングして既存データを削除
             from weaviate.classes.query import Filter
-            
+
             result = collection.data.delete_many(
                 where=Filter.by_property("pageId").equal(page_id)
             )
             # 削除結果をログ出力（デバッグ用）
-            if hasattr(result, 'matches'):
+            if hasattr(result, "matches"):
                 print(f"Deleted {result.matches} chunks for page {page_id}")
         except Exception as e:
             # 削除エラーは無視（既存データがない場合など）
