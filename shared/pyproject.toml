@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grimoire-shared"
+version = "0.1.0"
+description = "Shared utilities for Grimoire Keeper"
+requires-python = ">=3.13"
+dependencies = [
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+]
