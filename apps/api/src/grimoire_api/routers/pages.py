@@ -1,6 +1,5 @@
 """Pages management router."""
 
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
@@ -128,7 +127,7 @@ async def get_page_json(
         # ブラウザで見やすくするためのheaderを追加
         return JSONResponse(
             content=json_data,
-            headers={"Content-Type": "application/json; charset=utf-8"}
+            headers={"Content-Type": "application/json; charset=utf-8"},
         )
 
     except HTTPException:

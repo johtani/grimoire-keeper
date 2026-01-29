@@ -62,7 +62,11 @@ class SearchService:
 
                 # フィルター条件構築
                 where_filter = self._build_weaviate_filter(filters) if filters else None
-                exclude_filter = self._build_exclude_filter(exclude_keywords) if exclude_keywords else None
+                exclude_filter = (
+                    self._build_exclude_filter(exclude_keywords)
+                    if exclude_keywords
+                    else None
+                )
 
                 # ベクトル別フィルター追加
                 summary_filter = None
@@ -243,5 +247,3 @@ class SearchService:
             search_results.append(search_result)
 
         return search_results
-
-
