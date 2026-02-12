@@ -1,206 +1,166 @@
-# Grimoire Keeper 残りタスク一覧
+# Grimoire Keeper タスク管理
 
 **最終更新**: 2024年12月  
 **テスト状況**: 105 passed, 10 failed (91% 成功率)  
-**関連**: `IMPROVEMENTS.md` (詳細な改善計画)
+**プロジェクト状況**: 基本機能完成、セキュリティ・品質改善フェーズ
 
-## 🔴 緊急対応が必要 (Priority: High)
+## 🔴 フェーズ1: セキュリティ・クリーンアップ (1-2日)
 
-### 1. セキュリティ脆弱性の修正
-- **状況**: ⚠️ 本番環境で危険な設定
-- **対応**:
-  - CORS設定の厳格化 (`allow_origins=["*"]` → 環境変数)
-  - 認証・認可機能の追加 (API Key/JWT)
-  - レート制限の実装 (`slowapi`)
-  - 入力値検証の強化
-- **ファイル**: `apps/api/src/grimoire_api/main.py`
-- **優先度**: 最高
+### 1. データ漏洩リスクの解消 ⚠️ 最優先
+**工数**: 10分 | **ファイル**: git管理
+```bash
+git rm --cached grimoire.db apps/api/grimoire.db
+git rm --cached data/json/*.json
+git rm -r --cached .mypy_cache .ruff_cache
+git commit -m "security: Remove sensitive data from repository"
+```
 
-### 2. データ漏洩リスクの解消
-- **状況**: ⚠️ 個人データがgitにコミット済み
-- **対応**:
-  ```bash
-  git rm --cached grimoire.db apps/api/grimoire.db
-  git rm --cached data/json/*.json
-  git rm -r --cached .mypy_cache .ruff_cache
-  ```
-- **優先度**: 最高
+### 2. セキュリティ脆弱性の修正 ⚠️
+**工数**: 4-6時間 | **ファイル**: `apps/api/src/grimoire_api/main.py`, `config.py`
+- [ ] CORS設定の厳格化 (環境変数 `ALLOWED_ORIGINS`)
+- [ ] API Key認証の実装
+- [ ] レート制限の追加 (`slowapi`: 100 req/min/IP)
+- [ ] 入力値検証の強化
 
-### 3. ユニットテストの修正
-- **状況**: ⚠️ 10件のテスト失敗
-- **失敗テスト**:
-  - `test_search.py`: 3件 (ベクトル検索関連)
-  - `test_chunking_service.py`: 1件
-  - `test_llm_service.py`: 4件
-  - `test_vectorizer.py`: 2件
-- **原因**: モック設定、非同期処理の問題
-- **ファイル**: `apps/api/tests/unit/`
+### 3. 環境変数の必須チェック
+**工数**: 1-2時間 | **ファイル**: `apps/api/src/grimoire_api/config.py`
+- [ ] 起動時バリデーション関数
+- [ ] 必須変数リスト明示
+- [ ] エラーメッセージ改善
 
-### ✅ 4. 統合テスト修正 (完了)
-- **状況**: ✅ 完了
-- **対応済み**: テスト用データベース初期化、モック設定
+### 4. ユニットテストの修正
+**工数**: 2-3時間 | **ファイル**: `apps/api/tests/unit/`
+- [ ] `test_search.py`: 3件 (ベクトル検索)
+- [ ] `test_chunking_service.py`: 1件
+- [ ] `test_llm_service.py`: 4件
+- [ ] `test_vectorizer.py`: 2件
 
-### ✅ 5. データベース初期化の自動化 (完了)
-- **状況**: ✅ 完了
-- **対応済み**: アプリ起動時・テスト時の自動初期化
+## 🟡 フェーズ2: 基盤強化 (3-5日)
 
-## 🟡 重要度：中 (Priority: Medium)
+### 5. 共有ライブラリの実装
+**工数**: 1日 | **ファイル**: `shared/src/grimoire_shared/`
+- [ ] 共通モデル (`models/page.py`, `models/search.py`)
+- [ ] ユーティリティ関数 (`utils/validation.py`, `utils/datetime.py`)
+- [ ] 設定管理の統一 (`config.py`)
 
-### 6. 環境変数の必須チェック
-- **状況**: 起動時に検証なし
-- **対応**:
-  - 必須環境変数のバリデーション関数
-  - 起動時チェックの実装
-  - エラーメッセージの改善
-- **ファイル**: `apps/api/src/grimoire_api/config.py`
+### 6. エラーハンドリングの改善
+**工数**: 1日 | **ファイル**: `apps/api/src/grimoire_api/utils/`
+- [ ] カスタム例外拡充 (`DatabaseError`, `ExternalAPIError`)
+- [ ] 構造化ログ導入 (`structlog`)
+- [ ] 統一エラーレスポンスモデル
 
-### 7. 共有ライブラリの実装
-- **状況**: `shared/`にtelemetryのみ
-- **対応**:
-  - 共通モデルの抽出 (`PageModel`, `SearchResult`)
-  - ユーティリティ関数の共有
-  - 設定管理の統一
-- **ファイル**: `shared/src/grimoire_shared/`
+### 7. データベースインデックス追加
+**工数**: 1時間 | **ファイル**: `scripts/add_indexes.sql`
+```sql
+CREATE INDEX idx_pages_url ON pages(url);
+CREATE INDEX idx_pages_status ON pages(status);
+CREATE INDEX idx_pages_created_at ON pages(created_at);
+CREATE INDEX idx_logs_page_id ON processing_logs(page_id);
+```
 
-### 8. エラーハンドリングの改善
-- **状況**: 基本的なエラーハンドリングのみ
-- **対応**:
-  - カスタム例外クラスの拡充 (`DatabaseError`, `ExternalAPIError`)
-  - 構造化ログの導入 (`structlog`)
-  - エラーレスポンスの統一
-- **ファイル**: `apps/api/src/grimoire_api/utils/exceptions.py`
+### 8. Bot型エラーの修正
+**工数**: 2時間 | **ファイル**: `apps/bot/src/grimoire_bot/`
+- [ ] slack-bolt型スタブ追加 or 型チェック除外
+- [ ] 型アノテーション追加 (5件)
 
-### 9. パフォーマンス最適化
-- **対応**:
-  - データベースインデックスの追加 (url, status, created_at)
-  - キャッシュ機能の実装 (Redis or cachetools)
-  - バッチ処理の最適化
+## 🟢 フェーズ3: 品質向上 (3-5日)
 
-### 10. Bot型エラーの修正
-- **状況**: ⚠️ slack-bolt関連で5件のmypyエラー
-- **対応**:
-  - 型スタブの追加 or 型チェック除外
-  - 型アノテーションの追加
-- **ファイル**: `apps/bot/src/grimoire_bot/`
+### 9. テスト環境の改善
+**工数**: 半日 | **ファイル**: `apps/api/tests/conftest.py`
+- [ ] `conftest_integration.py`の統合
+- [ ] 共通モックフィクスチャ作成
+- [ ] テストデータファクトリ実装
 
-### ✅ 11. API型エラーの修正 (完了)
-- **状況**: ✅ 完了 - API側のmypyエラー 0個
+### 10. キャッシュ機能の実装
+**工数**: 1日 | **ファイル**: `apps/api/src/grimoire_api/services/cache.py`
+- [ ] インメモリキャッシュ (`cachetools`)
+- [ ] 検索結果キャッシュ (TTL: 5分)
+- [ ] Redis導入検討
 
-### ✅ 12. 警告の解消 (完了)
-- **状況**: ✅ 完了 - 警告フィルタ設定済み
+### 11. pre-commitフックの設定
+**工数**: 1時間 | **ファイル**: `.pre-commit-config.yaml`
+- [ ] ruff, mypy, pytest自動実行
+- [ ] コミット前品質チェック
 
-## 🟢 重要度：低 (Priority: Low)
+### 12. OpenTelemetry依存の見直し
+**工数**: 2時間 | **ファイル**: `shared/src/grimoire_shared/telemetry.py`
+- [ ] オプショナル化
+- [ ] 環境変数での有効/無効切り替え
+- [ ] 開発環境デフォルト無効
 
-### 13. Slackボットアプリの実装
-- **状況**: 基本構造のみ、ハンドラー未実装
-- **対応**:
-  - イベントハンドラーの実装
-  - コマンド処理の実装
-  - バックエンドAPI連携
-- **ファイル**: `apps/bot/src/grimoire_bot/handlers/`
+## 🔵 フェーズ4: 自動化・拡張 (2週間以上)
 
-### 14. OpenTelemetry依存の見直し
-- **状況**: 全サービスで必須
-- **対応**:
-  - オプショナル化
-  - 環境変数での有効/無効切り替え
-  - 開発環境ではデフォルト無効
+### 13. CI/CDパイプライン構築
+**工数**: 1-2日 | **ファイル**: `.github/workflows/`
+- [ ] テスト自動実行
+- [ ] Dockerイメージビルド
+- [ ] 自動デプロイ
 
-### 15. pre-commitフックの設定
-- **状況**: `pyproject.toml`に記載のみ
-- **対応**:
-  - `.pre-commit-config.yaml`の作成
-  - ruff, mypy, pytestの自動実行
+### 14. Slackボット実装
+**工数**: 3-5日 | **ファイル**: `apps/bot/src/grimoire_bot/handlers/`
+- [ ] イベントハンドラー実装
+- [ ] コマンド処理実装
+- [ ] バックエンドAPI連携
 
-### 16. CI/CDパイプラインの構築
-- **対応**:
-  - GitHub Actionsの設定
-  - テスト自動実行
-  - Dockerイメージビルド
+### 15. ドキュメント整理
+**工数**: 半日 | **ファイル**: `SETUP.md`, `docs/`
+- [ ] セットアップガイド統合
+- [ ] API仕様書更新
+- [ ] 実装との整合性チェック
 
-### 17. ドキュメント整理
-- **対応**:
-  - セットアップガイドの統合 (SETUP.md, SETUP_API.md, SETUP_QUICK.md)
-  - API仕様書の更新
-  - 実装との整合性チェック
+## 📊 進捗サマリー
 
-## 📊 現在の状況サマリー
-
-### ✅ 完了済み (4項目)
+### ✅ 完了 (7項目)
 - Weaviate v4 API対応
-- ruff コード品質チェック対応
+- ruff コード品質チェック
 - 主要サービス実装 (URL処理、検索、ベクトル化)
 - 統合テスト修正
 - データベース初期化自動化
 - API型エラー修正 (mypy)
 - 警告解消
 
-### ⚠️ 対応中・部分完了 (6項目)
-- テスト: 105/115 passed (91% 成功率) - 10件修正必要
-- 型チェック: API完了、Bot未対応
-- セキュリティ: 基本機能のみ、本番環境で危険
-- エラーハンドリング: 基本機能のみ
-- 共有ライブラリ: telemetryのみ
-- ドキュメント: 重複あり
+### 🔄 進行中 (15項目)
+- フェーズ1: 4項目 (セキュリティ、データ漏洩、環境変数、テスト)
+- フェーズ2: 4項目 (共有ライブラリ、エラーハンドリング、DB、Bot型)
+- フェーズ3: 4項目 (テスト改善、キャッシュ、pre-commit、OTel)
+- フェーズ4: 3項目 (CI/CD、Slackボット、ドキュメント)
 
-### ❌ 未着手 (7項目)
-- セキュリティ強化 (認証、レート制限)
-- データ漏洩リスク解消
-- 環境変数検証
-- パフォーマンス最適化
-- OpenTelemetry見直し
-- pre-commit設定
-- CI/CD構築
+### 📈 全体進捗
+- **完了**: 7/22 (32%)
+- **残タスク**: 15/22 (68%)
+- **推定工数**: 10-15日
 
-## 🎯 推奨対応順序
+## 🎯 今週の目標
 
-### 即座に対応 (1-2日)
-1. **データ漏洩リスク解消** - gitからDB/個人データ削除
-2. **セキュリティ修正** - CORS、認証、レート制限
-3. **ユニットテスト修正** - 10件の失敗テスト
+### 今日やること
+- [ ] データ漏洩リスク解消 (10分)
+- [ ] セキュリティ修正開始 (CORS設定)
 
-### 短期対応 (3-5日)
-4. **環境変数検証** - 起動時チェック
-5. **共有ライブラリ実装** - コード重複解消
-6. **エラーハンドリング強化** - 構造化ログ、例外拡充
+### 今週中に完了
+- [ ] フェーズ1完了 (セキュリティ・クリーンアップ)
+- [ ] ユニットテスト10件修正
+- [ ] 環境変数検証実装
 
-### 中期対応 (1-2週間)
-7. **パフォーマンス最適化** - インデックス、キャッシュ
-8. **Bot型エラー修正** - mypy対応
-9. **pre-commit設定** - 自動品質チェック
-
-### 長期対応 (2週間以上)
-10. **CI/CD構築** - 自動テスト・デプロイ
-11. **Slackボット実装** - ハンドラー実装
-12. **ドキュメント整理** - 重複解消
-
-## 📝 補足情報
+## 📝 参考情報
 
 ### 技術的負債
 - データベーススキーマの正規化
-- 設定管理の統一化 (環境変数 vs 設定ファイル)
-- ログ機能の標準化 (print vs logging)
+- 設定管理の統一化
+- ログ機能の標準化 (print → logging)
 - OpenTelemetry依存の強制
 
 ### 既知の問題
-- テスト実行時の90件の警告 (抑制済みだが根本解決必要)
+- テスト警告90件 (抑制済み、根本解決必要)
 - OpenTelemetry接続エラー (開発環境で不要)
-- `tool.uv.dev-dependencies`の非推奨警告
+- `tool.uv.dev-dependencies`非推奨警告
 
 ### 将来的な拡張
 - 複数ユーザー対応
 - ファイルアップロード機能
-- 検索結果のランキング改善
-- リアルタイム通知機能
+- 検索ランキング改善
+- リアルタイム通知
 - GraphQL API
-
-### 関連ドキュメント
-- `IMPROVEMENTS.md` - 詳細な改善計画
-- `SECURITY.md` - セキュリティガイドライン
-- `docs/` - 各種ドキュメント
 
 ---
 
-**最終更新**: 2024年12月  
-**更新者**: Amazon Q  
-**次回レビュー**: セキュリティ修正完了後
+**最終更新**: 2024年12月 | **更新者**: Amazon Q | **次回レビュー**: フェーズ1完了後
