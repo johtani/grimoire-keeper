@@ -1,5 +1,6 @@
 """FastAPI application main module."""
 
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -10,11 +11,16 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 
+from .config import settings
 from .routers import health, pages, process, retry, search
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
 from .utils.warnings_filter import *  # noqa: F403, F401
+
+# 環境変数の必須チェック（テスト環境以外）
+if not os.getenv("PYTEST_CURRENT_TEST"):
+    settings.validate_required_vars()
 
 # OpenTelemetryの初期化
 setup_telemetry("grimoire-api")
