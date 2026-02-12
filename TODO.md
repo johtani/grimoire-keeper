@@ -6,14 +6,11 @@
 
 ## 🔴 フェーズ1: セキュリティ・クリーンアップ (1-2日)
 
-### 1. データ漏洩リスクの解消 ⚠️ 最優先
+### ✅ 1. データ漏洩リスクの解消 ⚠️ 最優先 - 完了
 **工数**: 10分 | **ファイル**: git管理
-```bash
-git rm --cached grimoire.db apps/api/grimoire.db
-git rm --cached data/json/*.json
-git rm -r --cached .mypy_cache .ruff_cache
-git commit -m "security: Remove sensitive data from repository"
-```
+- [x] Git履歴から機密データ削除 (data/json/, *.db, キャッシュ)
+- [x] .gitignoreにキャッシュディレクトリ追加
+- [x] Git履歴完全クリーンアップ
 
 ### 2. セキュリティ脆弱性の修正 ⚠️
 **工数**: 4-6時間 | **ファイル**: `apps/api/src/grimoire_api/main.py`, `config.py`
@@ -110,7 +107,7 @@ CREATE INDEX idx_logs_page_id ON processing_logs(page_id);
 
 ## 📊 進捗サマリー
 
-### ✅ 完了 (7項目)
+### ✅ 完了 (8項目)
 - Weaviate v4 API対応
 - ruff コード品質チェック
 - 主要サービス実装 (URL処理、検索、ベクトル化)
@@ -118,22 +115,23 @@ CREATE INDEX idx_logs_page_id ON processing_logs(page_id);
 - データベース初期化自動化
 - API型エラー修正 (mypy)
 - 警告解消
+- データ漏洩リスク解消 (Git履歴クリーンアップ)
 
-### 🔄 進行中 (15項目)
-- フェーズ1: 4項目 (セキュリティ、データ漏洩、環境変数、テスト)
+### 🔄 進行中 (14項目)
+- フェーズ1: 3項目 (セキュリティ、環境変数、テスト)
 - フェーズ2: 4項目 (共有ライブラリ、エラーハンドリング、DB、Bot型)
 - フェーズ3: 4項目 (テスト改善、キャッシュ、pre-commit、OTel)
 - フェーズ4: 3項目 (CI/CD、Slackボット、ドキュメント)
 
 ### 📈 全体進捗
-- **完了**: 7/22 (32%)
-- **残タスク**: 15/22 (68%)
+- **完了**: 8/22 (36%)
+- **残タスク**: 14/22 (64%)
 - **推定工数**: 10-15日
 
 ## 🎯 今週の目標
 
 ### 今日やること
-- [ ] データ漏洩リスク解消 (10分)
+- [x] データ漏洩リスク解消 (10分) - 完了
 - [ ] セキュリティ修正開始 (CORS設定)
 
 ### 今週中に完了
