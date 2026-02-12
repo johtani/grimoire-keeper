@@ -68,3 +68,7 @@ Thumbs.db
 
 # uv
 .uv_cache/
+
+# キャッシュ
+.mypy_cache/
+.ruff_cache/
