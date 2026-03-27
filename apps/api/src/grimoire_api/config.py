@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     JSON_STORAGE_PATH: str = "./data/json"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         extra="ignore",  # 余分な環境変数を無視
     )
 

@@ -2,7 +2,14 @@
 
 # システムパッケージの更新とsqlite3のインストール
 sudo apt-get update
-sudo apt-get install -y sqlite3
+sudo apt-get install -y sqlite3 unzip
+
+# bws (Bitwarden Secrets Manager CLI) のインストール
+BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
+sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/
+sudo chmod +x /usr/local/bin/bws
+rm /tmp/bws.zip
 
 # uvのインストール
 curl -LsSf https://astral.sh/uv/install.sh | sh
