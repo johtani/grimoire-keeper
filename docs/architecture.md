@@ -324,13 +324,14 @@ Slack Response → Formatted Results
 - CORS configuration
 
 ### Data Security
-- API keys stored in environment variables
+- API keys managed by Bitwarden Secrets Manager (not stored in files)
+- Only `BWS_ACCESS_TOKEN` stored in environment, all secrets fetched at startup via `scripts/load_secrets.sh`
 - No sensitive data in logs
 - File system permissions for JSON storage
 - Weaviate access control
 
 ### External API Security
-- Secure API key management
+- Secure API key management via Bitwarden Secrets Manager
 - Request timeout configuration
 - Error message sanitization
 - Retry logic with exponential backoff
