@@ -16,9 +16,11 @@ fi
 
 echo "Loading secrets from Bitwarden Secrets Manager..."
 
-# bwsからシークレットを一括取得し、GRIMOIRE_KEEPER_プレフィックスを除去してexport
+# bwsからシークレットを一括取得し、GRIMOIRE_KEEPER_プレフィックスのものだけ除去してexport
 while IFS= read -r line; do
-  export "${line#GRIMOIRE_KEEPER_}"
+  case "$line" in
+    GRIMOIRE_KEEPER_*) export "${line#GRIMOIRE_KEEPER_}" ;;
+  esac
 done < <(bws secret list --output env 2>/dev/null)
 
 echo "Secrets loaded successfully."
