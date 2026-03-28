@@ -7,13 +7,11 @@
 - Docker & Docker Compose
 - 最低2GB RAM、10GB ディスク容量
 
-### 2. 必要なAPIキー
-- **OpenAI API Key** (埋め込み用)
-- **Google API Key** (Gemini LLM用)  
-- **Jina API Key** (コンテンツ抽出用)
-- **Slack Bot Token** (xoxb-...)
-- **Slack Signing Secret**
-- **Slack App Token** (xapp-...)
+### 2. 必要なAPIキー・トークン
+- **Bitwarden Secrets Manager Access Token** (`BWS_ACCESS_TOKEN`)
+
+> API キー・Slack トークンは Bitwarden Secrets Manager で管理します。
+> 詳細は [docs/development.md](docs/development.md) を参照してください。
 
 ## デプロイ手順
 
@@ -82,15 +80,10 @@ cd grimoire-keeper
 ```bash
 # 環境変数設定
 cp .env.example .env
-nano .env  # 上記で取得したAPIキー・トークンを設定
+nano .env  # BWS_ACCESS_TOKENと非秘密の設定値を記載
 
-# 必須設定項目:
-# OPENAI_API_KEY=sk-...
-# GOOGLE_API_KEY=...
-# JINA_API_KEY=...
-# SLACK_BOT_TOKEN=xoxb-...        # 手順2.3で取得
-# SLACK_SIGNING_SECRET=...        # 手順2.3で取得  
-# SLACK_APP_TOKEN=xapp-...        # 手順2.2で取得
+# 起動（シークレットをBitwardenから取得してdocker composeを起動）
+bash scripts/start.sh -d
 ```
 
 ### 4. デプロイ実行
@@ -173,10 +166,10 @@ sudo cp -r /backup/20241201 /opt/grimoire-keeper-data
 
 ### よくある問題
 
-**1. APIキーエラー**
+**1. 環境変数エラー**
 ```bash
 # .envファイル確認
-cat .env | grep -E "(OPENAI|GOOGLE|JINA|SLACK)"
+cat .env | grep BWS_ACCESS_TOKEN
 ```
 
 **2. コンテナ起動失敗**

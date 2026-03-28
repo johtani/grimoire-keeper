@@ -6,7 +6,8 @@
 ```bash
 # devcontainer起動後
 cp .env.example .env
-# .envファイルを編集してAPIキーを設定
+# BWS_ACCESS_TOKENと非秘密の設定値を.envに記載
+# APIキー類はBitwarden Secrets Managerで管理（詳細: docs/development.md）
 
 uv sync
 ```

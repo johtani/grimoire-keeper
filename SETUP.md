@@ -17,7 +17,8 @@ uv --version  # Python 3.13 + uv確認
 
 # 3. 環境変数設定
 cp .env.example .env
-# .envファイルを編集してAPIキーを設定
+# BWS_ACCESS_TOKENと非秘密の設定値を.envに記載
+# APIキー類はBitwarden Secrets Managerで管理（詳細: docs/development.md）
 ```
 
 ## 2. 開発時の動作確認パターン

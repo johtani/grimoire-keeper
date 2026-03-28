@@ -20,10 +20,9 @@ code .
 # .envファイルを作成
 cp .env.example .env
 
-# 必要なAPIキーを設定 (.envファイルを編集)
-# - OPENAI_API_KEY: OpenAI APIキー (必須)
-# - GOOGLE_API_KEY: Google Gemini APIキー (必須) 
-# - JINA_API_KEY: Jina AI Reader APIキー (必須)
+# BWS_ACCESS_TOKENを設定（APIキー類はBitwarden Secrets Managerで管理）
+# - BWS_ACCESS_TOKEN: Bitwarden Secrets Managerアクセストークン (必須)
+# 詳細: docs/development.md
 ```
 
 ### 1.3 依存関係同期
@@ -137,9 +136,10 @@ docker-compose restart weaviate
 **APIキーエラー**
 ```bash
 # 環境変数確認
-cat .env
+cat .env | grep BWS_ACCESS_TOKEN
 
-# APIキーが正しく設定されているか確認
+# bwsでシークレットが取得できるか確認
+source scripts/load_secrets.sh
 ```
 
 ### 6.2 ログ確認
