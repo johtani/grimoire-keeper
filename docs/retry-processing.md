@@ -308,21 +308,6 @@ retryFailedPages();
 
 ## Configuration
 
-### Environment Variables
-
-Retry behavior can be configured through environment variables:
-
-```bash
-# Maximum concurrent retry operations
-MAX_CONCURRENT_RETRIES=5
-
-# Default delay between retry attempts (seconds)
-DEFAULT_RETRY_DELAY=1
-
-# Maximum retry attempts per page
-MAX_RETRY_ATTEMPTS=3
-```
-
 ### Rate Limiting Considerations
 
 When retrying, consider external API rate limits:
