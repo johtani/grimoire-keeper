@@ -148,12 +148,18 @@ python scripts/db_cli.py               # Database CLI tool
 # Start infrastructure
 docker-compose up -d weaviate
 
+# Load secrets
+source scripts/load_secrets.sh
+
 # Start API (with hot reload)
 uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 #### Alternative: Full Docker
 ```bash
+# Load secrets before starting containers
+source scripts/load_secrets.sh
+
 # Start all services
 docker-compose up -d
 

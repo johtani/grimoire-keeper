@@ -61,8 +61,9 @@
    python scripts/init_database.py init
    ```
 
-6. **Start the API / APIの起動**
+6. **Load secrets and start the API / シークレット展開とAPIの起動**
    ```bash
+   source scripts/load_secrets.sh
    uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
    ```
 
@@ -158,6 +159,9 @@ grimoire-keeper/
    # Infrastructure / インフラ
    docker compose up -d weaviate
    
+   # Load secrets / シークレット展開
+   source scripts/load_secrets.sh
+
    # Application / アプリケーション
    uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
    ```

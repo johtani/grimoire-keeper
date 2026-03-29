@@ -190,7 +190,7 @@ uv run pytest
 
 ### 7.2 サービス管理
 ```bash
-# 全サービス起動
+# 全サービス起動（シークレット展開が必要な場合はsource scripts/load_secrets.shを先に実行）
 docker-compose up -d
 
 # 全サービス停止

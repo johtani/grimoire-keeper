@@ -41,6 +41,9 @@ uv run --package grimoire-bot python -m grimoire_bot.main
 
 ### パターンB: 全てコンテナで実行
 ```bash
+# シークレット展開（コンテナ起動前に必須）
+source scripts/load_secrets.sh
+
 # 全サービス起動
 docker-compose up
 
@@ -54,6 +57,9 @@ docker-compose up bot
 ```bash
 # インフラ系はコンテナ
 docker-compose up -d weaviate
+
+# シークレット展開（アプリ起動前に必須）
+source scripts/load_secrets.sh
 
 # 開発中のサービスはdevcontainer内
 # API開発時
