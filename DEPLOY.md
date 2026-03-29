@@ -53,13 +53,13 @@ cd grimoire-keeper
 1. "Socket Mode" → Enable Socket Mode: ON
 2. "Generate Token and Scopes" → Token Name: "grimoire-app-token"
 3. Scopes: `connections:write` → Generate
-4. App-Level Tokenをコピー → 後で`SLACK_APP_TOKEN`に設定
+4. App-Level Tokenをコピー → Bitwardenの`GRIMOIRE_KEEPER_SLACK_APP_TOKEN`に登録
 
 #### 2.3. Bot設定
 **OAuth & Permissions:**
 1. Bot Token Scopes: `app_mentions:read`, `chat:write`, `commands`
 2. Install App to Workspace
-3. Bot User OAuth Tokenをコピー → 後で`SLACK_BOT_TOKEN`に設定
+3. Bot User OAuth Tokenをコピー → Bitwardenの`GRIMOIRE_KEEPER_SLACK_BOT_TOKEN`に登録
 
 **Event Subscriptions:**
 1. Enable Events: ON
@@ -74,7 +74,7 @@ cd grimoire-keeper
 1. Interactivity: ON
 
 **Basic Information:**
-1. Signing Secretをコピー → 後で`SLACK_SIGNING_SECRET`に設定
+1. Signing Secretをコピー → Bitwardenの`GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET`に登録
 
 ### 3. 環境設定
 ```bash

@@ -3,7 +3,7 @@
 ## gitに含めてはいけないファイル
 
 ### 機密情報
-- `.env` - 環境変数（APIキー等）
+- `.env` - 環境変数（`BWS_ACCESS_TOKEN`等、APIキー類はBitwarden Secrets Managerで管理）
 - `*.key`, `*.pem` - 秘密鍵
 - `*.db`, `*.sqlite` - データベースファイル
 - `*.log` - ログファイル（個人情報含む可能性）

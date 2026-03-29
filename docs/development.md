@@ -450,8 +450,9 @@ curl http://localhost:8080/v1/meta
 
 **API key errors:**
 ```bash
-# Verify environment variables
-python -c "from grimoire_api.config import settings; print(settings.OPENAI_API_KEY[:10])"
+# Verify secrets are loaded
+echo $OPENAI_API_KEY | cut -c1-10
+# 空の場合はsource scripts/load_secrets.shを実行してから再起動
 ```
 
 ### Getting Help
