@@ -138,7 +138,10 @@ curl http://localhost:8089/v1/meta
 docker compose -f docker-compose.prod.yml down
 
 # 再起動
-docker compose -f docker-compose.prod.yml restart
+# ❗ docker compose restart は使わないこと
+# restartはコンテナを再起動するだけなので、
+# Bitwardenからのシークレット取得が実行されず環境変数が欠落する
+bash scripts/start.sh -d
 
 # 更新デプロイ
 git pull
