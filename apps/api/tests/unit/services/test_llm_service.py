@@ -55,8 +55,9 @@ class TestLLMService:
 
         with patch("grimoire_api.services.llm_service.completion") as mock_completion:
             mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = json.dumps(expected_result)
+            mock_response.model_dump.return_value = {
+                "choices": [{"message": {"content": json.dumps(expected_result)}}]
+            }
             mock_completion.return_value = mock_response
 
             result = await llm_service.generate_summary_keywords(page_id)
@@ -117,8 +118,9 @@ class TestLLMService:
 
         with patch("grimoire_api.services.llm_service.completion") as mock_completion:
             mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = json.dumps(invalid_result)
+            mock_response.model_dump.return_value = {
+                "choices": [{"message": {"content": json.dumps(invalid_result)}}]
+            }
             mock_completion.return_value = mock_response
 
             with pytest.raises(LLMServiceError, match="Invalid LLM response format"):
@@ -134,8 +136,9 @@ class TestLLMService:
 
         with patch("grimoire_api.services.llm_service.completion") as mock_completion:
             mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = json.dumps(invalid_result)
+            mock_response.model_dump.return_value = {
+                "choices": [{"message": {"content": json.dumps(invalid_result)}}]
+            }
             mock_completion.return_value = mock_response
 
             with pytest.raises(LLMServiceError, match="Keywords must be a list"):
@@ -175,8 +178,9 @@ class TestLLMService:
 
         with patch("grimoire_api.services.llm_service.completion") as mock_completion:
             mock_response = MagicMock()
-            mock_response.choices = [MagicMock()]
-            mock_response.choices[0].message.content = json.dumps(expected_result)
+            mock_response.model_dump.return_value = {
+                "choices": [{"message": {"content": json.dumps(expected_result)}}]
+            }
             mock_completion.return_value = mock_response
 
             await llm_service.generate_summary_keywords(page_id)
