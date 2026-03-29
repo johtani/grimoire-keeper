@@ -82,7 +82,8 @@ cd grimoire-keeper
 cp .env.example .env
 nano .env  # BWS_ACCESS_TOKENと非秘密の設定値を記載
 
-# 起動（シークレットをBitwardenから取得してdocker composeを起動）
+# 起動（scripts/start.shが内部でload_secrets.shを呼び出し、
+# Bitwardenからシークレットを取得してからdocker composeを起動）
 bash scripts/start.sh -d
 ```
 

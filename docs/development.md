@@ -65,6 +65,9 @@ uv sync
 ### 3. Start Services
 
 ```bash
+# Load secrets from Bitwarden Secrets Manager
+source scripts/load_secrets.sh
+
 # Start Weaviate
 docker-compose up -d weaviate
 
@@ -125,6 +128,15 @@ uv run pytest --cov=apps --cov-report=html  # With coverage
 python scripts/init_database.py init    # Initialize database
 python scripts/db_cli.py               # Database CLI tool
 ```
+
+### Secret Management Scripts
+
+| Script | 使うタイミング | 使い方 |
+|--------|------------|--------|
+| `scripts/load_secrets.sh` | 開発環境でアプリを手動起動する前 | `source scripts/load_secrets.sh` |
+| `scripts/start.sh` | サーバで本番起動するとき | `bash scripts/start.sh -d` |
+
+`load_secrets.sh` は単体では使わず、`source` で呼び出すことで現在のシェルセッションに環境変数を展開します。`start.sh` は内部で `load_secrets.sh` を呼び出した後に `docker compose up` を実行します。
 
 ### Running Services
 

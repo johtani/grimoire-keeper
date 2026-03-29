@@ -69,7 +69,14 @@ uv run python scripts/init_database.py check
 
 ## 4. APIサービス起動
 
-### 4.1 開発サーバー起動
+### 4.1 シークレットの展開
+```bash
+# Bitwarden Secrets Managerからシークレットを現在のシェルセッションに展開
+# （アプリ起動前に必ず実行）
+source scripts/load_secrets.sh
+```
+
+### 4.2 開発サーバー起動
 ```bash
 # FastAPI開発サーバーを起動
 uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000

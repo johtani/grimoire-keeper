@@ -31,6 +31,9 @@ uv sync
 # Weaviateのみコンテナで起動
 docker-compose up -d weaviate
 
+# Bitwardenからシークレットを現在のシェルセッションに展開
+source scripts/load_secrets.sh
+
 # devcontainer内でアプリ実行
 uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0
 uv run --package grimoire-bot python -m grimoire_bot.main
