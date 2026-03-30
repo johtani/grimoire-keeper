@@ -38,7 +38,7 @@ class FileRepository:
                 suffix=".tmp",
                 delete=False,
             ) as tmp:
-                json.dump(data, tmp, ensure_ascii=False, indent=2)
+                json.dump(data, tmp, ensure_ascii=True, indent=2)
                 tmp_path = Path(tmp.name)
             tmp_path.replace(file_path)
         except Exception as e:
