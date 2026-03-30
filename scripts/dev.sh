@@ -1,7 +1,7 @@
 #!/bin/bash
-# サーバー起動ラッパースクリプト
-# Bitwarden Secrets Managerからシークレットを取得してdocker composeを起動する
-# 使用方法: bash scripts/start.sh [docker compose options]
+# 開発用APIサーバー起動スクリプト
+# Bitwarden Secrets Managerからシークレットを取得してuvicornを起動する
+# 使用方法: bash scripts/dev.sh
 
 set -e
 
@@ -24,7 +24,10 @@ if ! command -v bws &> /dev/null; then
   exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-echo "Starting services with secrets from Bitwarden Secrets Manager..."
-bws run -- docker compose -f "${SCRIPT_DIR}/../docker-compose.prod.yml" up "$@"
+echo "Starting development server with secrets from Bitwarden Secrets Manager..."
+bws run -- bash -c '
+  export OPENAI_API_KEY="${GRIMOIRE_KEEPER_OPENAI_API_KEY}"
+  export GOOGLE_API_KEY="${GRIMOIRE_KEEPER_GOOGLE_API_KEY}"
+  export JINA_API_KEY="${GRIMOIRE_KEEPER_JINA_API_KEY}"
+  exec uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
+'

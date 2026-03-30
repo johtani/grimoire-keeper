@@ -3,7 +3,8 @@
 ## gitに含めてはいけないファイル
 
 ### 機密情報
-- `.env` - 環境変数（`BWS_ACCESS_TOKEN`等、APIキー類はBitwarden Secrets Managerで管理）
+- `~/.config/bws.env` - `BWS_ACCESS_TOKEN`（ホームディレクトリで管理、リポジトリ外）
+- `.env` - 非秘密の設定値（APIキー類はBitwarden Secrets Managerで管理）
 - `*.key`, `*.pem` - 秘密鍵
 - `*.db`, `*.sqlite` - データベースファイル
 - `*.log` - ログファイル（個人情報含む可能性）
@@ -28,7 +29,8 @@
 
 ### 推奨事項
 - Bitwarden Secrets ManagerでAPIキー・トークンを管理
-- `.env.example` でテンプレート提供（`BWS_ACCESS_TOKEN`と非秘密の設定値のみ記載）
-- 実際のキーは `.env` に記載（gitignore対象）
+- `BWS_ACCESS_TOKEN` は `~/.config/bws.env` に保存（リポジトリ外、`chmod 600` 推奨）
+- `.env.example` でテンプレート提供（非秘密の設定値のみ記載）
+- 非秘密の設定値は `.env` に記載（gitignore対象）
 - コード内にハードコードしない
 - 定期的なキーローテーション
