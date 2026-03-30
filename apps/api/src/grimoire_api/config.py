@@ -2,6 +2,7 @@
 
 import os
 import sys
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,7 +54,8 @@ class Settings(BaseSettings):
                 error_msg += f"  - {var}\n"
             error_msg += (
                 "\n設定方法:\n"
-                "  1. Bitwarden Secrets Managerにシークレットを登録 (GRIMOIRE_KEEPER_プレフィックス付き)\n"
+                "  1. Bitwarden Secrets Managerにシークレットを登録\n"
+                "     (GRIMOIRE_KEEPER_プレフィックス付きで登録)\n"
                 "  2. BWS_ACCESS_TOKENを.envに設定\n"
                 "  3. source scripts/load_secrets.sh を実行してシークレットを展開\n"
                 "  4. アプリケーションを再起動\n\n"

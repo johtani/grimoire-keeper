@@ -9,7 +9,7 @@
         "ms-python.python",
         "charliermarsh.ruff",
         "ms-python.mypy-type-checker",
-        "amazonwebservices.amazon-q-vscode"
+        "anthropic.claude-code"
       ]
     }
   },

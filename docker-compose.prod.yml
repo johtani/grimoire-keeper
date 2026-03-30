@@ -22,6 +22,8 @@ services:
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+    env_file:
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

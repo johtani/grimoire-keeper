@@ -2,14 +2,32 @@
 
 # システムパッケージの更新とsqlite3のインストール
 sudo apt-get update
-sudo apt-get install -y sqlite3 unzip
+sudo apt-get install -y sqlite3 unzip jq
 
 # bws (Bitwarden Secrets Manager CLI) のインストール
-BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
-sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/
-sudo chmod +x /usr/local/bin/bws
-rm /tmp/bws.zip
+BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | jq -r '.tag_name')
+if [ -z "$BWS_VERSION" ] || [ "$BWS_VERSION" = "null" ]; then
+  echo "Warning: bwsのバージョン取得に失敗しました。bwsのインストールをスキップします。" >&2
+else
+  # アーキテクチャを検出
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)   BWS_ARCH="x86_64-unknown-linux-gnu" ;;
+    aarch64)  BWS_ARCH="aarch64-unknown-linux-gnu" ;;
+    *)
+      echo "Warning: 未対応のアーキテクチャ ($ARCH)。bwsのインストールをスキップします。" >&2
+      BWS_ARCH=""
+      ;;
+  esac
+
+  if [ -n "$BWS_ARCH" ]; then
+    curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-${BWS_ARCH}-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
+    sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/
+    sudo chmod +x /usr/local/bin/bws
+    rm /tmp/bws.zip
+    echo "bws ${BWS_VERSION} (${BWS_ARCH}) をインストールしました。"
+  fi
+fi
 
 # uvのインストール
 curl -LsSf https://astral.sh/uv/install.sh | sh

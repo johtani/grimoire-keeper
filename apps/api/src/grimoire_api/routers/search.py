@@ -1,6 +1,5 @@
 """Search router."""
 
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..models.request import SearchRequest

@@ -85,7 +85,9 @@ class TestVectorizerService:
         # モック設定
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
-        mock_dependencies["chunking_service"].chunk_text_with_jina_data.return_value = mock_chunks
+        mock_dependencies[
+            "chunking_service"
+        ].chunk_text_with_jina_data.return_value = mock_chunks
         mock_dependencies[
             "mock_collection"
         ].data.insert.return_value = "weaviate-id-123"
@@ -103,7 +105,9 @@ class TestVectorizerService:
         # 各メソッドが呼ばれたことを確認
         mock_dependencies["page_repo"].get_page.assert_called_once_with(page_id)
         mock_dependencies["file_repo"].load_json_file.assert_called_once_with(page_id)
-        mock_dependencies["chunking_service"].chunk_text_with_jina_data.assert_called_once_with(
+        mock_dependencies[
+            "chunking_service"
+        ].chunk_text_with_jina_data.assert_called_once_with(
             "This is test content for vectorization.", mock_jina_data
         )
 
@@ -156,11 +160,15 @@ class TestVectorizerService:
         mock_dependencies["file_repo"].load_json_file.return_value = {
             "data": {"content": ""}
         }
-        mock_dependencies["chunking_service"].chunk_text_with_jina_data.return_value = []
+        mock_dependencies[
+            "chunking_service"
+        ].chunk_text_with_jina_data.return_value = []
 
         # エラー確認
         with patch.object(vectorizer_service, "_get_client"):
-            with pytest.raises(VectorizerError, match="No chunks generated from content"):
+            with pytest.raises(
+                VectorizerError, match="No chunks generated from content"
+            ):
                 await vectorizer_service.vectorize_content(page_id)
 
     @pytest.mark.asyncio
