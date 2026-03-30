@@ -11,6 +11,7 @@ if [ -z "${BWS_ACCESS_TOKEN}" ]; then
   if [ -f "$BWS_ENV" ]; then
     # shellcheck source=/dev/null
     source "$BWS_ENV"
+    export BWS_ACCESS_TOKEN
   fi
 fi
 
