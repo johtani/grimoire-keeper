@@ -78,9 +78,14 @@ cd grimoire-keeper
 
 ### 3. 環境設定
 ```bash
-# 環境変数設定
+# BWS_ACCESS_TOKENを保存
+mkdir -p ~/.config
+echo 'BWS_ACCESS_TOKEN=your-access-token' > ~/.config/bws.env
+chmod 600 ~/.config/bws.env
+
+# 非秘密の設定値を .env に記載
 cp .env.example .env
-nano .env  # BWS_ACCESS_TOKENと非秘密の設定値を記載
+nano .env
 
 # 起動（bws runがBitwardenからシークレットを取得してdocker composeを起動）
 bash scripts/start.sh -d
@@ -171,8 +176,8 @@ sudo cp -r /backup/20241201 /opt/grimoire-keeper-data
 
 **1. 環境変数エラー**
 ```bash
-# .envファイル確認
-cat .env | grep BWS_ACCESS_TOKEN
+# BWS_ACCESS_TOKENが設定されているか確認
+cat ~/.config/bws.env
 ```
 
 **2. コンテナ起動失敗**

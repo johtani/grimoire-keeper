@@ -6,7 +6,7 @@
 ```bash
 # devcontainer起動後
 cp .env.example .env
-# BWS_ACCESS_TOKENと非秘密の設定値を.envに記載
+# 非秘密の設定値を.envに記載 (BWS_ACCESS_TOKENは~/.config/bws.envへ)
 # APIキー類はBitwarden Secrets Managerで管理（詳細: docs/development.md）
 
 uv sync
@@ -24,7 +24,7 @@ docker-compose up -d weaviate
 uv run python scripts/init_database.py init
 
 # Step 4: API起動（bws runがシークレットを自動注入）
-bash scripts/dev.sh --host 0.0.0.0
+bash scripts/dev.sh
 ```
 
 ### 3. 動作確認

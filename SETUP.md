@@ -17,7 +17,7 @@ uv --version  # Python 3.13 + uv確認
 
 # 3. 環境変数設定
 cp .env.example .env
-# BWS_ACCESS_TOKENと非秘密の設定値を.envに記載
+# 非秘密の設定値を.envに記載 (BWS_ACCESS_TOKENは~/.config/bws.envへ)
 # APIキー類はBitwarden Secrets Managerで管理（詳細: docs/development.md）
 ```
 
@@ -32,16 +32,13 @@ uv sync
 docker-compose up -d weaviate
 
 # devcontainer内でアプリ実行（bws runがシークレットを自動注入）
-bash scripts/dev.sh --host 0.0.0.0
+bash scripts/dev.sh
 ```
 
 ### パターンB: 全てコンテナで実行
 ```bash
 # 全サービス起動（bws runがシークレットを自動注入）
-bash scripts/start.sh
-
-# または段階的起動
-bash scripts/start.sh --scale api=1
+bash scripts/start.sh -d
 ```
 
 ### パターンC: 混合実行（推奨）

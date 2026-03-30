@@ -72,7 +72,7 @@ uv run python scripts/init_database.py check
 ### 4.1 開発サーバー起動
 ```bash
 # FastAPI開発サーバーを起動（bws runがシークレットを自動注入）
-bash scripts/dev.sh --host 0.0.0.0 --port 8000
+bash scripts/dev.sh
 ```
 
 ### 4.2 API動作確認
@@ -136,7 +136,7 @@ docker-compose restart weaviate
 **APIキーエラー**
 ```bash
 # BWS_ACCESS_TOKENが設定されているか確認
-cat .env | grep BWS_ACCESS_TOKEN
+cat ~/.config/bws.env
 
 # bwsでシークレットが取得できるか確認
 bws secret list

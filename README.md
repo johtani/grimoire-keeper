@@ -42,8 +42,8 @@
 2. **Set up environment / 環境設定**
    ```bash
    cp .env.example .env
-   # Edit .env with BWS_ACCESS_TOKEN and non-secret settings
-   # BWS_ACCESS_TOKENと非秘密の設定値を.envに設定
+   # Edit .env with non-secret settings (BWS_ACCESS_TOKEN goes to ~/.config/bws.env)
+   # 非秘密の設定値を.envに設定 (BWS_ACCESS_TOKENは~/.config/bws.envへ)
    ```
 
 3. **Install dependencies / 依存関係のインストール**

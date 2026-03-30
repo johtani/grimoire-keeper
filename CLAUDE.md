@@ -96,7 +96,7 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 - `GOOGLE_API_KEY` — Google Gemini
 - `OPENAI_API_KEY` — Weaviate text2vec-openai 埋め込み (`text-embedding-ada-002`)
 
-`.env` には `BWS_ACCESS_TOKEN` のみを保存し、その他のシークレットは起動時に `bws run` が Bitwarden Secrets Manager から取得してサブプロセスに注入します (キーのプレフィックスは `GRIMOIRE_KEEPER_`)。開発は `scripts/dev.sh`、本番は `scripts/start.sh` を使用します。
+`BWS_ACCESS_TOKEN` は `~/.config/bws.env` に保存します (リポジトリ外)。その他のシークレットは起動時に `bws run` が Bitwarden Secrets Manager から取得してサブプロセスに注入します (キーのプレフィックスは `GRIMOIRE_KEEPER_`)。`.env` には非秘密の設定値のみ記載します。開発は `scripts/dev.sh`、本番は `scripts/start.sh` を使用します。
 
 ## テストの注意事項
 

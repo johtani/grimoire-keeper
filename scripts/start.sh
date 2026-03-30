@@ -5,8 +5,17 @@
 
 set -e
 
+# BWS_ACCESS_TOKEN が未設定の場合は ~/.config/bws.env から読み込む
 if [ -z "${BWS_ACCESS_TOKEN}" ]; then
-  echo "Error: BWS_ACCESS_TOKEN is not set" >&2
+  BWS_ENV="${HOME}/.config/bws.env"
+  if [ -f "$BWS_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$BWS_ENV"
+  fi
+fi
+
+if [ -z "${BWS_ACCESS_TOKEN}" ]; then
+  echo "Error: BWS_ACCESS_TOKEN is not set. ~/.config/bws.env に設定してください。" >&2
   exit 1
 fi
 
