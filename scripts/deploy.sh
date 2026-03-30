@@ -2,90 +2,93 @@
 
 set -e
 
-echo "🚀 Grimoire Keeper デプロイ開始"
+echo "Grimoire Keeper デプロイ開始"
 
-# 環境変数チェック
+# .envファイル確認（非秘密の設定値用）
 if [ ! -f .env ]; then
-    echo "❌ .envファイルが見つかりません"
-    echo "cp .env.example .env を実行してAPIキーを設定してください"
+    echo "ERROR: .envファイルが見つかりません"
+    echo "cp .env.example .env を実行して設定値を記載してください"
     exit 1
 fi
 
-# 必要なAPIキーチェック
-source .env
-if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ] || [ -z "$JINA_API_KEY" ]; then
-    echo "❌ バックエンド用APIキーが設定されていません"
-    echo "OPENAI_API_KEY, GOOGLE_API_KEY, JINA_API_KEYを.envに設定してください"
+# BWS_ACCESS_TOKEN を ~/.config/bws.env から読み込む
+if [ -z "${BWS_ACCESS_TOKEN}" ]; then
+  BWS_ENV="${HOME}/.config/bws.env"
+  if [ -f "$BWS_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$BWS_ENV"
+  fi
+fi
+
+if [ -z "${BWS_ACCESS_TOKEN}" ]; then
+    echo "ERROR: BWS_ACCESS_TOKEN is not set. ~/.config/bws.env に設定してください。"
     exit 1
 fi
 
-# Slack Bot用APIキーチェック
-if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_SIGNING_SECRET" ] || [ -z "$SLACK_APP_TOKEN" ]; then
-    echo "❌ Slack Bot用APIキーが設定されていません"
-    echo "SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_APP_TOKENを.envに設定してください"
+if ! command -v bws &> /dev/null; then
+    echo "ERROR: bws CLI is not installed." >&2
     exit 1
 fi
 
 # データディレクトリ作成
-echo "📁 データディレクトリ作成中..."
+echo "データディレクトリ作成中..."
 sudo mkdir -p /opt/grimoire-keeper-data/{database,json,weaviate}
 sudo chown -R $USER:$USER /opt/grimoire-keeper-data
 
 # 既存コンテナ停止・削除
-echo "🛑 既存サービス停止中..."
+echo "既存サービス停止中..."
 docker compose -f docker-compose.prod.yml down
 
 # イメージビルド
-echo "🔨 イメージビルド中..."
-docker compose -f docker-compose.prod.yml build --no-cache
+echo "イメージビルド中..."
+bws run -- docker compose -f docker-compose.prod.yml build --no-cache
 
 # サービス起動
-echo "🚀 サービス起動中..."
-docker compose -f docker-compose.prod.yml up -d
+echo "サービス起動中..."
+bws run -- docker compose -f docker-compose.prod.yml up -d
 
 # ヘルスチェック
-echo "🔍 サービス起動確認中..."
+echo "サービス起動確認中..."
 sleep 10
 
 # Weaviate確認
 if curl -f http://localhost:8089/v1/meta >/dev/null 2>&1; then
-    echo "✅ Weaviate起動完了"
+    echo "OK: Weaviate起動完了"
 else
-    echo "❌ Weaviate起動失敗"
+    echo "ERROR: Weaviate起動失敗"
     exit 1
 fi
 
 # データベース・スキーマ初期化
-echo "🔧 データベース・スキーマ初期化中..."
+echo "データベース・スキーマ初期化中..."
 docker compose -f docker-compose.prod.yml exec -T api uv run python ../../scripts/init_database.py init
 if [ $? -eq 0 ]; then
-    echo "✅ データベース・スキーマ初期化完了"
+    echo "OK: データベース・スキーマ初期化完了"
 else
-    echo "❌ データベース・スキーマ初期化失敗"
+    echo "ERROR: データベース・スキーマ初期化失敗"
     exit 1
 fi
 
 # API確認
 if curl -f http://localhost:8000/api/v1/health >/dev/null 2>&1; then
-    echo "✅ API起動完了"
+    echo "OK: API起動完了"
 else
-    echo "❌ API起動失敗"
+    echo "ERROR: API起動失敗"
     exit 1
 fi
 
 # Slack Bot確認
 if docker compose -f docker-compose.prod.yml ps bot | grep -q "Up"; then
-    echo "✅ Slack Bot起動完了"
+    echo "OK: Slack Bot起動完了"
 else
-    echo "❌ Slack Bot起動失敗"
+    echo "ERROR: Slack Bot起動失敗"
     exit 1
 fi
 
-echo "🎉 デプロイ完了！"
+echo "デプロイ完了！"
 echo "Web UI: http://localhost:8001"
 echo "API: http://localhost:8000"
 echo "Weaviate: http://localhost:8089"
-echo "Slack Bot: コンテナ内で実行中"
 echo ""
 echo "ログ確認:"
 echo "  全体: docker compose -f docker-compose.prod.yml logs -f"
