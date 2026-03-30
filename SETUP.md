@@ -31,26 +31,17 @@ uv sync
 # Weaviateのみコンテナで起動
 docker-compose up -d weaviate
 
-# Bitwardenからシークレットを現在のシェルセッションに展開
-source scripts/load_secrets.sh
-
-# devcontainer内でアプリ実行
-uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0
-uv run --package grimoire-bot python -m grimoire_bot.main
+# devcontainer内でアプリ実行（bws runがシークレットを自動注入）
+bash scripts/dev.sh --host 0.0.0.0
 ```
 
 ### パターンB: 全てコンテナで実行
 ```bash
-# シークレット展開（コンテナ起動前に必須）
-source scripts/load_secrets.sh
-
-# 全サービス起動
-docker-compose up
+# 全サービス起動（bws runがシークレットを自動注入）
+bash scripts/start.sh
 
 # または段階的起動
-docker-compose up -d weaviate
-docker-compose up -d api
-docker-compose up bot
+bash scripts/start.sh --scale api=1
 ```
 
 ### パターンC: 混合実行（推奨）
@@ -58,14 +49,11 @@ docker-compose up bot
 # インフラ系はコンテナ
 docker-compose up -d weaviate
 
-# シークレット展開（アプリ起動前に必須）
-source scripts/load_secrets.sh
-
-# 開発中のサービスはdevcontainer内
+# 開発中のサービスはdevcontainer内（bws runがシークレットを自動注入）
 # API開発時
-uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
+bash scripts/dev.sh
 
-# Bot開発時  
+# Bot開発時
 uv run --package grimoire-bot python -m grimoire_bot.main
 ```
 

@@ -69,17 +69,10 @@ uv run python scripts/init_database.py check
 
 ## 4. APIサービス起動
 
-### 4.1 シークレットの展開
+### 4.1 開発サーバー起動
 ```bash
-# Bitwarden Secrets Managerからシークレットを現在のシェルセッションに展開
-# （アプリ起動前に必ず実行）
-source scripts/load_secrets.sh
-```
-
-### 4.2 開発サーバー起動
-```bash
-# FastAPI開発サーバーを起動
-uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
+# FastAPI開発サーバーを起動（bws runがシークレットを自動注入）
+bash scripts/dev.sh --host 0.0.0.0 --port 8000
 ```
 
 ### 4.2 API動作確認
@@ -142,11 +135,11 @@ docker-compose restart weaviate
 
 **APIキーエラー**
 ```bash
-# 環境変数確認
+# BWS_ACCESS_TOKENが設定されているか確認
 cat .env | grep BWS_ACCESS_TOKEN
 
 # bwsでシークレットが取得できるか確認
-source scripts/load_secrets.sh
+bws secret list
 ```
 
 ### 6.2 ログ確認
@@ -190,8 +183,8 @@ uv run pytest
 
 ### 7.2 サービス管理
 ```bash
-# 全サービス起動（シークレット展開が必要な場合はsource scripts/load_secrets.shを先に実行）
-docker-compose up -d
+# 全サービス起動（本番用、bws runがシークレットを自動注入）
+bash scripts/start.sh -d
 
 # 全サービス停止
 docker-compose down

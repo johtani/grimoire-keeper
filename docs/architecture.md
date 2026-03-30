@@ -325,7 +325,7 @@ Slack Response → Formatted Results
 
 ### Data Security
 - API keys managed by Bitwarden Secrets Manager (not stored in files)
-- Only `BWS_ACCESS_TOKEN` stored in environment, all secrets fetched at startup via `scripts/load_secrets.sh`
+- Only `BWS_ACCESS_TOKEN` stored in environment, all secrets injected at startup via `bws run` (scoped to the subprocess only)
 - No sensitive data in logs
 - File system permissions for JSON storage
 - Weaviate access control

@@ -57,8 +57,7 @@ class Settings(BaseSettings):
                 "  1. Bitwarden Secrets Managerにシークレットを登録\n"
                 "     (GRIMOIRE_KEEPER_プレフィックス付きで登録)\n"
                 "  2. BWS_ACCESS_TOKENを.envに設定\n"
-                "  3. source scripts/load_secrets.sh を実行してシークレットを展開\n"
-                "  4. アプリケーションを再起動\n\n"
+                "  3. bash scripts/dev.sh でAPIを起動 (bws runがシークレットを注入)\n\n"
                 "詳細は docs/development.md を参照してください。\n"
                 "=" * 70
             )

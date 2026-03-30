@@ -23,11 +23,8 @@ docker-compose up -d weaviate
 # Step 3: Weaviateスキーマ初期化
 uv run python scripts/init_database.py init
 
-# Step 4: Bitwardenからシークレットを現在のシェルセッションに展開
-source scripts/load_secrets.sh
-
-# Step 5: API起動
-uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0
+# Step 4: API起動（bws runがシークレットを自動注入）
+bash scripts/dev.sh --host 0.0.0.0
 ```
 
 ### 3. 動作確認

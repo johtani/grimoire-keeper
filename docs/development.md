@@ -65,17 +65,14 @@ uv sync
 ### 3. Start Services
 
 ```bash
-# Load secrets from Bitwarden Secrets Manager
-source scripts/load_secrets.sh
-
 # Start Weaviate
 docker-compose up -d weaviate
 
 # Initialize database
 python scripts/init_database.py init
 
-# Start API server
-uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
+# Start API server (bws run injects secrets automatically)
+bash scripts/dev.sh
 ```
 
 ### 4. Verify Setup
@@ -133,10 +130,10 @@ python scripts/db_cli.py               # Database CLI tool
 
 | Script | 使うタイミング | 使い方 |
 |--------|------------|--------|
-| `scripts/load_secrets.sh` | 開発環境でアプリを手動起動する前 | `source scripts/load_secrets.sh` |
+| `scripts/dev.sh` | 開発環境でAPIサーバーを起動するとき | `bash scripts/dev.sh` |
 | `scripts/start.sh` | サーバで本番起動するとき | `bash scripts/start.sh -d` |
 
-`load_secrets.sh` は単体では使わず、`source` で呼び出すことで現在のシェルセッションに環境変数を展開します。`start.sh` は内部で `load_secrets.sh` を呼び出した後に `docker compose up` を実行します。
+どちらのスクリプトも内部で `bws run` を使い、Bitwarden Secrets Manager からシークレットを取得してサブプロセスにのみ注入します。シェルセッション全体には環境変数を展開しません。`BWS_ACCESS_TOKEN` が設定されていれば自動的にシークレットが注入されます。
 
 ### Running Services
 
@@ -148,20 +145,14 @@ python scripts/db_cli.py               # Database CLI tool
 # Start infrastructure
 docker-compose up -d weaviate
 
-# Load secrets
-source scripts/load_secrets.sh
-
-# Start API (with hot reload)
-uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
+# Start API (with hot reload, bws run injects secrets automatically)
+bash scripts/dev.sh --host 0.0.0.0 --port 8000
 ```
 
 #### Alternative: Full Docker
 ```bash
-# Load secrets before starting containers
-source scripts/load_secrets.sh
-
-# Start all services
-docker-compose up -d
+# Start all services (bws run injects secrets automatically)
+bash scripts/start.sh -d
 
 # View logs
 docker-compose logs -f api
@@ -456,9 +447,9 @@ curl http://localhost:8080/v1/meta
 
 **API key errors:**
 ```bash
-# Verify secrets are loaded
-echo $OPENAI_API_KEY | cut -c1-10
-# 空の場合はsource scripts/load_secrets.shを実行してから再起動
+# BWS_ACCESS_TOKENが設定されているか確認
+echo $BWS_ACCESS_TOKEN | cut -c1-10
+# 空の場合は.envにBWS_ACCESS_TOKENを設定し、bash scripts/dev.sh で再起動
 ```
 
 ### Getting Help
