@@ -46,7 +46,7 @@ services:
       - WEAVIATE_HOST=weaviate
       - WEAVIATE_PORT=8080
       - DATABASE_PATH=/data/grimoire.db
-      - JSON_STORAGE_PATH=/app/data/json
+      - JSON_STORAGE_PATH=/app/apps/api/data/json
       - OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GRIMOIRE_KEEPER_GOOGLE_API_KEY}
       - JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}

@@ -1,6 +1,7 @@
 """File operations repository."""
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -29,8 +30,17 @@ class FileRepository:
         """
         try:
             file_path = self.storage_path / f"{page_id}.json"
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            # アトミック書き込み: 一時ファイルに書いてからリネーム
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self.storage_path,
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                json.dump(data, tmp, ensure_ascii=False, indent=2)
+                tmp_path = Path(tmp.name)
+            tmp_path.replace(file_path)
         except Exception as e:
             raise FileOperationError(f"Failed to save JSON file: {str(e)}")
 
@@ -61,6 +71,11 @@ class FileRepository:
                 return json.load(f)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             raise FileOperationError(f"Invalid JSON format: {str(e)}")
+        except UnicodeDecodeError as e:
+            raise FileOperationError(
+                f"JSON file is corrupted (encoding error): {file_path} — {str(e)}. "
+                "Delete the file and retry processing."
+            )
         except Exception as e:
             raise FileOperationError(f"Failed to load JSON file: {str(e)}")
 
