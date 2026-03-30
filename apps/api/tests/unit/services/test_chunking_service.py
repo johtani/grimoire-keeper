@@ -34,7 +34,7 @@ This is the second section with more content.
 ### Subsection
 More detailed content here.
 """
-        chunks = chunking_service.chunk_markdown(markdown)
+        chunks = chunking_service.chunk_text(markdown)
 
         assert isinstance(chunks, list)
         assert len(chunks) >= 1

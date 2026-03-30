@@ -7,13 +7,11 @@
 - Docker & Docker Compose
 - 最低2GB RAM、10GB ディスク容量
 
-### 2. 必要なAPIキー
-- **OpenAI API Key** (埋め込み用)
-- **Google API Key** (Gemini LLM用)  
-- **Jina API Key** (コンテンツ抽出用)
-- **Slack Bot Token** (xoxb-...)
-- **Slack Signing Secret**
-- **Slack App Token** (xapp-...)
+### 2. 必要なAPIキー・トークン
+- **Bitwarden Secrets Manager Access Token** (`BWS_ACCESS_TOKEN`)
+
+> API キー・Slack トークンは Bitwarden Secrets Manager で管理します。
+> 詳細は [docs/development.md](docs/development.md) を参照してください。
 
 ## デプロイ手順
 
@@ -55,13 +53,13 @@ cd grimoire-keeper
 1. "Socket Mode" → Enable Socket Mode: ON
 2. "Generate Token and Scopes" → Token Name: "grimoire-app-token"
 3. Scopes: `connections:write` → Generate
-4. App-Level Tokenをコピー → 後で`SLACK_APP_TOKEN`に設定
+4. App-Level Tokenをコピー → Bitwardenの`GRIMOIRE_KEEPER_SLACK_APP_TOKEN`に登録
 
 #### 2.3. Bot設定
 **OAuth & Permissions:**
 1. Bot Token Scopes: `app_mentions:read`, `chat:write`, `commands`
 2. Install App to Workspace
-3. Bot User OAuth Tokenをコピー → 後で`SLACK_BOT_TOKEN`に設定
+3. Bot User OAuth Tokenをコピー → Bitwardenの`GRIMOIRE_KEEPER_SLACK_BOT_TOKEN`に登録
 
 **Event Subscriptions:**
 1. Enable Events: ON
@@ -76,21 +74,17 @@ cd grimoire-keeper
 1. Interactivity: ON
 
 **Basic Information:**
-1. Signing Secretをコピー → 後で`SLACK_SIGNING_SECRET`に設定
+1. Signing Secretをコピー → Bitwardenの`GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET`に登録
 
 ### 3. 環境設定
 ```bash
 # 環境変数設定
 cp .env.example .env
-nano .env  # 上記で取得したAPIキー・トークンを設定
+nano .env  # BWS_ACCESS_TOKENと非秘密の設定値を記載
 
-# 必須設定項目:
-# OPENAI_API_KEY=sk-...
-# GOOGLE_API_KEY=...
-# JINA_API_KEY=...
-# SLACK_BOT_TOKEN=xoxb-...        # 手順2.3で取得
-# SLACK_SIGNING_SECRET=...        # 手順2.3で取得  
-# SLACK_APP_TOKEN=xapp-...        # 手順2.2で取得
+# 起動（scripts/start.shが内部でload_secrets.shを呼び出し、
+# Bitwardenからシークレットを取得してからdocker composeを起動）
+bash scripts/start.sh -d
 ```
 
 ### 4. デプロイ実行
@@ -144,7 +138,10 @@ curl http://localhost:8089/v1/meta
 docker compose -f docker-compose.prod.yml down
 
 # 再起動
-docker compose -f docker-compose.prod.yml restart
+# ❗ docker compose restart は使わないこと
+# restartはコンテナを再起動するだけなので、
+# Bitwardenからのシークレット取得が実行されず環境変数が欠落する
+bash scripts/start.sh -d
 
 # 更新デプロイ
 git pull
@@ -173,10 +170,10 @@ sudo cp -r /backup/20241201 /opt/grimoire-keeper-data
 
 ### よくある問題
 
-**1. APIキーエラー**
+**1. 環境変数エラー**
 ```bash
 # .envファイル確認
-cat .env | grep -E "(OPENAI|GOOGLE|JINA|SLACK)"
+cat .env | grep BWS_ACCESS_TOKEN
 ```
 
 **2. コンテナ起動失敗**

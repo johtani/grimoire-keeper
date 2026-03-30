@@ -52,6 +52,7 @@ class TestSearchRouter:
             limit=5,
             filters=None,
             vector_name="content_vector",
+            exclude_keywords=None,
         )
 
     @patch("grimoire_api.routers.search.SearchService")
@@ -97,6 +98,7 @@ class TestSearchRouter:
             limit=3,
             filters=None,
             vector_name="title_vector",
+            exclude_keywords=None,
         )
 
     @patch("grimoire_api.routers.search.SearchService")
@@ -131,4 +133,5 @@ class TestSearchRouter:
             limit=10,
             filters={"url": "example", "keywords": ["test"]},
             vector_name="memo_vector",
+            exclude_keywords=None,
         )

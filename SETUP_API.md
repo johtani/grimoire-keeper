@@ -20,10 +20,9 @@ code .
 # .envファイルを作成
 cp .env.example .env
 
-# 必要なAPIキーを設定 (.envファイルを編集)
-# - OPENAI_API_KEY: OpenAI APIキー (必須)
-# - GOOGLE_API_KEY: Google Gemini APIキー (必須) 
-# - JINA_API_KEY: Jina AI Reader APIキー (必須)
+# BWS_ACCESS_TOKENを設定（APIキー類はBitwarden Secrets Managerで管理）
+# - BWS_ACCESS_TOKEN: Bitwarden Secrets Managerアクセストークン (必須)
+# 詳細: docs/development.md
 ```
 
 ### 1.3 依存関係同期
@@ -70,7 +69,14 @@ uv run python scripts/init_database.py check
 
 ## 4. APIサービス起動
 
-### 4.1 開発サーバー起動
+### 4.1 シークレットの展開
+```bash
+# Bitwarden Secrets Managerからシークレットを現在のシェルセッションに展開
+# （アプリ起動前に必ず実行）
+source scripts/load_secrets.sh
+```
+
+### 4.2 開発サーバー起動
 ```bash
 # FastAPI開発サーバーを起動
 uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
@@ -137,9 +143,10 @@ docker-compose restart weaviate
 **APIキーエラー**
 ```bash
 # 環境変数確認
-cat .env
+cat .env | grep BWS_ACCESS_TOKEN
 
-# APIキーが正しく設定されているか確認
+# bwsでシークレットが取得できるか確認
+source scripts/load_secrets.sh
 ```
 
 ### 6.2 ログ確認
@@ -183,7 +190,7 @@ uv run pytest
 
 ### 7.2 サービス管理
 ```bash
-# 全サービス起動
+# 全サービス起動（シークレット展開が必要な場合はsource scripts/load_secrets.shを先に実行）
 docker-compose up -d
 
 # 全サービス停止

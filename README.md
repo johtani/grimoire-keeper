@@ -29,9 +29,7 @@
 
 - Python 3.13+
 - Docker & Docker Compose
-- OpenAI API Key (for embeddings / 埋め込み用)
-- Google API Key (for Gemini LLM / Gemini LLM用)
-- Jina AI API Key (for content extraction / コンテンツ抽出用)
+- Bitwarden Secrets Manager account (for secret management / シークレット管理用)
 
 ### Installation / インストール
 
@@ -44,7 +42,8 @@
 2. **Set up environment / 環境設定**
    ```bash
    cp .env.example .env
-   # Edit .env with your API keys / APIキーを.envに設定
+   # Edit .env with BWS_ACCESS_TOKEN and non-secret settings
+   # BWS_ACCESS_TOKENと非秘密の設定値を.envに設定
    ```
 
 3. **Install dependencies / 依存関係のインストール**
@@ -62,8 +61,9 @@
    python scripts/init_database.py init
    ```
 
-6. **Start the API / APIの起動**
+6. **Load secrets and start the API / シークレット展開とAPIの起動**
    ```bash
+   source scripts/load_secrets.sh
    uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
    ```
 
@@ -159,6 +159,9 @@ grimoire-keeper/
    # Infrastructure / インフラ
    docker compose up -d weaviate
    
+   # Load secrets / シークレット展開
+   source scripts/load_secrets.sh
+
    # Application / アプリケーション
    uv run --package grimoire-api uvicorn grimoire_api.main:app --reload
    ```
@@ -230,21 +233,19 @@ Response:
 
 ## ⚙️ Configuration / 設定
 
-### Environment Variables / 環境変数
+### Secret Management / シークレット管理
+
+API keys are managed by Bitwarden Secrets Manager. Only `BWS_ACCESS_TOKEN` needs to be set locally.
+APIキーはBitwarden Secrets Managerで管理します。ローカルには`BWS_ACCESS_TOKEN`のみ設定が必要です。
 
 ```bash
-# API Keys / APIキー
-OPENAI_API_KEY=sk-...          # For embeddings / 埋め込み用
-GOOGLE_API_KEY=...             # For Gemini LLM / Gemini LLM用
-JINA_API_KEY=...               # For content extraction / コンテンツ抽出用
+# Bitwarden Secrets Manager
+BWS_ACCESS_TOKEN=your-access-token
 
 # Services / サービス
 WEAVIATE_HOST=localhost
 WEAVIATE_PORT=8080
 DATABASE_PATH=./grimoire.db
-
-# Optional / オプション
-JSON_STORAGE_PATH=./data/json  # Raw content storage / 生コンテンツ保存
 ```
 
 ### Docker Compose

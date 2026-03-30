@@ -17,7 +17,8 @@ uv --version  # Python 3.13 + uv確認
 
 # 3. 環境変数設定
 cp .env.example .env
-# .envファイルを編集してAPIキーを設定
+# BWS_ACCESS_TOKENと非秘密の設定値を.envに記載
+# APIキー類はBitwarden Secrets Managerで管理（詳細: docs/development.md）
 ```
 
 ## 2. 開発時の動作確認パターン
@@ -30,6 +31,9 @@ uv sync
 # Weaviateのみコンテナで起動
 docker-compose up -d weaviate
 
+# Bitwardenからシークレットを現在のシェルセッションに展開
+source scripts/load_secrets.sh
+
 # devcontainer内でアプリ実行
 uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0
 uv run --package grimoire-bot python -m grimoire_bot.main
@@ -37,6 +41,9 @@ uv run --package grimoire-bot python -m grimoire_bot.main
 
 ### パターンB: 全てコンテナで実行
 ```bash
+# シークレット展開（コンテナ起動前に必須）
+source scripts/load_secrets.sh
+
 # 全サービス起動
 docker-compose up
 
@@ -50,6 +57,9 @@ docker-compose up bot
 ```bash
 # インフラ系はコンテナ
 docker-compose up -d weaviate
+
+# シークレット展開（アプリ起動前に必須）
+source scripts/load_secrets.sh
 
 # 開発中のサービスはdevcontainer内
 # API開発時

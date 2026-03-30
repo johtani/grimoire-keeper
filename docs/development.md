@@ -14,6 +14,7 @@ This guide covers the development setup, workflow, and best practices for contri
 - **OpenAI API Key**: For embeddings (`text-embedding-ada-002`)
 - **Google API Key**: For Gemini LLM (`gemini-2.5-flash-lite`)
 - **Jina AI API Key**: For content extraction
+- **Bitwarden Secrets Manager Access Token**: For secret management (`BWS_ACCESS_TOKEN`)
 
 ## Quick Setup
 
@@ -27,9 +28,29 @@ cd grimoire-keeper
 # Copy environment template
 cp .env.example .env
 
-# Edit .env with your API keys
+# Edit .env with non-secret settings (WEAVIATE_HOST, DATABASE_PATH, etc.)
 nano .env
 ```
+
+### 1a. Setup Bitwarden Secrets Manager
+
+APIキーなどの秘密情報はBitwarden Secrets Managerで管理します。
+
+1. [Bitwarden Secrets Manager](https://bitwarden.com/products/secrets-manager/) でプロジェクト `grimoire-keeper` を作成
+2. 以下のシークレットを登録（名前は `GRIMOIRE_KEEPER_` プレフィックス付きで登録）:
+   - `GRIMOIRE_KEEPER_OPENAI_API_KEY`
+   - `GRIMOIRE_KEEPER_GOOGLE_API_KEY`
+   - `GRIMOIRE_KEEPER_JINA_API_KEY`
+   - `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN`
+   - `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET`
+   - `GRIMOIRE_KEEPER_SLACK_APP_TOKEN`
+3. マシンアカウントを作成してアクセストークンを発行
+4. 発行したトークンを環境変数に設定:
+   ```bash
+   export BWS_ACCESS_TOKEN=your-access-token
+   # または .env に追記
+   echo 'BWS_ACCESS_TOKEN=your-access-token' >> .env
+   ```
 
 ### 2. Install Dependencies
 
@@ -44,6 +65,9 @@ uv sync
 ### 3. Start Services
 
 ```bash
+# Load secrets from Bitwarden Secrets Manager
+source scripts/load_secrets.sh
+
 # Start Weaviate
 docker-compose up -d weaviate
 
@@ -105,6 +129,15 @@ python scripts/init_database.py init    # Initialize database
 python scripts/db_cli.py               # Database CLI tool
 ```
 
+### Secret Management Scripts
+
+| Script | 使うタイミング | 使い方 |
+|--------|------------|--------|
+| `scripts/load_secrets.sh` | 開発環境でアプリを手動起動する前 | `source scripts/load_secrets.sh` |
+| `scripts/start.sh` | サーバで本番起動するとき | `bash scripts/start.sh -d` |
+
+`load_secrets.sh` は単体では使わず、`source` で呼び出すことで現在のシェルセッションに環境変数を展開します。`start.sh` は内部で `load_secrets.sh` を呼び出した後に `docker compose up` を実行します。
+
 ### Running Services
 
 #### Recommended: Mixed Execution
@@ -115,12 +148,18 @@ python scripts/db_cli.py               # Database CLI tool
 # Start infrastructure
 docker-compose up -d weaviate
 
+# Load secrets
+source scripts/load_secrets.sh
+
 # Start API (with hot reload)
 uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 #### Alternative: Full Docker
 ```bash
+# Load secrets before starting containers
+source scripts/load_secrets.sh
+
 # Start all services
 docker-compose up -d
 
@@ -211,40 +250,53 @@ uv run pre-commit install
 
 ## Configuration
 
-### Environment Variables
+### Secret Management
 
-Create `.env` file with required variables:
+APIキーなどの秘密情報はBitwarden Secrets Managerで管理します。各環境で `BWS_ACCESS_TOKEN` のみを設定すれば、起動スクリプトが自動的にシークレットを取得して環境変数に展開します。
+
+```
+秘密情報 (Bitwarden Secrets Manager)
+  GRIMOIRE_KEEPER_OPENAI_API_KEY
+  GRIMOIRE_KEEPER_GOOGLE_API_KEY
+  GRIMOIRE_KEEPER_JINA_API_KEY
+  GRIMOIRE_KEEPER_SLACK_BOT_TOKEN
+  GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET
+  GRIMOIRE_KEEPER_SLACK_APP_TOKEN
+
+設定値 (.env)
+  BWS_ACCESS_TOKEN=...
+  WEAVIATE_HOST=localhost
+  WEAVIATE_PORT=8080
+  DATABASE_PATH=./grimoire.db
+  BACKEND_API_URL=http://api:8000
+  OTEL_*=...
+```
+
+### Environment Variables (.env)
+
+`.env` には秘密でない設定値のみを記載します:
 
 ```bash
-# API Keys
-OPENAI_API_KEY=sk-...
-GOOGLE_API_KEY=...
-JINA_API_KEY=...
+# Bitwarden Secrets Manager
+BWS_ACCESS_TOKEN=your-access-token
 
 # Services
 WEAVIATE_HOST=localhost
 WEAVIATE_PORT=8080
 DATABASE_PATH=./grimoire.db
-
-# Optional
-JSON_STORAGE_PATH=./data/json
-LOG_LEVEL=INFO
+BACKEND_API_URL=http://api:8000
 ```
 
 ### Development vs Production
 
-Use different configurations for development:
-
 ```bash
 # Development
 DATABASE_PATH=./dev_grimoire.db
-LOG_LEVEL=DEBUG
 WEAVIATE_HOST=localhost
 
 # Production
 DATABASE_PATH=/data/grimoire.db
-LOG_LEVEL=INFO
-WEAVIATE_HOST=weaviate-prod
+WEAVIATE_HOST=weaviate
 ```
 
 ## Debugging
@@ -404,8 +456,9 @@ curl http://localhost:8080/v1/meta
 
 **API key errors:**
 ```bash
-# Verify environment variables
-python -c "from grimoire_api.config import settings; print(settings.OPENAI_API_KEY[:10])"
+# Verify secrets are loaded
+echo $OPENAI_API_KEY | cut -c1-10
+# 空の場合はsource scripts/load_secrets.shを実行してから再起動
 ```
 
 ### Getting Help

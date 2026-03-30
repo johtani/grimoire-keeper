@@ -1,6 +1,8 @@
 """Configuration settings."""
 
+import os
 import sys
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +25,7 @@ class Settings(BaseSettings):
     JSON_STORAGE_PATH: str = "./data/json"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=os.environ.get("ENV_FILE", ".env"),
         extra="ignore",  # 余分な環境変数を無視
     )
 
@@ -52,10 +54,12 @@ class Settings(BaseSettings):
                 error_msg += f"  - {var}\n"
             error_msg += (
                 "\n設定方法:\n"
-                "  1. .env.example をコピー: cp .env.example .env\n"
-                "  2. .env ファイルを編集して実際のAPIキーを設定\n"
-                "  3. アプリケーションを再起動\n\n"
-                "詳細は README.md を参照してください。\n"
+                "  1. Bitwarden Secrets Managerにシークレットを登録\n"
+                "     (GRIMOIRE_KEEPER_プレフィックス付きで登録)\n"
+                "  2. BWS_ACCESS_TOKENを.envに設定\n"
+                "  3. source scripts/load_secrets.sh を実行してシークレットを展開\n"
+                "  4. アプリケーションを再起動\n\n"
+                "詳細は docs/development.md を参照してください。\n"
                 "=" * 70
             )
             print(error_msg, file=sys.stderr)
