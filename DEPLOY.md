@@ -137,17 +137,23 @@ curl http://localhost:8089/v1/meta
 ## 運用管理
 
 ### サービス管理
-```bash
-# 停止
-docker compose -f docker-compose.prod.yml down
 
-# 再起動
+#### 停止
+```bash
+docker compose -f docker-compose.prod.yml down
+```
+
+#### 再起動（コード変更なし）
+```bash
 # ❗ docker compose restart は使わないこと
 # restartはコンテナを再起動するだけなので、
 # Bitwardenからのシークレット取得が実行されず環境変数が欠落する
 bash scripts/start.sh -d
+```
 
-# 更新デプロイ
+#### 更新デプロイ（コード変更あり・イメージ再ビルド）
+```bash
+# ❗ start.sh は不要。deploy.sh がビルド・起動・シークレット注入をすべて行う
 git pull
 ./scripts/deploy.sh
 ```
