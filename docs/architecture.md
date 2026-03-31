@@ -140,9 +140,10 @@ CREATE TABLE process_logs (
 - **Output**: Structured markdown content
 - **Features**: Image summarization, clean text extraction
 
-#### Google Gemini (via LiteLLM)
+#### LLM Service (via LiteLLM)
 - **Purpose**: Content summarization and keyword extraction
-- **Model**: `gemini-2.5-flash-lite`
+- **Model**: 環境変数 `LLM_MODEL` で設定 (デフォルト: `openai/qwen3-35b`)
+- **Backend**: ローカルLLM (llama-swap + llama.cpp) またはクラウドLLM (Gemini等) を切り替え可能
 - **Output**: JSON with summary and 20 keywords
 
 #### OpenAI Embeddings
@@ -160,7 +161,7 @@ class UrlProcessorService:
     async def process_url(self, url: str, memo: str = None):
         # 1. Create processing log
         # 2. Extract content (Jina AI) → update last_success_step='downloaded'
-        # 3. Generate summary/keywords (Gemini) → update last_success_step='llm_processed'
+        # 3. Generate summary/keywords (LLM Service) → update last_success_step='llm_processed'
         # 4. Vectorize and store (Weaviate) → update last_success_step='vectorized'
         # 5. Update completion status → update last_success_step='completed'
     
@@ -257,7 +258,7 @@ URL Input → Jina AI Reader → Content Extraction
     ↓                           ↓
 SQLite Storage ← JSON File Storage + last_success_step='downloaded'
     ↓
-Gemini LLM → Summary/Keywords Generation + last_success_step='llm_processed'
+LLM Service → Summary/Keywords Generation + last_success_step='llm_processed'
     ↓
 Weaviate → Multi-Vector Storage + Chunking + last_success_step='vectorized'
     ↓
