@@ -28,6 +28,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlite3>=0.42b0",
     # Shared module
     "grimoire-shared",
+    "langdetect>=1.0.9",
 ]
 
 [tool.uv.sources]
