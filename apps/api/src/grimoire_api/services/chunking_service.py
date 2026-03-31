@@ -5,6 +5,22 @@ from typing import Any
 
 from chonkie import MarkdownChef, RecursiveChunker
 
+# CJK句読点: chonkie_coreのsplit_offsets (Rust) がシングルバイト扱いするため
+# 改行を付加してデリミタを回避する
+_CJK_PUNCTUATION_REPLACEMENTS = [
+    ("。", "。\n"),
+    ("、", "、\n"),
+    ("！", "！\n"),
+    ("？", "？\n"),
+]
+
+
+def _normalize_cjk_punctuation(text: str) -> str:
+    """CJK句読点の直後に改行を挿入する."""
+    for original, replacement in _CJK_PUNCTUATION_REPLACEMENTS:
+        text = text.replace(original, replacement)
+    return text
+
 
 class ChunkingService:
     """テキストチャンキングサービス."""
@@ -38,6 +54,21 @@ class ChunkingService:
             )
         # ファイルがない場合はデフォルトチャンカーを作成
         return RecursiveChunker(chunk_size=self.chunk_size)
+
+    def _detect_language(self, text: str) -> str | None:
+        """テキストから言語を検出する.
+
+        Args:
+            text: 言語検出対象のテキスト
+
+        Returns:
+            言語コード ("en", "ja" 等) または None
+        """
+        try:
+            from langdetect import detect, LangDetectException
+            return detect(text[:2000])
+        except Exception:
+            return None
 
     def _get_chunker_for_language(self, language: str | None) -> RecursiveChunker:
         """言語に応じたチャンカーを取得.
@@ -74,6 +105,9 @@ class ChunkingService:
             チャンクのリスト
         """
         chunker = self._get_chunker_for_language(language)
+        # 日本語レシピ使用時はCJK句読点を改行に正規化
+        if chunker is self.default_chunker:
+            text = _normalize_cjk_punctuation(text)
         doc = self.chef.parse(text)
         chunked_doc = chunker.chunk_document(doc)
         return [chunk.text for chunk in chunked_doc.chunks]
@@ -101,5 +135,9 @@ class ChunkingService:
                 or data.get("detected_language")
                 or data.get("content_language")
             )
+
+        # Jinaが言語を返さない場合はlangdetectで判定
+        if not language:
+            language = self._detect_language(text)
 
         return self.chunk_text(text, language)
