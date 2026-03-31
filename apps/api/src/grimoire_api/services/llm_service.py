@@ -21,10 +21,10 @@ class LLMService:
 
         Args:
             file_repo: ファイルリポジトリ
-            api_key: Google API キー
+            api_key: LLM API キー (省略時はsettings.LLM_API_KEYを使用)
         """
         self.file_repo = file_repo
-        self.api_key = api_key or settings.GOOGLE_API_KEY
+        self.api_key = api_key or settings.LLM_API_KEY
 
     async def generate_summary_keywords(self, page_id: int) -> dict[str, Any]:
         """要約とキーワード生成.
@@ -39,7 +39,7 @@ class LLMService:
             LLMServiceError: LLM処理エラー
         """
         if not self.api_key or self.api_key.strip() == "":
-            raise LLMServiceError("Google API key is not configured")
+            raise LLMServiceError("LLM API key is not configured")
 
         try:
             # JSONファイル読み込み
@@ -51,13 +51,16 @@ class LLMService:
             prompt = self._build_prompt(title, content)
 
             # LiteLLM呼び出し
-            response = completion(
-                model="gemini/gemini-2.5-flash-lite",
-                messages=[{"role": "user", "content": prompt}],
-                api_key=self.api_key,
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
+            kwargs: dict[str, Any] = {
+                "model": settings.LLM_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "api_key": self.api_key,
+                "temperature": 0.3,
+                "response_format": {"type": "json_object"},
+            }
+            if settings.LLM_API_BASE:
+                kwargs["api_base"] = settings.LLM_API_BASE
+            response = completion(**kwargs)
 
             # デバッグ用ログ出力
             logger.info(f"LiteLLM response type: {type(response)}")

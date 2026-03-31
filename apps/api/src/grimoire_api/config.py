@@ -11,8 +11,12 @@ class Settings(BaseSettings):
 
     # API Keys
     JINA_API_KEY: str = ""
-    GOOGLE_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+
+    # LLM
+    LLM_MODEL: str = "openai/qwen3-35b"
+    LLM_API_BASE: str = ""   # 空の場合はLiteLLMのデフォルトルーティングを使用 (Gemini等)
+    LLM_API_KEY: str = "dummy"
 
     # Database
     DATABASE_PATH: str = "./grimoire.db"
@@ -37,7 +41,6 @@ class Settings(BaseSettings):
         """
         required_vars = {
             "JINA_API_KEY": self.JINA_API_KEY,
-            "GOOGLE_API_KEY": self.GOOGLE_API_KEY,
             "OPENAI_API_KEY": self.OPENAI_API_KEY,
         }
 

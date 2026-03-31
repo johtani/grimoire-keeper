@@ -38,7 +38,7 @@ class TestLLMService:
     def test_init_without_api_key(self: Any, mock_file_repo: Any) -> None:
         """APIキー未指定での初期化テスト."""
         with patch("grimoire_api.services.llm_service.settings") as mock_settings:
-            mock_settings.GOOGLE_API_KEY = "settings_api_key"
+            mock_settings.LLM_API_KEY = "settings_api_key"
             service = LLMService(file_repo=mock_file_repo)
             assert service.api_key == "settings_api_key"
 
@@ -72,11 +72,11 @@ class TestLLMService:
     ) -> None:
         """APIキー未設定でのテスト."""
         with patch("grimoire_api.services.llm_service.settings") as mock_settings:
-            mock_settings.GOOGLE_API_KEY = None
+            mock_settings.LLM_API_KEY = None
             service = LLMService(file_repo=mock_file_repo, api_key=None)
 
             with pytest.raises(
-                LLMServiceError, match="Google API key is not configured"
+                LLMServiceError, match="LLM API key is not configured"
             ):
                 await service.generate_summary_keywords(1)
 
@@ -187,7 +187,6 @@ class TestLLMService:
 
             # 呼び出しパラメータを確認
             call_args = mock_completion.call_args
-            assert call_args[1]["model"] == "gemini/gemini-2.5-flash-lite"
             assert call_args[1]["api_key"] == "test_api_key"
             assert call_args[1]["temperature"] == 0.3
             assert len(call_args[1]["messages"]) == 1
