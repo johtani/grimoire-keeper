@@ -26,111 +26,52 @@ class PageRepository:
         self.db = db or DatabaseConnection()
         self.file_repo = file_repo or FileRepository()
 
-    def get_page_by_url(self, url: str) -> Page | None:
-        """URLでページ取得.
-
-        Args:
-            url: URL
-
-        Returns:
-            ページデータ
-        """
+    async def get_page_by_url(self, url: str) -> Page | None:
+        """URLでページ取得."""
         try:
             query = "SELECT * FROM pages WHERE url = ?"
-            result = self.db.fetch_one(query, (url,))
+            result = await self.db.fetch_one(query, (url,))
             if result:
-                return Page(
-                    id=result["id"],
-                    url=result["url"],
-                    title=result["title"],
-                    memo=result["memo"],
-                    summary=result["summary"],
-                    keywords=result["keywords"],
-                    created_at=datetime.fromisoformat(result["created_at"]),
-                    updated_at=datetime.fromisoformat(result["updated_at"]),
-                    weaviate_id=result["weaviate_id"],
-                    last_success_step=(
-                        result["last_success_step"]
-                        if "last_success_step" in result.keys()
-                        else None
-                    ),
-                )
+                return self._row_to_page(result)
             return None
         except Exception as e:
             raise DatabaseError(f"Failed to get page by URL: {str(e)}")
 
-    def create_page(self, url: str, title: str, memo: str | None = None) -> int:
-        """Page作成.
-
-        Args:
-            url: URL
-            title: タイトル
-            memo: メモ
-
-        Returns:
-            作成されたページID
-        """
+    async def create_page(self, url: str, title: str, memo: str | None = None) -> int:
+        """Page作成."""
         try:
             query = """
             INSERT INTO pages (url, title, memo, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
             """
             now = datetime.now()
-            cursor = self.db.execute(query, (url, title, memo, now, now))
-            return cursor.lastrowid or 0
+            lastrowid = await self.db.execute(query, (url, title, memo, now, now))
+            return lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create page: {str(e)}")
 
-    def get_page(self, page_id: int) -> Page | None:
-        """ページ取得.
-
-        Args:
-            page_id: ページID
-
-        Returns:
-            ページデータ
-        """
+    async def get_page(self, page_id: int) -> Page | None:
+        """ページ取得."""
         try:
             query = "SELECT * FROM pages WHERE id = ?"
-            result = self.db.fetch_one(query, (page_id,))
+            result = await self.db.fetch_one(query, (page_id,))
             if result:
-                return Page(
-                    id=result["id"],
-                    url=result["url"],
-                    title=result["title"],
-                    memo=result["memo"],
-                    summary=result["summary"],
-                    keywords=result["keywords"],
-                    created_at=datetime.fromisoformat(result["created_at"]),
-                    updated_at=datetime.fromisoformat(result["updated_at"]),
-                    weaviate_id=result["weaviate_id"],
-                    last_success_step=(
-                        result["last_success_step"]
-                        if "last_success_step" in result.keys()
-                        else None
-                    ),
-                )
+                return self._row_to_page(result)
             return None
         except Exception as e:
             raise DatabaseError(f"Failed to get page: {str(e)}")
 
-    def update_summary_keywords(
+    async def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]
     ) -> None:
-        """要約・キーワード更新.
-
-        Args:
-            page_id: ページID
-            summary: 要約
-            keywords: キーワードリスト
-        """
+        """要約・キーワード更新."""
         try:
             query = """
             UPDATE pages
             SET summary = ?, keywords = ?, updated_at = ?
             WHERE id = ?
             """
-            self.db.execute(
+            await self.db.execute(
                 query,
                 (
                     summary,
@@ -142,117 +83,61 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update summary/keywords: {str(e)}")
 
-    def update_page_title(self, page_id: int, title: str) -> None:
-        """ページタイトル更新.
-
-        Args:
-            page_id: ページID
-            title: タイトル
-        """
+    async def update_page_title(self, page_id: int, title: str) -> None:
+        """ページタイトル更新."""
         try:
             query = "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?"
-            self.db.execute(query, (title, datetime.now(), page_id))
+            await self.db.execute(query, (title, datetime.now(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update page title: {str(e)}")
 
-    def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
-        """Weaviate ID更新.
-
-        Args:
-            page_id: ページID
-            weaviate_id: Weaviate ID
-        """
+    async def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
+        """Weaviate ID更新."""
         try:
             query = "UPDATE pages SET weaviate_id = ? WHERE id = ?"
-            self.db.execute(query, (weaviate_id, page_id))
+            await self.db.execute(query, (weaviate_id, page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update weaviate_id: {str(e)}")
 
-    def update_success_step(self, page_id: int, step: str) -> None:
-        """成功ステップ更新.
-
-        Args:
-            page_id: ページID
-            step: 成功ステップ
-        """
+    async def update_success_step(self, page_id: int, step: str) -> None:
+        """成功ステップ更新."""
         try:
             query = (
                 "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
             )
-            self.db.execute(query, (step, datetime.now(), page_id))
+            await self.db.execute(query, (step, datetime.now(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update success step: {str(e)}")
 
-    def save_json_file(self, page_id: int, data: dict) -> None:
-        """JSONファイル保存.
+    async def save_json_file(self, page_id: int, data: dict) -> None:
+        """JSONファイル保存."""
+        await self.file_repo.save_json_file(page_id, data)
 
-        Args:
-            page_id: ページID
-            data: 保存するデータ
-        """
-        self.file_repo.save_json_file_sync(page_id, data)
-
-    def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
-        """全ページ取得.
-
-        Args:
-            limit: 取得件数制限
-            offset: オフセット
-
-        Returns:
-            ページデータのリスト
-        """
+    async def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
+        """全ページ取得."""
         try:
             query = """
             SELECT * FROM pages
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """
-            results = self.db.fetch_all(query, (limit, offset))
-            return [
-                Page(
-                    id=row["id"],
-                    url=row["url"],
-                    title=row["title"],
-                    memo=row["memo"],
-                    summary=row["summary"],
-                    keywords=row["keywords"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                    updated_at=datetime.fromisoformat(row["updated_at"]),
-                    weaviate_id=row["weaviate_id"],
-                    last_success_step=(
-                        row["last_success_step"]
-                        if "last_success_step" in row.keys()
-                        else None
-                    ),
-                )
-                for row in results
-            ]
+            results = await self.db.fetch_all(query, (limit, offset))
+            return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get all pages: {str(e)}")
 
     async def get_by_id(self, page_id: int) -> dict | None:
-        """ページIDで取得 (async).
-
-        Args:
-            page_id: ページID
-
-        Returns:
-            ページデータ
-        """
-        page = self.get_page(page_id)
+        """ページIDで取得."""
+        page = await self.get_page(page_id)
         if not page:
             return None
 
-        # エラー情報を取得
-        error_message = self._get_latest_error(page_id)
+        error_message = await self._get_latest_error(page_id)
 
-        # ステータス判定
         if page.summary and page.weaviate_id:
             status = "completed"
         else:
-            # エラーログがあるかチェック
-            error_check = self.db.fetch_one(
+            error_check = await self.db.fetch_one(
                 "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",
                 (page_id,),
             )
@@ -273,15 +158,8 @@ class PageRepository:
             "last_success_step": page.last_success_step,
         }
 
-    def _get_latest_error(self, page_id: int) -> str | None:
-        """最新のエラーメッセージを取得.
-
-        Args:
-            page_id: ページID
-
-        Returns:
-            エラーメッセージ
-        """
+    async def _get_latest_error(self, page_id: int) -> str | None:
+        """最新のエラーメッセージを取得."""
         try:
             query = """
             SELECT error_message FROM process_logs
@@ -289,12 +167,12 @@ class PageRepository:
             ORDER BY created_at DESC
             LIMIT 1
             """
-            result = self.db.fetch_one(query, (page_id,))
+            result = await self.db.fetch_one(query, (page_id,))
             return result["error_message"] if result else None
         except Exception:
             return None
 
-    def get_pages(
+    async def get_pages(
         self,
         limit: int = 20,
         offset: int = 0,
@@ -302,21 +180,10 @@ class PageRepository:
         order: str = "desc",
         status_filter: str | None = None,
     ) -> list[Page]:
-        """ページ一覧取得.
-
-        Args:
-            limit: 取得件数
-            offset: オフセット
-            sort_by: ソートフィールド
-            order: ソート順序
-            status_filter: ステータスフィルター
-
-        Returns:
-            ページリスト
-        """
+        """ページ一覧取得."""
         try:
             where_clause = ""
-            params = []
+            params: list = []
 
             if status_filter:
                 if status_filter == "completed":
@@ -348,38 +215,13 @@ class PageRepository:
             """
             params.extend([limit, offset])
 
-            results = self.db.fetch_all(query, tuple(params))
-            return [
-                Page(
-                    id=row["id"],
-                    url=row["url"],
-                    title=row["title"],
-                    memo=row["memo"],
-                    summary=row["summary"],
-                    keywords=row["keywords"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                    updated_at=datetime.fromisoformat(row["updated_at"]),
-                    weaviate_id=row["weaviate_id"],
-                    last_success_step=(
-                        row["last_success_step"]
-                        if "last_success_step" in row.keys()
-                        else None
-                    ),
-                )
-                for row in results
-            ]
+            results = await self.db.fetch_all(query, tuple(params))
+            return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get pages: {str(e)}")
 
-    def count_pages(self, status_filter: str | None = None) -> int:
-        """ページ総数取得.
-
-        Args:
-            status_filter: ステータスフィルター
-
-        Returns:
-            ページ総数
-        """
+    async def count_pages(self, status_filter: str | None = None) -> int:
+        """ページ総数取得."""
         try:
             where_clause = ""
 
@@ -405,7 +247,7 @@ class PageRepository:
                     """
 
             query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
-            result = self.db.fetch_one(query)
+            result = await self.db.fetch_one(query)
             return result["total"] if result else 0
         except Exception as e:
             raise DatabaseError(f"Failed to count pages: {str(e)}")
@@ -417,46 +259,31 @@ class PageRepository:
         sort: str = "created_at",
         order: str = "desc",
     ) -> tuple[list[dict], int]:
-        """ページ一覧取得 (async).
-
-        Args:
-            limit: 取得件数
-            offset: オフセット
-            sort: ソートフィールド
-            order: ソート順序
-
-        Returns:
-            ページリストと総数
-        """
+        """ページ一覧取得 (async)."""
         try:
-            # 総数取得
             count_query = "SELECT COUNT(*) as total FROM pages"
-            count_result = self.db.fetch_one(count_query)
+            count_result = await self.db.fetch_one(count_query)
             total = count_result["total"] if count_result else 0
 
-            # ページ取得
             order_clause = f"ORDER BY {sort} {order.upper()}"
             query = f"""
             SELECT * FROM pages
             {order_clause}
             LIMIT ? OFFSET ?
             """
-            results = self.db.fetch_all(query, (limit, offset))
+            results = await self.db.fetch_all(query, (limit, offset))
 
             pages = []
             for row in results:
-                # ステータス判定
                 if row["summary"] and row["weaviate_id"]:
                     status = "completed"
                 else:
-                    # エラーログがあるかチェック
-                    error_check = self.db.fetch_one(
+                    error_check = await self.db.fetch_one(
                         "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",  # noqa: E501
                         (row["id"],),
                     )
                     status = "failed" if error_check else "processing"
 
-                # JSONファイル存在チェック
                 has_json_file = await self.file_repo.file_exists(row["id"])
 
                 pages.append(
@@ -479,36 +306,34 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
 
-    def get_pages_by_status(self, last_success_step: str) -> list[Page]:
-        """最後の成功ステップでページを取得.
-
-        Args:
-            last_success_step: 最後の成功ステップ
-
-        Returns:
-            ページリスト
-        """
+    async def get_pages_by_status(self, last_success_step: str) -> list[Page]:
+        """最後の成功ステップでページを取得."""
         try:
             query = """
             SELECT * FROM pages
             WHERE last_success_step = ?
             ORDER BY created_at ASC
             """
-            results = self.db.fetch_all(query, (last_success_step,))
-            return [
-                Page(
-                    id=row["id"],
-                    url=row["url"],
-                    title=row["title"],
-                    memo=row["memo"],
-                    summary=row["summary"],
-                    keywords=row["keywords"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                    updated_at=datetime.fromisoformat(row["updated_at"]),
-                    weaviate_id=row["weaviate_id"],
-                    last_success_step=row["last_success_step"],
-                )
-                for row in results
-            ]
+            results = await self.db.fetch_all(query, (last_success_step,))
+            return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get pages by status: {str(e)}")
+
+    def _row_to_page(self, row: object) -> Page:
+        """行データをPageモデルに変換."""
+        return Page(
+            id=row["id"],
+            url=row["url"],
+            title=row["title"],
+            memo=row["memo"],
+            summary=row["summary"],
+            keywords=row["keywords"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+            weaviate_id=row["weaviate_id"],
+            last_success_step=(
+                row["last_success_step"]
+                if "last_success_step" in row.keys()
+                else None
+            ),
+        )

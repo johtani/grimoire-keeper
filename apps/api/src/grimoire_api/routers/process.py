@@ -64,8 +64,7 @@ async def process_url(
     start_time = time.time()
 
     try:
-        # 同期処理部分を実行
-        result = processor.prepare_url_processing(str(request.url), request.memo)
+        result = await processor.prepare_url_processing(str(request.url), request.memo)
 
         has_memo = bool(request.memo)
         url_processing_requests.add(1, {"has_memo": str(has_memo)})
@@ -103,7 +102,7 @@ async def process_url(
 
 
 @router.get("/process-status/{page_id}")
-def get_process_status(
+async def get_process_status(
     page_id: int,
     processor: UrlProcessorService = Depends(get_url_processor),
 ) -> dict[str, Any]:
@@ -117,7 +116,7 @@ def get_process_status(
         処理状況
     """
     try:
-        status = processor.get_processing_status(page_id)
+        status = await processor.get_processing_status(page_id)
         return status
 
     except Exception as e:

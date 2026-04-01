@@ -22,25 +22,17 @@ class UrlProcessorService:
         page_repo: PageRepository,
         log_repo: LogRepository,
     ):
-        """初期化.
-
-        Args:
-            jina_client: Jina AI Reader クライアント
-            llm_service: LLMサービス
-            vectorizer: ベクトル化サービス
-            page_repo: ページリポジトリ
-            log_repo: ログリポジトリ
-        """
+        """初期化."""
         self.jina_client = jina_client
         self.llm_service = llm_service
         self.vectorizer = vectorizer
         self.page_repo = page_repo
         self.log_repo = log_repo
 
-    def prepare_url_processing(
+    async def prepare_url_processing(
         self, url: str, memo: str | None = None
     ) -> dict[str, Any]:
-        """URL処理準備（同期処理）.
+        """URL処理準備.
 
         Args:
             url: 処理対象のURL
@@ -50,8 +42,8 @@ class UrlProcessorService:
             準備結果
         """
         try:
-            # 0. URL重複チェック（同期処理）
-            existing_page = self.page_repo.get_page_by_url(url)
+            # 0. URL重複チェック
+            existing_page = await self.page_repo.get_page_by_url(url)
             if existing_page:
                 return {
                     "status": "already_exists",
@@ -59,13 +51,13 @@ class UrlProcessorService:
                     "message": "URL already exists in the database",
                 }
 
-            # 1. 仮のページ作成（同期処理）
-            page_id = self.page_repo.create_page(
+            # 1. 仮のページ作成
+            page_id = await self.page_repo.create_page(
                 url=url, title="Processing...", memo=memo or ""
             )
 
-            # 2. 処理開始ログ作成（同期処理、page_id付き）
-            log_id = self.log_repo.create_log(url, "started", page_id)
+            # 2. 処理開始ログ作成
+            log_id = await self.log_repo.create_log(url, "started", page_id)
 
             return {
                 "status": "prepared",
@@ -78,13 +70,7 @@ class UrlProcessorService:
             raise GrimoireAPIError(f"URL processing preparation failed: {str(e)}")
 
     async def process_url_background(self, page_id: int, log_id: int, url: str) -> None:
-        """バックグラウンド処理.
-
-        Args:
-            page_id: ページID
-            log_id: ログID
-            url: 処理対象のURL
-        """
+        """バックグラウンド処理."""
         try:
             # 3. Jina AI Reader処理
             jina_result = await self.jina_client.fetch_content(url)
@@ -96,36 +82,23 @@ class UrlProcessorService:
 
             # 5. ベクトル化処理
             await self.vectorizer.vectorize_content(page_id)
-            self.page_repo.update_success_step(page_id, "vectorized")
-            self.log_repo.update_status(log_id, "vectorize_complete")
+            await self.page_repo.update_success_step(page_id, "vectorized")
+            await self.log_repo.update_status(log_id, "vectorize_complete")
 
             # 6. 完了ログ
-            self.page_repo.update_success_step(page_id, "completed")
-            self.log_repo.update_status(log_id, "completed")
+            await self.page_repo.update_success_step(page_id, "completed")
+            await self.log_repo.update_status(log_id, "completed")
 
         except Exception as e:
-            self.log_repo.update_status(log_id, "failed", str(e))
+            await self.log_repo.update_status(log_id, "failed", str(e))
 
     async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
-        """URL処理のメインフロー（後方互換性のため残存）.
-
-        Args:
-            url: 処理対象のURL
-            memo: ユーザーメモ
-
-        Returns:
-            処理結果
-
-        Raises:
-            GrimoireAPIError: 処理エラー
-        """
-        # 準備処理
-        result = self.prepare_url_processing(url, memo)
+        """URL処理のメインフロー（後方互換性のため残存）."""
+        result = await self.prepare_url_processing(url, memo)
 
         if result["status"] == "already_exists":
             return result
 
-        # バックグラウンド処理を同期実行（テスト用）
         await self.process_url_background(result["page_id"], result["log_id"], url)
 
         return {
@@ -137,72 +110,38 @@ class UrlProcessorService:
     async def _save_download_result(
         self, log_id: int, page_id: int, result: dict
     ) -> None:
-        """ダウンロード結果保存.
-
-        Args:
-            log_id: ログID
-            page_id: ページID
-            result: Jina AI Readerの結果
-        """
+        """ダウンロード結果保存."""
         try:
-            # ページタイトル更新
-            self.page_repo.update_page_title(page_id, result["data"]["title"])
-
-            # JSONファイル保存
-            self.page_repo.save_json_file(page_id, result)
-
-            # 成功ステップ更新
-            self.page_repo.update_success_step(page_id, "downloaded")
-
-            # ステータス更新
-            self.log_repo.update_status(log_id, "download_complete")
-
+            await self.page_repo.update_page_title(page_id, result["data"]["title"])
+            await self.page_repo.save_json_file(page_id, result)
+            await self.page_repo.update_success_step(page_id, "downloaded")
+            await self.log_repo.update_status(log_id, "download_complete")
         except Exception as e:
-            self.log_repo.update_status(log_id, "download_error", str(e))
+            await self.log_repo.update_status(log_id, "download_error", str(e))
             raise
 
     async def _save_llm_result(self, log_id: int, page_id: int, result: dict) -> None:
-        """LLM結果保存.
-
-        Args:
-            log_id: ログID
-            page_id: ページID
-            result: LLMの結果
-        """
+        """LLM結果保存."""
         try:
-            self.page_repo.update_summary_keywords(
+            await self.page_repo.update_summary_keywords(
                 page_id=page_id, summary=result["summary"], keywords=result["keywords"]
             )
-
-            # 成功ステップ更新
-            self.page_repo.update_success_step(page_id, "llm_processed")
-
-            self.log_repo.update_status(log_id, "llm_complete")
-
+            await self.page_repo.update_success_step(page_id, "llm_processed")
+            await self.log_repo.update_status(log_id, "llm_complete")
         except Exception as e:
-            self.log_repo.update_status(log_id, "llm_error", str(e))
+            await self.log_repo.update_status(log_id, "llm_error", str(e))
             raise
 
-    def get_processing_status(self, page_id: int) -> dict[str, Any]:
-        """処理状況取得.
-
-        Args:
-            page_id: ページID
-
-        Returns:
-            処理状況
-        """
+    async def get_processing_status(self, page_id: int) -> dict[str, Any]:
+        """処理状況取得."""
         try:
-            # ページ情報取得（同期処理）
-            page = self.page_repo.get_page(page_id)
+            page = await self.page_repo.get_page(page_id)
             if not page:
                 return {"status": "not_found", "message": "Page not found"}
 
-            # 最新ログ取得（同期処理）
-            logs = self.log_repo.get_logs_by_status("completed")
-            logs.extend(self.log_repo.get_logs_by_status("failed"))
+            logs = await self.log_repo.get_logs_by_status("completed")
+            logs.extend(await self.log_repo.get_logs_by_status("failed"))
 
-            # 該当ページのログを検索
             page_log = None
             for log in logs:
                 if log.page_id == page_id:

@@ -1,5 +1,6 @@
 """File operations repository."""
 
+import asyncio
 import json
 import tempfile
 from pathlib import Path
@@ -51,7 +52,7 @@ class FileRepository:
             page_id: ページID
             data: 保存するデータ
         """
-        self.save_json_file_sync(page_id, data)
+        await asyncio.to_thread(self.save_json_file_sync, page_id, data)
 
     async def load_json_file(self, page_id: int) -> dict[str, Any]:
         """JSONファイル読み込み.
@@ -62,6 +63,10 @@ class FileRepository:
         Returns:
             読み込んだデータ
         """
+        return await asyncio.to_thread(self._load_json_file_sync, page_id)
+
+    def _load_json_file_sync(self, page_id: int) -> dict[str, Any]:
+        """JSONファイル読み込み（同期版）."""
         try:
             file_path = self.storage_path / f"{page_id}.json"
             if not file_path.exists():
@@ -76,6 +81,8 @@ class FileRepository:
                 f"JSON file is corrupted (encoding error): {file_path} — {str(e)}. "
                 "Delete the file and retry processing."
             )
+        except FileOperationError:
+            raise
         except Exception as e:
             raise FileOperationError(f"Failed to load JSON file: {str(e)}")
 
@@ -85,6 +92,10 @@ class FileRepository:
         Args:
             page_id: ページID
         """
+        await asyncio.to_thread(self._delete_json_file_sync, page_id)
+
+    def _delete_json_file_sync(self, page_id: int) -> None:
+        """JSONファイル削除（同期版）."""
         try:
             file_path = self.storage_path / f"{page_id}.json"
             if file_path.exists():

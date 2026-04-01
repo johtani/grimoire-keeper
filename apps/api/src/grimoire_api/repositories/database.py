@@ -1,6 +1,6 @@
 """Database connection management."""
 
-import sqlite3
+import aiosqlite
 
 from ..config import settings
 from ..utils.exceptions import DatabaseError
@@ -16,9 +16,8 @@ class DatabaseConnection:
             db_path: データベースファイルパス
         """
         self.db_path = db_path or settings.DATABASE_PATH
-        self._enable_wal_mode()
 
-    def execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
+    async def execute(self, query: str, params: tuple = ()) -> int | None:
         """クエリ実行.
 
         Args:
@@ -26,28 +25,18 @@ class DatabaseConnection:
             params: パラメータ
 
         Returns:
-            カーソル
+            lastrowid
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA busy_timeout=30000")
-            cursor = conn.execute(query, params)
-            conn.commit()
-            # lastrowidを保存してからクローズ
-            lastrowid = cursor.lastrowid
-            conn.close()
-
-            # 新しいカーソルオブジェクトを作成して返す
-            class MockCursor:
-                def __init__(self, lastrowid: int | None) -> None:
-                    self.lastrowid = lastrowid
-
-            return MockCursor(lastrowid)  # type: ignore[return-value]
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("PRAGMA busy_timeout=30000")
+                cursor = await conn.execute(query, params)
+                await conn.commit()
+                return cursor.lastrowid
         except Exception as e:
             raise DatabaseError(f"Query execution error: {str(e)}")
 
-    def fetch_one(self, query: str, params: tuple = ()) -> sqlite3.Row | None:
+    async def fetch_one(self, query: str, params: tuple = ()) -> aiosqlite.Row | None:
         """単一行取得.
 
         Args:
@@ -58,17 +47,15 @@ class DatabaseConnection:
             取得した行
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA busy_timeout=30000")
-            cursor = conn.execute(query, params)
-            result = cursor.fetchone()
-            conn.close()
-            return result  # type: ignore[no-any-return]
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("PRAGMA busy_timeout=30000")
+                async with conn.execute(query, params) as cursor:
+                    return await cursor.fetchone()
         except Exception as e:
             raise DatabaseError(f"Fetch one error: {str(e)}")
 
-    def fetch_all(self, query: str, params: tuple = ()) -> list[sqlite3.Row]:
+    async def fetch_all(self, query: str, params: tuple = ()) -> list[aiosqlite.Row]:
         """全行取得.
 
         Args:
@@ -79,17 +66,15 @@ class DatabaseConnection:
             取得した行のリスト
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA busy_timeout=30000")
-            cursor = conn.execute(query, params)
-            result = cursor.fetchall()
-            conn.close()
-            return result
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("PRAGMA busy_timeout=30000")
+                async with conn.execute(query, params) as cursor:
+                    return await cursor.fetchall()
         except Exception as e:
             raise DatabaseError(f"Fetch all error: {str(e)}")
 
-    def initialize_tables(self) -> None:
+    async def initialize_tables(self) -> None:
         """テーブル初期化."""
         pages_table = """
         CREATE TABLE IF NOT EXISTS pages (
@@ -106,11 +91,6 @@ class DatabaseConnection:
         )
         """
 
-        # 既存テーブルに新しいカラムを追加（マイグレーション）
-        migration_query = """
-        ALTER TABLE pages ADD COLUMN last_success_step TEXT DEFAULT NULL
-        """
-
         process_logs_table = """
         CREATE TABLE IF NOT EXISTS process_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,34 +103,25 @@ class DatabaseConnection:
         )
         """
 
-        conn = sqlite3.connect(self.db_path)
-        conn.execute(pages_table)
-        conn.execute(process_logs_table)
+        # 既存テーブルに新しいカラムを追加（マイグレーション）
+        migration_query = """
+        ALTER TABLE pages ADD COLUMN last_success_step TEXT DEFAULT NULL
+        """
 
-        # マイグレーション実行（カラムが既に存在する場合はエラーを無視）
-        try:
-            conn.execute(migration_query)
-        except sqlite3.OperationalError:
-            # カラムが既に存在する場合は無視
-            pass
+        async with aiosqlite.connect(self.db_path) as conn:
+            # WALモード・パフォーマンス設定
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute("PRAGMA synchronous=NORMAL")
+            await conn.execute("PRAGMA cache_size=10000")
+            await conn.execute("PRAGMA busy_timeout=30000")
 
-        conn.commit()
-        conn.close()
+            await conn.execute(pages_table)
+            await conn.execute(process_logs_table)
 
-    def _enable_wal_mode(self) -> None:
-        """データベースのWALモードを有効化."""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            # WALモードを有効化
-            conn.execute("PRAGMA journal_mode=WAL")
-            # 同期モードをNORMALに設定（パフォーマンス向上）
-            conn.execute("PRAGMA synchronous=NORMAL")
-            # キャッシュサイズを増加
-            conn.execute("PRAGMA cache_size=10000")
-            # タイムアウトを設定
-            conn.execute("PRAGMA busy_timeout=30000")
-            conn.commit()
-            conn.close()
-        except Exception:
-            # WALモード設定に失敗しても継続
-            pass
+            # マイグレーション実行（カラムが既に存在する場合はエラーを無視）
+            try:
+                await conn.execute(migration_query)
+            except Exception:
+                pass
+
+            await conn.commit()

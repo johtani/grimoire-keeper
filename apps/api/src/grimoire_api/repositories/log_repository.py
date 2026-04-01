@@ -18,43 +18,27 @@ class LogRepository:
         """
         self.db = db
 
-    def create_log(self, url: str, status: str, page_id: int | None = None) -> int:
-        """ログ作成.
-
-        Args:
-            url: URL
-            status: ステータス
-            page_id: ページID
-
-        Returns:
-            作成されたログID
-        """
+    async def create_log(self, url: str, status: str, page_id: int | None = None) -> int:
+        """ログ作成."""
         try:
             query = """
             INSERT INTO process_logs (page_id, url, status, created_at)
             VALUES (?, ?, ?, ?)
             """
-            cursor = self.db.execute(query, (page_id, url, status, datetime.now()))
-            return cursor.lastrowid or 0
+            lastrowid = await self.db.execute(query, (page_id, url, status, datetime.now()))
+            return lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")
 
-    def get_logs_by_status(self, status: str) -> list[ProcessLog]:
-        """ステータス別ログ取得.
-
-        Args:
-            status: ステータス
-
-        Returns:
-            ログデータのリスト
-        """
+    async def get_logs_by_status(self, status: str) -> list[ProcessLog]:
+        """ステータス別ログ取得."""
         try:
             query = """
             SELECT * FROM process_logs
             WHERE status = ?
             ORDER BY created_at DESC
             """
-            results = self.db.fetch_all(query, (status,))
+            results = await self.db.fetch_all(query, (status,))
             return [
                 ProcessLog(
                     id=row["id"],
@@ -69,43 +53,29 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get logs by status: {str(e)}")
 
-    def update_status(
+    async def update_status(
         self, log_id: int, status: str, error_message: str | None = None
     ) -> None:
-        """ステータス更新.
-
-        Args:
-            log_id: ログID
-            status: ステータス
-            error_message: エラーメッセージ
-        """
+        """ステータス更新."""
         try:
             query = """
             UPDATE process_logs
             SET status = ?, error_message = ?
             WHERE id = ?
             """
-            self.db.execute(query, (status, error_message, log_id))
+            await self.db.execute(query, (status, error_message, log_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update status: {str(e)}")
 
-    def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
-        """全ログ取得.
-
-        Args:
-            limit: 取得件数制限
-            offset: オフセット
-
-        Returns:
-            ログデータのリスト
-        """
+    async def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
+        """全ログ取得."""
         try:
             query = """
             SELECT * FROM process_logs
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """
-            results = self.db.fetch_all(query, (limit, offset))
+            results = await self.db.fetch_all(query, (limit, offset))
             return [
                 ProcessLog(
                     id=row["id"],
