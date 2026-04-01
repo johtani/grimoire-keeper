@@ -1,6 +1,5 @@
 """Test configuration and fixtures."""
 
-import asyncio
 import tempfile
 import warnings
 from pathlib import Path
@@ -18,14 +17,6 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Any:
-    """イベントループフィクスチャ."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest_asyncio.fixture
 async def temp_db():
     """一時データベースフィクスチャ."""
@@ -33,7 +24,7 @@ async def temp_db():
         db_path = temp_file.name
 
     db = DatabaseConnection(db_path)
-    db.initialize_tables()
+    await db.initialize_tables()
 
     yield db
 

@@ -34,7 +34,7 @@ SQLite3Instrumentor().instrument()
 async def lifespan(app: FastAPI) -> Any:
     """アプリケーションライフサイクル管理."""
     # 起動時処理 - データベース初期化
-    success = ensure_database_initialized()
+    success = await ensure_database_initialized()
     if success:
         print("✅ Database initialized successfully")
     else:
