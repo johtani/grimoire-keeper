@@ -66,6 +66,7 @@ class ChunkingService:
         """
         try:
             from langdetect import detect, LangDetectException
+
             return detect(text[:2000])
         except Exception:
             return None

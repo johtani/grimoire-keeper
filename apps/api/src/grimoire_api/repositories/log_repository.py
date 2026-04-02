@@ -18,14 +18,18 @@ class LogRepository:
         """
         self.db = db
 
-    async def create_log(self, url: str, status: str, page_id: int | None = None) -> int:
+    async def create_log(
+        self, url: str, status: str, page_id: int | None = None
+    ) -> int:
         """ログ作成."""
         try:
             query = """
             INSERT INTO process_logs (page_id, url, status, created_at)
             VALUES (?, ?, ?, ?)
             """
-            lastrowid = await self.db.execute(query, (page_id, url, status, datetime.now()))
+            lastrowid = await self.db.execute(
+                query, (page_id, url, status, datetime.now())
+            )
             return lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")
