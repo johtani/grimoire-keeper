@@ -17,6 +17,8 @@
   "postStartCommand": "echo 'export HISTFILE=~/.bash_history' >> ~/.bashrc",
   "remoteUser": "vscode",
   "mounts": [
-    "source=${localEnv:HOME}/.aws,target=/root/.aws,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.aws,target=/root/.aws,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,consistency=cached"
   ]
 }
