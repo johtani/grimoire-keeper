@@ -1,0 +1,20 @@
+{
+  "enabledPlugins": {
+    "weaviate@weaviate-plugins": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); CMD=$(echo \"$INPUT\" | jq -r '.tool_input.command // \"\"'); if echo \"$CMD\" | grep -q 'git commit'; then if ! (cd /workspace && uv run ruff format . && uv run ruff check . 2>&1); then echo '{\"continue\": false, \"stopReason\": \"ruff format/check failed — fix lint errors before committing\"}'; fi; fi",
+            "timeout": 60,
+            "statusMessage": "lint チェック中..."
+          }
+        ]
+      }
+    ]
+  }
+}

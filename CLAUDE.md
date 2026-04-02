@@ -105,6 +105,35 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 - `.env.test` にはユニットテストに十分なダミー API キーが含まれる
 - カバレッジは `apps/` ディレクトリのみ対象
 
+## Git ワークフロー
+
+- **main へ直接コミットしない** — 必ずフィーチャーブランチを作成して PR 経由でマージする
+- ブランチ命名: `feat/issue-<番号>-<短い説明>` / `fix/issue-<番号>-<短い説明>`
+- コミットメッセージは conventional commit 形式 (`feat:`, `fix:`, `refactor:` など) + 日本語説明
+- `/plan-issue <Issue URL>` で Issue 分析 → 計画 → ブランチ作成
+- `/ship` で lint → テスト → コミット → PR 作成
+
+## コミット前チェック (必須)
+
+コミット前に **必ず** 以下を実行してすべてパスすること:
+
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run pytest apps/api/tests/unit/ -v
+```
+
+エラーがあれば修正してからコミットする。自動修正: `uv run ruff check --fix .`
+
+## テスト方針
+
+- テストを実行するときは **全ユニットテストを実行する** (特定モジュールのみ実行しない)
+  ```bash
+  uv run pytest apps/api/tests/unit/ -v
+  ```
+- インテグレーションテストは Weaviate の起動が必要 (`docker compose up -d weaviate`)
+- 変更に関連するテストがない場合は新規作成する
+
 ## ワークスペース構成
 
 `apps/api`、`apps/bot`、`shared` をメンバーとする `uv` ワークスペースです。ルートの `pyproject.toml` で共有の開発依存関係 (pytest, ruff, mypy) を定義しています。サービス間の共通機能は `shared/` に配置してください。
