@@ -134,14 +134,13 @@ class PageRepository:
 
         error_message = await self._get_latest_error(page_id)
 
-        if page.summary and page.weaviate_id:
-            status = "completed"
-        else:
-            error_check = await self.db.fetch_one(
-                "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",
-                (page_id,),
-            )
-            status = "failed" if error_check else "processing"
+        error_check = await self.db.fetch_one(
+            "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",
+            (page_id,),
+        )
+        status = self._compute_page_status(
+            page.summary, page.weaviate_id, bool(error_check)
+        )
 
         return {
             "id": page.id,
@@ -182,29 +181,8 @@ class PageRepository:
     ) -> list[Page]:
         """ページ一覧取得."""
         try:
-            where_clause = ""
+            where_clause = self._status_where_clause(status_filter)
             params: list = []
-
-            if status_filter:
-                if status_filter == "completed":
-                    where_clause = (
-                        "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
-                    )
-                elif status_filter == "processing":
-                    where_clause = """
-                    WHERE (summary IS NULL OR weaviate_id IS NULL)
-                    AND id NOT IN (
-                        SELECT DISTINCT page_id FROM process_logs
-                        WHERE status = 'failed' AND page_id IS NOT NULL
-                    )
-                    """
-                elif status_filter == "failed":
-                    where_clause = """
-                    WHERE id IN (
-                        SELECT DISTINCT page_id FROM process_logs
-                        WHERE status = 'failed' AND page_id IS NOT NULL
-                    )
-                    """
 
             order_clause = f"ORDER BY {sort_by} {order.upper()}"
             query = f"""
@@ -223,28 +201,7 @@ class PageRepository:
     async def count_pages(self, status_filter: str | None = None) -> int:
         """ページ総数取得."""
         try:
-            where_clause = ""
-
-            if status_filter:
-                if status_filter == "completed":
-                    where_clause = (
-                        "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
-                    )
-                elif status_filter == "processing":
-                    where_clause = """
-                    WHERE (summary IS NULL OR weaviate_id IS NULL)
-                    AND id NOT IN (
-                        SELECT DISTINCT page_id FROM process_logs
-                        WHERE status = 'failed' AND page_id IS NOT NULL
-                    )
-                    """
-                elif status_filter == "failed":
-                    where_clause = """
-                    WHERE id IN (
-                        SELECT DISTINCT page_id FROM process_logs
-                        WHERE status = 'failed' AND page_id IS NOT NULL
-                    )
-                    """
+            where_clause = self._status_where_clause(status_filter)
 
             query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
             result = await self.db.fetch_one(query)
@@ -262,24 +219,7 @@ class PageRepository:
     ) -> tuple[list[dict], int]:
         """ページ一覧取得 (async)."""
         try:
-            where_clause = ""
-            if status_filter == "completed":
-                where_clause = "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
-            elif status_filter == "processing":
-                where_clause = """
-                WHERE (summary IS NULL OR weaviate_id IS NULL)
-                AND id NOT IN (
-                    SELECT DISTINCT page_id FROM process_logs
-                    WHERE status = 'failed' AND page_id IS NOT NULL
-                )
-                """
-            elif status_filter == "failed":
-                where_clause = """
-                WHERE id IN (
-                    SELECT DISTINCT page_id FROM process_logs
-                    WHERE status = 'failed' AND page_id IS NOT NULL
-                )
-                """
+            where_clause = self._status_where_clause(status_filter)
 
             count_query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
             count_result = await self.db.fetch_one(count_query)
@@ -296,14 +236,13 @@ class PageRepository:
 
             pages = []
             for row in results:
-                if row["summary"] and row["weaviate_id"]:
-                    status = "completed"
-                else:
-                    error_check = await self.db.fetch_one(
-                        "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",  # noqa: E501
-                        (row["id"],),
-                    )
-                    status = "failed" if error_check else "processing"
+                error_check = await self.db.fetch_one(
+                    "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",  # noqa: E501
+                    (row["id"],),
+                )
+                status = self._compute_page_status(
+                    row["summary"], row["weaviate_id"], bool(error_check)
+                )
 
                 has_json_file = await self.file_repo.file_exists(row["id"])
 
@@ -339,6 +278,38 @@ class PageRepository:
             return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get pages by status: {str(e)}")
+
+    def _compute_page_status(
+        self,
+        summary: str | None,
+        weaviate_id: str | None,
+        has_failed_log: bool,
+    ) -> str:
+        """ページステータスを計算する単一の定義."""
+        if summary and weaviate_id:
+            return "completed"
+        return "failed" if has_failed_log else "processing"
+
+    def _status_where_clause(self, status_filter: str | None) -> str:
+        """ステータスフィルター用SQL WHERE句を生成."""
+        if status_filter == "completed":
+            return "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+        elif status_filter == "processing":
+            return """
+                    WHERE (summary IS NULL OR weaviate_id IS NULL)
+                    AND id NOT IN (
+                        SELECT DISTINCT page_id FROM process_logs
+                        WHERE status = 'failed' AND page_id IS NOT NULL
+                    )
+                    """
+        elif status_filter == "failed":
+            return """
+                    WHERE id IN (
+                        SELECT DISTINCT page_id FROM process_logs
+                        WHERE status = 'failed' AND page_id IS NOT NULL
+                    )
+                    """
+        return ""
 
     def _row_to_page(self, row: object) -> Page:
         """行データをPageモデルに変換."""

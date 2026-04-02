@@ -23,16 +23,6 @@ class Page:
     weaviate_id: str | None
     last_success_step: str | None = None
 
-    @property
-    def status(self) -> str:
-        """処理ステータスを取得."""
-        if self.summary and self.weaviate_id:
-            return "completed"
-        elif self.summary or self.weaviate_id:
-            return "processing"
-        else:
-            return "failed"
-
 
 @dataclass
 class ProcessLog:
