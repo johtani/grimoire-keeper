@@ -3,7 +3,6 @@
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any
 
 import pytest
 import pytest_asyncio
