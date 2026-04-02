@@ -93,5 +93,69 @@ class TestPagesRouter:
         assert response.status_code == 200
         # Verify repository was called with correct parameters
         mock_repo.list_pages.assert_called_once_with(
-            limit=10, offset=5, sort="title", order="asc"
+            limit=10, offset=5, sort="title", order="asc", status_filter=None
+        )
+
+    @patch("grimoire_api.routers.pages.PageRepository")
+    def test_list_pages_status_filter_all(self, mock_repo_class):
+        """Test that status=all passes status_filter=None to repository."""
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.list_pages.return_value = ([], 0)
+
+        response = client.get("/api/v1/pages?status=all")
+
+        assert response.status_code == 200
+        mock_repo.list_pages.assert_called_once_with(
+            limit=20, offset=0, sort="created_at", order="desc", status_filter=None
+        )
+
+    @patch("grimoire_api.routers.pages.PageRepository")
+    def test_list_pages_status_filter_completed(self, mock_repo_class):
+        """Test that status=completed is passed to repository."""
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.list_pages.return_value = ([], 0)
+
+        response = client.get("/api/v1/pages?status=completed")
+
+        assert response.status_code == 200
+        mock_repo.list_pages.assert_called_once_with(
+            limit=20,
+            offset=0,
+            sort="created_at",
+            order="desc",
+            status_filter="completed",
+        )
+
+    @patch("grimoire_api.routers.pages.PageRepository")
+    def test_list_pages_status_filter_processing(self, mock_repo_class):
+        """Test that status=processing is passed to repository."""
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.list_pages.return_value = ([], 0)
+
+        response = client.get("/api/v1/pages?status=processing")
+
+        assert response.status_code == 200
+        mock_repo.list_pages.assert_called_once_with(
+            limit=20,
+            offset=0,
+            sort="created_at",
+            order="desc",
+            status_filter="processing",
+        )
+
+    @patch("grimoire_api.routers.pages.PageRepository")
+    def test_list_pages_status_filter_failed(self, mock_repo_class):
+        """Test that status=failed is passed to repository."""
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.list_pages.return_value = ([], 0)
+
+        response = client.get("/api/v1/pages?status=failed")
+
+        assert response.status_code == 200
+        mock_repo.list_pages.assert_called_once_with(
+            limit=20, offset=0, sort="created_at", order="desc", status_filter="failed"
         )

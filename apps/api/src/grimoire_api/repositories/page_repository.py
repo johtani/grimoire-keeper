@@ -258,16 +258,37 @@ class PageRepository:
         offset: int = 0,
         sort: str = "created_at",
         order: str = "desc",
+        status_filter: str | None = None,
     ) -> tuple[list[dict], int]:
         """ページ一覧取得 (async)."""
         try:
-            count_query = "SELECT COUNT(*) as total FROM pages"
+            where_clause = ""
+            if status_filter == "completed":
+                where_clause = "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+            elif status_filter == "processing":
+                where_clause = """
+                WHERE (summary IS NULL OR weaviate_id IS NULL)
+                AND id NOT IN (
+                    SELECT DISTINCT page_id FROM process_logs
+                    WHERE status = 'failed' AND page_id IS NOT NULL
+                )
+                """
+            elif status_filter == "failed":
+                where_clause = """
+                WHERE id IN (
+                    SELECT DISTINCT page_id FROM process_logs
+                    WHERE status = 'failed' AND page_id IS NOT NULL
+                )
+                """
+
+            count_query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
             count_result = await self.db.fetch_one(count_query)
             total = count_result["total"] if count_result else 0
 
             order_clause = f"ORDER BY {sort} {order.upper()}"
             query = f"""
             SELECT * FROM pages
+            {where_clause}
             {order_clause}
             LIMIT ? OFFSET ?
             """

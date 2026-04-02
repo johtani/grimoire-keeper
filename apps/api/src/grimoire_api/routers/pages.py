@@ -48,12 +48,8 @@ async def get_pages(
             offset=offset,
             sort=sort,
             order=order,
+            status_filter=status if status != "all" else None,
         )
-
-        # ステータスフィルタリング
-        if status != "all":
-            pages_data = [p for p in pages_data if p.get("status") == status]
-            total = len(pages_data)
 
         return {
             "pages": pages_data,

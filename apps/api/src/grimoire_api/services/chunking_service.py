@@ -65,7 +65,7 @@ class ChunkingService:
             言語コード ("en", "ja" 等) または None
         """
         try:
-            from langdetect import detect, LangDetectException
+            from langdetect import detect
 
             return detect(text[:2000])
         except Exception:
