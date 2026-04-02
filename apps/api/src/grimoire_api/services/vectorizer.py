@@ -1,6 +1,7 @@
 """Vectorization service for Weaviate."""
 
 import json
+import logging
 from typing import Any
 
 import weaviate
@@ -12,6 +13,8 @@ from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import VectorizerError
 from .chunking_service import ChunkingService
+
+logger = logging.getLogger(__name__)
 
 
 class VectorizerService:
@@ -152,11 +155,10 @@ class VectorizerService:
             )
             # 削除結果をログ出力（デバッグ用）
             if hasattr(result, "matches"):
-                print(f"Deleted {result.matches} chunks for page {page_id}")
+                logger.info("Deleted %d chunks for page %d", result.matches, page_id)
         except Exception as e:
-            # 削除エラーは無視（既存データがない場合など）
-            print(f"Delete error (ignored): {e}")
-            pass
+            logger.error("Failed to delete existing chunks for page %d: %s", page_id, e)
+            raise
 
     async def health_check(self) -> bool:
         """Weaviateヘルスチェック.

@@ -232,6 +232,51 @@ class TestVectorizerService:
         assert second_data["content"] == "chunk2"
 
     @pytest.mark.asyncio
+    async def test_delete_existing_chunks_failure(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """_delete_existing_chunks が失敗時に例外を伝播するテスト."""
+        mock_collection = MagicMock()
+        mock_collection.data.delete_many.side_effect = Exception(
+            "Weaviate delete error"
+        )
+
+        with pytest.raises(Exception, match="Weaviate delete error"):
+            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+
+    @pytest.mark.asyncio
+    async def test_save_chunks_weaviate_delete_failure(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """削除失敗時に VectorizerError が発生するテスト."""
+        mock_page = Page(
+            id=1,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            weaviate_id=None,
+        )
+
+        mock_dependencies["mock_collection"].data.delete_many.side_effect = Exception(
+            "Weaviate delete error"
+        )
+
+        with patch.object(vectorizer_service, "_get_client") as mock_get_client:
+            mock_get_client.return_value.__enter__ = MagicMock(
+                return_value=mock_dependencies["weaviate_client"]
+            )
+            mock_get_client.return_value.__exit__ = MagicMock(return_value=None)
+
+            with pytest.raises(
+                VectorizerError, match="Failed to save chunks to Weaviate"
+            ):
+                await vectorizer_service._save_chunks_to_weaviate(mock_page, ["chunk1"])
+
+    @pytest.mark.asyncio
     async def test_health_check_success(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
