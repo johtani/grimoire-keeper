@@ -124,4 +124,18 @@ class DatabaseConnection:
             except Exception:
                 pass
 
+            # インデックス作成
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_process_logs_page_id"
+                " ON process_logs(page_id)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_process_logs_status"
+                " ON process_logs(status)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pages_last_success_step"
+                " ON pages(last_success_step)"
+            )
+
             await conn.commit()
