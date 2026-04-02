@@ -75,9 +75,7 @@ class TestLLMService:
             mock_settings.LLM_API_KEY = None
             service = LLMService(file_repo=mock_file_repo, api_key=None)
 
-            with pytest.raises(
-                LLMServiceError, match="LLM API key is not configured"
-            ):
+            with pytest.raises(LLMServiceError, match="LLM API key is not configured"):
                 await service.generate_summary_keywords(1)
 
     @pytest.mark.asyncio

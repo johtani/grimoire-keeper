@@ -100,7 +100,9 @@ class RetryService:
             else:
                 start_point = from_step
 
-            log_id = await self.log_repo.create_log(page.url, "reprocess_started", page_id)
+            log_id = await self.log_repo.create_log(
+                page.url, "reprocess_started", page_id
+            )
             await self._execute_retry_from_point(page_id, log_id, page.url, start_point)
 
             return {

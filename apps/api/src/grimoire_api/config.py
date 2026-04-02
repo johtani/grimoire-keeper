@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # LLM
     LLM_MODEL: str = "openai/qwen3-35b"
-    LLM_API_BASE: str = ""   # 空の場合はLiteLLMのデフォルトルーティングを使用 (Gemini等)
+    LLM_API_BASE: str = ""  # 空の場合はLiteLLMのデフォルトルーティングを使用 (Gemini等)
     LLM_API_KEY: str = "dummy"
 
     # Database
