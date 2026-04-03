@@ -1,5 +1,6 @@
 """Vectorization service for Weaviate."""
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -102,11 +103,6 @@ class VectorizerService:
                 # 既存データを削除
                 await self._delete_existing_chunks(collection, page_data.id)
 
-                # 削除処理の完了を待つ
-                import asyncio
-
-                await asyncio.sleep(0.1)
-
                 for i, chunk in enumerate(chunks):
                     weaviate_object = {
                         "pageId": page_data.id,
@@ -140,22 +136,51 @@ class VectorizerService:
             raise VectorizerError(f"Failed to save chunks to Weaviate: {str(e)}")
 
     async def _delete_existing_chunks(self, collection: Any, page_id: int) -> None:
-        """既存チャンクを削除.
+        """既存チャンクを削除し、削除完了を確認する.
 
         Args:
             collection: Weaviateコレクション
             page_id: ページID
+
+        Raises:
+            VectorizerError: 削除がタイムアウトした場合
         """
         try:
-            # pageIdでフィルタリングして既存データを削除
             from weaviate.classes.query import Filter
 
             result = collection.data.delete_many(
                 where=Filter.by_property("pageId").equal(page_id)
             )
-            # 削除結果をログ出力（デバッグ用）
             if hasattr(result, "matches"):
                 logger.info("Deleted %d chunks for page %d", result.matches, page_id)
+
+            # 削除対象がなければ確認不要
+            if not hasattr(result, "matches") or result.matches == 0:
+                return
+
+            # 削除完了をポーリングで確認
+            max_retries = 10
+            wait_sec = 0.1
+            for attempt in range(max_retries):
+                remaining = collection.query.fetch_objects(
+                    filters=Filter.by_property("pageId").equal(page_id),
+                    limit=1,
+                )
+                if not remaining.objects:
+                    return
+                logger.debug(
+                    "Waiting for deletion of chunks for page %d (attempt %d/%d)",
+                    page_id,
+                    attempt + 1,
+                    max_retries,
+                )
+                await asyncio.sleep(wait_sec)
+
+            raise VectorizerError(
+                f"Deletion of chunks for page {page_id} did not complete within timeout"
+            )
+        except VectorizerError:
+            raise
         except Exception as e:
             logger.error("Failed to delete existing chunks for page %d: %s", page_id, e)
             raise
