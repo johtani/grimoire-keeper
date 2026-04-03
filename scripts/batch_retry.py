@@ -6,6 +6,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+import weaviate
+from grimoire_api.config import settings
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
@@ -44,7 +46,14 @@ async def batch_retry_from_status(
     jina_client = JinaClient()
     llm_service = LLMService(file_repo)
     chunking_service = ChunkingService()
-    vectorizer = VectorizerService(page_repo, file_repo, chunking_service)
+    weaviate_client = weaviate.connect_to_local(
+        host=settings.WEAVIATE_HOST,
+        port=settings.WEAVIATE_PORT,
+        headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
+    )
+    vectorizer = VectorizerService(
+        page_repo, file_repo, chunking_service, weaviate_client
+    )
 
     retry_service = RetryService(
         jina_client=jina_client,
@@ -54,79 +63,82 @@ async def batch_retry_from_status(
         log_repo=log_repo,
     )
 
-    # ステップに対応する成功ステータスを取得
-    status_mapping = {
-        "download": "downloaded",
-        "llm": "llm_processed",
-        "vectorize": "vectorized",
-    }
+    try:
+        # ステップに対応する成功ステータスを取得
+        status_mapping = {
+            "download": "downloaded",
+            "llm": "llm_processed",
+            "vectorize": "vectorized",
+        }
 
-    if from_step not in status_mapping:
-        keys = list(status_mapping.keys())
-        print(f"Error: Invalid from_step '{from_step}'. Must be one of: {keys}")
-        return
+        if from_step not in status_mapping:
+            keys = list(status_mapping.keys())
+            print(f"Error: Invalid from_step '{from_step}'. Must be one of: {keys}")
+            return
 
-    target_status = status_mapping[from_step]
+        target_status = status_mapping[from_step]
 
-    # 対象ページを取得
-    pages = await page_repo.get_pages_by_status(target_status)
+        # 対象ページを取得
+        pages = await page_repo.get_pages_by_status(target_status)
 
-    if not pages:
-        print(f"No pages found with status '{target_status}'")
-        return
+        if not pages:
+            print(f"No pages found with status '{target_status}'")
+            return
 
-    # 処理対象を制限
-    if max_pages:
-        pages = pages[:max_pages]
+        # 処理対象を制限
+        if max_pages:
+            pages = pages[:max_pages]
 
-    print(f"Found {len(pages)} pages with status '{target_status}'")
-    print(f"Will retry from step: {from_step}")
-    print(f"Interval: {interval_seconds} seconds")
+        print(f"Found {len(pages)} pages with status '{target_status}'")
+        print(f"Will retry from step: {from_step}")
+        print(f"Interval: {interval_seconds} seconds")
 
-    if dry_run:
-        print("DRY RUN - No actual processing will be performed")
+        if dry_run:
+            print("DRY RUN - No actual processing will be performed")
+            for i, page in enumerate(pages, 1):
+                print(f"  {i}. Page {page.id}: {page.url}")
+            return
+
+        # 確認
+        response = input("Continue? (y/N): ")
+        if response.lower() != "y":
+            print("Cancelled")
+            return
+
+        # バッチ処理実行
+        success_count = 0
+        error_count = 0
+
         for i, page in enumerate(pages, 1):
-            print(f"  {i}. Page {page.id}: {page.url}")
-        return
+            print(f"\n[{i}/{len(pages)}] Processing page {page.id}: {page.url}")
 
-    # 確認
-    response = input("Continue? (y/N): ")
-    if response.lower() != "y":
-        print("Cancelled")
-        return
-
-    # バッチ処理実行
-    success_count = 0
-    error_count = 0
-
-    for i, page in enumerate(pages, 1):
-        print(f"\n[{i}/{len(pages)}] Processing page {page.id}: {page.url}")
-
-        try:
-            if page.id is not None:
-                result = await retry_service.reprocess_page(page.id, from_step)
-                if result["status"] == "reprocess_started":
-                    print(f"  ✓ Started reprocessing from {result['restart_from']}")
-                    success_count += 1
+            try:
+                if page.id is not None:
+                    result = await retry_service.reprocess_page(page.id, from_step)
+                    if result["status"] == "reprocess_started":
+                        print(f"  ✓ Started reprocessing from {result['restart_from']}")
+                        success_count += 1
+                    else:
+                        print(f"  ⚠ {result['message']}")
                 else:
-                    print(f"  ⚠ {result['message']}")
-            else:
-                print("  ✗ Error: Page ID is None")
+                    print("  ✗ Error: Page ID is None")
+                    error_count += 1
+
+            except Exception as e:
+                print(f"  ✗ Error: {str(e)}")
                 error_count += 1
 
-        except Exception as e:
-            print(f"  ✗ Error: {str(e)}")
-            error_count += 1
+            # インターバル
+            if i < len(pages) and interval_seconds > 0:
+                print(f"  Waiting {interval_seconds} seconds...")
+                await asyncio.sleep(interval_seconds)
 
-        # インターバル
-        if i < len(pages) and interval_seconds > 0:
-            print(f"  Waiting {interval_seconds} seconds...")
-            await asyncio.sleep(interval_seconds)
-
-    print("\nBatch retry completed:")
-    print(f"  Success: {success_count}")
-    print(f"  Errors: {error_count}")
-    print(f"  Total: {len(pages)}")
+        print("\nBatch retry completed:")
+        print(f"  Success: {success_count}")
+        print(f"  Errors: {error_count}")
+        print(f"  Total: {len(pages)}")
+    finally:
+        weaviate_client.close()
 
 
 def main() -> None:

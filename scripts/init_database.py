@@ -9,6 +9,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 
+import weaviate  # noqa: E402
+from grimoire_api.config import settings  # noqa: E402
 from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
 
@@ -27,20 +29,29 @@ async def initialize_database() -> bool:
         print("🔧 Initializing Weaviate schema...")
         from unittest.mock import MagicMock
 
-        vectorizer = VectorizerService(
-            MagicMock(),  # type: ignore
-            MagicMock(),  # type: ignore
-            MagicMock(),  # type: ignore
-        )  # スキーマ作成のみなのでダミーオブジェクト
+        weaviate_client = weaviate.connect_to_local(
+            host=settings.WEAVIATE_HOST,
+            port=settings.WEAVIATE_PORT,
+            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
+        )
+        try:
+            vectorizer = VectorizerService(
+                MagicMock(),  # type: ignore
+                MagicMock(),  # type: ignore
+                MagicMock(),  # type: ignore
+                weaviate_client,
+            )  # スキーマ作成のみなのでリポジトリはダミーオブジェクト
 
-        # Weaviate接続確認
-        if await vectorizer.health_check():
-            await vectorizer.ensure_schema()
-            print("✅ Weaviate schema created successfully!")
-        else:
-            print("⚠️  Weaviate is not running. Please start Weaviate first:")
-            print("   docker compose up -d weaviate")
-            return False
+            # Weaviate接続確認
+            if await vectorizer.health_check():
+                await vectorizer.ensure_schema()
+                print("✅ Weaviate schema created successfully!")
+            else:
+                print("⚠️  Weaviate is not running. Please start Weaviate first:")
+                print("   docker compose up -d weaviate")
+                return False
+        finally:
+            weaviate_client.close()
 
     except Exception as e:
         print(f"❌ Database initialization failed: {str(e)}")
