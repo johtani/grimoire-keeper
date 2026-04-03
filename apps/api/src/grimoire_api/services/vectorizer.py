@@ -7,6 +7,7 @@ from typing import Any
 
 import weaviate
 from weaviate.classes.config import Configure, DataType, Property
+from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
 from ..config import settings
@@ -146,22 +147,25 @@ class VectorizerService:
             VectorizerError: 削除がタイムアウトした場合
         """
         try:
-            from weaviate.classes.query import Filter
-
             result = collection.data.delete_many(
                 where=Filter.by_property("pageId").equal(page_id)
             )
             if hasattr(result, "matches"):
                 logger.info("Deleted %d chunks for page %d", result.matches, page_id)
+            if hasattr(result, "failed") and result.failed > 0:
+                logger.warning(
+                    "Failed to delete %d chunks for page %d", result.failed, page_id
+                )
 
             # 削除対象がなければ確認不要
             if not hasattr(result, "matches") or result.matches == 0:
                 return
 
-            # 削除完了をポーリングで確認
+            # 削除完了をポーリングで確認 (sleep → check の順で一貫性を保つ)
             max_retries = 10
             wait_sec = 0.1
             for attempt in range(max_retries):
+                await asyncio.sleep(wait_sec)
                 remaining = collection.query.fetch_objects(
                     filters=Filter.by_property("pageId").equal(page_id),
                     limit=1,
@@ -174,7 +178,6 @@ class VectorizerService:
                     attempt + 1,
                     max_retries,
                 )
-                await asyncio.sleep(wait_sec)
 
             raise VectorizerError(
                 f"Deletion of chunks for page {page_id} did not complete within timeout"
