@@ -1,7 +1,6 @@
 """Vectorization service for Weaviate."""
 
 import asyncio
-import json
 import logging
 from typing import Any
 
@@ -100,7 +99,7 @@ class VectorizerService:
                     "memo": page_data.memo or "",
                     "content": chunk,
                     "summary": page_data.summary or "",
-                    "keywords": json.loads(page_data.keywords or "[]"),
+                    "keywords": page_data.keywords,
                     "createdAt": (
                         page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
                         if page_data.created_at.tzinfo is None

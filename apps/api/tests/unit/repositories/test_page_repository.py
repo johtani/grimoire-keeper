@@ -176,7 +176,7 @@ class TestPageRepository:
 
         page = await page_repo.get_page(page_id)
         assert page.summary == summary
-        assert page.keywords == '["keyword1", "keyword2", "keyword3"]'
+        assert page.keywords == ["keyword1", "keyword2", "keyword3"]
 
     @pytest.mark.asyncio
     async def test_update_page_title(self, page_repo: Any) -> None:
