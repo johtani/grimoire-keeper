@@ -116,6 +116,63 @@ class TestJinaClient:
             assert result is False
 
     @pytest.mark.asyncio
+    async def test_fetch_content_timeout(self: Any) -> None:
+        """タイムアウト時のテスト."""
+        client = JinaClient(api_key="test_key")
+        test_url = "https://example.com"
+
+        with patch("httpx.AsyncClient") as mock_client:
+            timeout_error = httpx.TimeoutException("Request timeout")
+            mock_client.return_value.__aenter__.return_value.get.side_effect = (
+                timeout_error
+            )
+
+            with pytest.raises(JinaClientError, match="Jina API request error"):
+                await client.fetch_content(test_url)
+
+    @pytest.mark.asyncio
+    async def test_fetch_content_rate_limit(self: Any) -> None:
+        """429 レートリミット応答のテスト."""
+        client = JinaClient(api_key="test_key")
+        test_url = "https://example.com"
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_response = AsyncMock()
+            mock_response.status_code = 429
+            mock_response.text = "Too Many Requests"
+
+            http_error = httpx.HTTPStatusError(
+                "429 Too Many Requests", request=AsyncMock(), response=mock_response
+            )
+            mock_client.return_value.__aenter__.return_value.get.side_effect = (
+                http_error
+            )
+
+            with pytest.raises(JinaClientError, match="Jina API HTTP error 429"):
+                await client.fetch_content(test_url)
+
+    @pytest.mark.asyncio
+    async def test_fetch_content_invalid_api_key(self: Any) -> None:
+        """不正な API キー (401) 時のテスト."""
+        client = JinaClient(api_key="invalid_key")
+        test_url = "https://example.com"
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_response = AsyncMock()
+            mock_response.status_code = 401
+            mock_response.text = "Unauthorized"
+
+            http_error = httpx.HTTPStatusError(
+                "401 Unauthorized", request=AsyncMock(), response=mock_response
+            )
+            mock_client.return_value.__aenter__.return_value.get.side_effect = (
+                http_error
+            )
+
+            with pytest.raises(JinaClientError, match="Jina API HTTP error 401"):
+                await client.fetch_content(test_url)
+
+    @pytest.mark.asyncio
     async def test_fetch_content_headers(self: Any) -> None:
         """リクエストヘッダーのテスト."""
         client = JinaClient(api_key="test_key")
