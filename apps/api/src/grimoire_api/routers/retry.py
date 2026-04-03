@@ -1,6 +1,6 @@
 """Retry processing router."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..repositories.file_repository import FileRepository
@@ -28,7 +28,7 @@ class ReprocessRequest(BaseModel):
     from_step: str = "auto"  # "auto", "download", "llm", "vectorize"
 
 
-def get_retry_service() -> RetryService:
+def get_retry_service(request: Request) -> RetryService:
     """再処理サービス依存性注入."""
     page_repo = PageRepository()
     log_repo = LogRepository(page_repo.db)
@@ -37,7 +37,10 @@ def get_retry_service() -> RetryService:
 
     jina_client = JinaClient()
     llm_service = LLMService(file_repo)
-    vectorizer = VectorizerService(page_repo, file_repo, chunking_service)
+    weaviate_client = getattr(request.app.state, "weaviate_client", None)
+    vectorizer = VectorizerService(
+        page_repo, file_repo, chunking_service, weaviate_client
+    )
 
     return RetryService(
         jina_client=jina_client,

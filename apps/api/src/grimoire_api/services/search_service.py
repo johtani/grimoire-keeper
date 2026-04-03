@@ -5,7 +5,6 @@ from typing import Any
 import weaviate
 from weaviate.classes.query import MetadataQuery
 
-from ..config import settings
 from ..models.response import SearchResult
 from ..utils.exceptions import VectorizerError
 
@@ -13,25 +12,13 @@ from ..utils.exceptions import VectorizerError
 class SearchService:
     """検索サービス."""
 
-    def __init__(
-        self, weaviate_host: str | None = None, weaviate_port: int | None = None
-    ):
+    def __init__(self, weaviate_client: weaviate.WeaviateClient):
         """初期化.
 
         Args:
-            weaviate_host: Weaviateホスト名
-            weaviate_port: Weaviateポート番号
+            weaviate_client: Weaviateクライアント (共有インスタンス)
         """
-        self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
-        self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
-
-    def _get_client(self) -> weaviate.WeaviateClient:
-        """Weaviateクライアント取得."""
-        return weaviate.connect_to_local(
-            host=self.weaviate_host,
-            port=self.weaviate_port,
-            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
-        )
+        self.weaviate_client = weaviate_client
 
     async def vector_search(
         self,
@@ -57,50 +44,51 @@ class SearchService:
             VectorizerError: 検索エラー
         """
         try:
-            with self._get_client() as client:
-                collection = client.collections.get("GrimoireChunk")
+            collection = self.weaviate_client.collections.get("GrimoireChunk")
 
-                # フィルター条件構築
-                where_filter = self._build_weaviate_filter(filters) if filters else None
-                exclude_filter = (
-                    self._build_exclude_filter(exclude_keywords)
-                    if exclude_keywords
-                    else None
-                )
+            # フィルター条件構築
+            where_filter = self._build_weaviate_filter(filters) if filters else None
+            exclude_filter = (
+                self._build_exclude_filter(exclude_keywords)
+                if exclude_keywords
+                else None
+            )
 
-                # ベクトル別フィルター追加
-                summary_filter = None
-                if vector_name != "content_vector":
-                    from weaviate.classes.query import Filter
+            # ベクトル別フィルター追加
+            summary_filter = None
+            if vector_name != "content_vector":
+                from weaviate.classes.query import Filter
 
-                    summary_filter = Filter.by_property("isSummary").equal(True)
+                summary_filter = Filter.by_property("isSummary").equal(True)
 
-                # フィルター結合
-                filters_list = []
-                if where_filter:
-                    filters_list.append(where_filter)
-                if summary_filter:
-                    filters_list.append(summary_filter)
-                if exclude_filter:
-                    filters_list.append(exclude_filter)
+            # フィルター結合
+            filters_list = []
+            if where_filter:
+                filters_list.append(where_filter)
+            if summary_filter:
+                filters_list.append(summary_filter)
+            if exclude_filter:
+                filters_list.append(exclude_filter)
 
-                final_filter = None
-                if len(filters_list) == 1:
-                    final_filter = filters_list[0]
-                elif len(filters_list) > 1:
-                    final_filter = Filter.all_of(filters_list)
+            final_filter = None
+            if len(filters_list) == 1:
+                final_filter = filters_list[0]
+            elif len(filters_list) > 1:
+                from weaviate.classes.query import Filter
 
-                # クエリ実行
-                response = collection.query.near_text(
-                    query=query,
-                    target_vector=vector_name,
-                    limit=limit,
-                    filters=final_filter,
-                    return_metadata=MetadataQuery(certainty=True),
-                )
+                final_filter = Filter.all_of(filters_list)
 
-                # 結果変換
-                return self._convert_search_results_v4(response)
+            # クエリ実行
+            response = collection.query.near_text(
+                query=query,
+                target_vector=vector_name,
+                limit=limit,
+                filters=final_filter,
+                return_metadata=MetadataQuery(certainty=True),
+            )
+
+            # 結果変換
+            return self._convert_search_results_v4(response)
 
         except Exception as e:
             raise VectorizerError(f"Vector search error: {str(e)}")
@@ -123,16 +111,15 @@ class SearchService:
         try:
             from weaviate.classes.query import Filter
 
-            with self._get_client() as client:
-                collection = client.collections.get("GrimoireChunk")
+            collection = self.weaviate_client.collections.get("GrimoireChunk")
 
-                # キーワードフィルタで検索
-                response = collection.query.fetch_objects(  # type: ignore[call-overload]
-                    filters=Filter.by_property("keywords").contains_any(keywords),
-                    limit=limit,
-                )
+            # キーワードフィルタで検索
+            response = collection.query.fetch_objects(  # type: ignore[call-overload]
+                filters=Filter.by_property("keywords").contains_any(keywords),
+                limit=limit,
+            )
 
-                return self._convert_search_results_v4(response)
+            return self._convert_search_results_v4(response)
 
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")

@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from ..models.request import ProcessUrlRequest
 from ..models.response import ProcessUrlResponse
@@ -21,7 +21,7 @@ from ..utils.metrics import url_processing_duration, url_processing_requests
 router = APIRouter(prefix="/api/v1", tags=["process"])
 
 
-def get_url_processor() -> UrlProcessorService:
+def get_url_processor(request: Request) -> UrlProcessorService:
     """URL処理サービス依存性注入."""
     db = DatabaseConnection()
     file_repo = FileRepository()
@@ -31,7 +31,10 @@ def get_url_processor() -> UrlProcessorService:
     jina_client = JinaClient()
     llm_service = LLMService(file_repo)
     chunking_service = ChunkingService()
-    vectorizer = VectorizerService(page_repo, file_repo, chunking_service)
+    weaviate_client = getattr(request.app.state, "weaviate_client", None)
+    vectorizer = VectorizerService(
+        page_repo, file_repo, chunking_service, weaviate_client
+    )
 
     return UrlProcessorService(
         jina_client=jina_client,
