@@ -1,9 +1,11 @@
 """FastAPI application main module."""
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Any
 
+import weaviate
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from grimoire_shared.telemetry import setup_telemetry
@@ -17,6 +19,8 @@ from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
 from .utils.warnings_filter import *  # noqa: F403, F401
+
+logger = logging.getLogger(__name__)
 
 # 環境変数の必須チェック（テスト環境以外）
 if not os.getenv("PYTEST_CURRENT_TEST"):
@@ -40,9 +44,26 @@ async def lifespan(app: FastAPI) -> Any:
     else:
         print("⚠️ Database initialization failed, but continuing startup")
 
+    # 起動時処理 - Weaviate クライアント初期化
+    try:
+        weaviate_client = weaviate.connect_to_local(
+            host=settings.WEAVIATE_HOST,
+            port=settings.WEAVIATE_PORT,
+            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
+        )
+        app.state.weaviate_client = weaviate_client
+        print("✅ Weaviate client initialized successfully")
+    except Exception as e:
+        app.state.weaviate_client = None
+        logger.warning("Weaviate connection failed, continuing startup: %s", e)
+        print(f"⚠️ Weaviate connection failed, but continuing startup: {e}")
+
     yield
 
     # 終了時処理
+    if getattr(app.state, "weaviate_client", None) is not None:
+        app.state.weaviate_client.close()
+        print("🔄 Weaviate client closed")
     print("🔄 Application shutting down")
 
 

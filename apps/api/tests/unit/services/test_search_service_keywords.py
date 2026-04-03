@@ -1,6 +1,6 @@
 """Additional tests for keywords filter handling."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from grimoire_api.services.search_service import SearchService
@@ -12,7 +12,7 @@ class TestSearchServiceKeywords:
     @pytest.fixture
     def search_service(self) -> SearchService:
         """SearchServiceフィクスチャ."""
-        return SearchService(weaviate_host="test-host", weaviate_port=8080)
+        return SearchService(weaviate_client=MagicMock())
 
     def test_build_weaviate_filter_keywords_string(
         self, search_service: SearchService

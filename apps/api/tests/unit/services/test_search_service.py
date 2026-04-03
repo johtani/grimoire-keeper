@@ -1,7 +1,7 @@
 """Tests for SearchService."""
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from grimoire_api.services.search_service import SearchService
@@ -12,25 +12,27 @@ class TestSearchService:
     """SearchServiceテストクラス."""
 
     @pytest.fixture
-    def search_service(self) -> SearchService:
+    def mock_weaviate_client(self) -> MagicMock:
+        """Weaviateクライアントモック."""
+        mock_collection = MagicMock()
+        mock_client = MagicMock()
+        mock_client.collections.get.return_value = mock_collection
+        return mock_client
+
+    @pytest.fixture
+    def search_service(self, mock_weaviate_client: MagicMock) -> SearchService:
         """SearchServiceフィクスチャ."""
-        return SearchService(weaviate_host="test-host", weaviate_port=8080)
+        return SearchService(weaviate_client=mock_weaviate_client)
 
-    def test_init_default_values(self: Any) -> None:
-        """デフォルト値での初期化テスト."""
-        service = SearchService()
-        assert service.weaviate_host == "localhost"  # settings.WEAVIATE_HOST
-        assert service.weaviate_port == 8080
-
-    def test_init_custom_values(self: Any) -> None:
-        """カスタム値での初期化テスト."""
-        service = SearchService(weaviate_host="custom-host", weaviate_port=9090)
-        assert service.weaviate_host == "custom-host"
-        assert service.weaviate_port == 9090
+    def test_init(self: Any) -> None:
+        """初期化テスト."""
+        mock_client = MagicMock()
+        service = SearchService(weaviate_client=mock_client)
+        assert service.weaviate_client is mock_client
 
     @pytest.mark.asyncio
     async def test_vector_search_without_filters(
-        self, search_service: SearchService
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
     ) -> None:
         """フィルターなしのベクトル検索テスト."""
         # モックレスポンス
@@ -50,16 +52,10 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        mock_collection = MagicMock()
+        mock_collection = mock_weaviate_client.collections.get.return_value
         mock_collection.query.near_text.return_value = mock_response
 
-        mock_client = MagicMock()
-        mock_client.collections.get.return_value = mock_collection
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=None)
-
-        with patch.object(search_service, "_get_client", return_value=mock_client):
-            results = await search_service.vector_search("test query", limit=5)
+        results = await search_service.vector_search("test query", limit=5)
 
         assert len(results) == 1
         assert results[0].page_id == 1
@@ -76,7 +72,7 @@ class TestSearchService:
 
     @pytest.mark.asyncio
     async def test_vector_search_with_filters(
-        self, search_service: SearchService
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
     ) -> None:
         """フィルター付きのベクトル検索テスト."""
         # モックレスポンス
@@ -96,13 +92,8 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        mock_collection = MagicMock()
+        mock_collection = mock_weaviate_client.collections.get.return_value
         mock_collection.query.near_text.return_value = mock_response
-
-        mock_client = MagicMock()
-        mock_client.collections.get.return_value = mock_collection
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=None)
 
         filters = {
             "url": "filtered",
@@ -111,10 +102,9 @@ class TestSearchService:
             "date_to": "2023-12-31",
         }
 
-        with patch.object(search_service, "_get_client", return_value=mock_client):
-            results = await search_service.vector_search(
-                "filtered query", limit=3, filters=filters
-            )
+        results = await search_service.vector_search(
+            "filtered query", limit=3, filters=filters
+        )
 
         assert len(results) == 1
         assert results[0].page_id == 2
@@ -130,19 +120,18 @@ class TestSearchService:
         assert call_args[1]["filters"] is not None
 
     @pytest.mark.asyncio
-    async def test_vector_search_error(self, search_service: SearchService) -> None:
+    async def test_vector_search_error(
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
+    ) -> None:
         """ベクトル検索エラーテスト."""
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(side_effect=Exception("Connection error"))
-        mock_client.__exit__ = MagicMock(return_value=None)
+        mock_weaviate_client.collections.get.side_effect = Exception("Connection error")
 
-        with patch.object(search_service, "_get_client", return_value=mock_client):
-            with pytest.raises(VectorizerError, match="Vector search error"):
-                await search_service.vector_search("test query")
+        with pytest.raises(VectorizerError, match="Vector search error"):
+            await search_service.vector_search("test query")
 
     @pytest.mark.asyncio
     async def test_vector_search_with_memo_vector(
-        self, search_service: SearchService
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
     ) -> None:
         """メモベクトル指定のベクトル検索テスト."""
         # モックレスポンス
@@ -163,18 +152,12 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        mock_collection = MagicMock()
+        mock_collection = mock_weaviate_client.collections.get.return_value
         mock_collection.query.near_text.return_value = mock_response
 
-        mock_client = MagicMock()
-        mock_client.collections.get.return_value = mock_collection
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=None)
-
-        with patch.object(search_service, "_get_client", return_value=mock_client):
-            results = await search_service.vector_search(
-                "memo query", limit=3, vector_name="memo_vector"
-            )
+        results = await search_service.vector_search(
+            "memo query", limit=3, vector_name="memo_vector"
+        )
 
         assert len(results) == 1
         assert results[0].page_id == 5
@@ -190,7 +173,9 @@ class TestSearchService:
         assert call_args[1]["filters"] is not None  # isSummaryフィルターが追加される
 
     @pytest.mark.asyncio
-    async def test_keyword_search(self, search_service: SearchService) -> None:
+    async def test_keyword_search(
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
+    ) -> None:
         """キーワード検索テスト."""
         # モックレスポンス
         mock_obj = MagicMock()
@@ -210,18 +195,10 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        mock_collection = MagicMock()
+        mock_collection = mock_weaviate_client.collections.get.return_value
         mock_collection.query.fetch_objects.return_value = mock_response
 
-        mock_client = MagicMock()
-        mock_client.collections.get.return_value = mock_collection
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=None)
-
-        with patch.object(search_service, "_get_client", return_value=mock_client):
-            results = await search_service.keyword_search(
-                ["keyword", "search"], limit=10
-            )
+        results = await search_service.keyword_search(["keyword", "search"], limit=10)
 
         assert len(results) == 1
         assert results[0].page_id == 3
@@ -231,6 +208,8 @@ class TestSearchService:
     def test_build_weaviate_filter_url(self, search_service: SearchService) -> None:
         """URLフィルター構築テスト."""
         filters = {"url": "example"}
+
+        from unittest.mock import patch
 
         with patch("weaviate.classes.query.Filter") as mock_filter:
             mock_filter.by_property.return_value.like.return_value = "url_filter"
@@ -246,6 +225,8 @@ class TestSearchService:
     ) -> None:
         """キーワードフィルター構築テスト."""
         filters = {"keywords": ["test", "example"]}
+
+        from unittest.mock import patch
 
         with patch("weaviate.classes.query.Filter") as mock_filter:
             mock_filter.by_property.return_value.contains_any.return_value = (
@@ -265,6 +246,8 @@ class TestSearchService:
     ) -> None:
         """日付範囲フィルター構築テスト."""
         filters = {"date_from": "2023-01-01", "date_to": "2023-12-31"}
+
+        from unittest.mock import patch
 
         with patch("weaviate.classes.query.Filter") as mock_filter:
             mock_from_filter = MagicMock()
@@ -348,7 +331,7 @@ class TestSearchService:
 
     @pytest.mark.asyncio
     async def test_vector_search_with_custom_vector(
-        self, search_service: SearchService
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
     ) -> None:
         """カスタムベクトル指定のベクトル検索テスト."""
         # モックレスポンス
@@ -368,18 +351,12 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        mock_collection = MagicMock()
+        mock_collection = mock_weaviate_client.collections.get.return_value
         mock_collection.query.near_text.return_value = mock_response
 
-        mock_client = MagicMock()
-        mock_client.collections.get.return_value = mock_collection
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=None)
-
-        with patch.object(search_service, "_get_client", return_value=mock_client):
-            results = await search_service.vector_search(
-                "title query", limit=5, vector_name="title_vector"
-            )
+        results = await search_service.vector_search(
+            "title query", limit=5, vector_name="title_vector"
+        )
 
         assert len(results) == 1
         assert results[0].page_id == 4

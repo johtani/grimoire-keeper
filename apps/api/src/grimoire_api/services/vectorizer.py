@@ -10,7 +10,6 @@ from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
-from ..config import settings
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import VectorizerError
@@ -27,8 +26,7 @@ class VectorizerService:
         page_repo: PageRepository,
         file_repo: FileRepository,
         chunking_service: ChunkingService,
-        weaviate_host: str | None = None,
-        weaviate_port: int | None = None,
+        weaviate_client: weaviate.WeaviateClient,
     ):
         """初期化.
 
@@ -36,22 +34,12 @@ class VectorizerService:
             page_repo: ページリポジトリ
             file_repo: ファイルリポジトリ
             chunking_service: チャンキングサービス
-            weaviate_host: Weaviateホスト名
-            weaviate_port: Weaviateポート番号
+            weaviate_client: Weaviateクライアント (共有インスタンス)
         """
         self.page_repo = page_repo
         self.file_repo = file_repo
         self.chunking_service = chunking_service
-        self.weaviate_host = weaviate_host or settings.WEAVIATE_HOST
-        self.weaviate_port = weaviate_port or settings.WEAVIATE_PORT
-
-    def _get_client(self) -> weaviate.WeaviateClient:
-        """Weaviateクライアント取得."""
-        return weaviate.connect_to_local(
-            host=self.weaviate_host,
-            port=self.weaviate_port,
-            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
-        )
+        self.weaviate_client = weaviate_client
 
     async def vectorize_content(self, page_id: int) -> None:
         """コンテンツのベクトル化とWeaviate保存.
@@ -98,40 +86,39 @@ class VectorizerService:
         first_chunk_id = None
 
         try:
-            with self._get_client() as client:
-                collection = client.collections.get("GrimoireChunk")
+            collection = self.weaviate_client.collections.get("GrimoireChunk")
 
-                # 既存データを削除
-                await self._delete_existing_chunks(collection, page_data.id)
+            # 既存データを削除
+            await self._delete_existing_chunks(collection, page_data.id)
 
-                for i, chunk in enumerate(chunks):
-                    weaviate_object = {
-                        "pageId": page_data.id,
-                        "chunkId": i,
-                        "url": page_data.url,
-                        "title": page_data.title,
-                        "memo": page_data.memo or "",
-                        "content": chunk,
-                        "summary": page_data.summary or "",
-                        "keywords": json.loads(page_data.keywords or "[]"),
-                        "createdAt": (
-                            page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
-                            if page_data.created_at.tzinfo is None
-                            else page_data.created_at.isoformat()
-                        ),
-                        "isSummary": i == 0,
-                    }
+            for i, chunk in enumerate(chunks):
+                weaviate_object = {
+                    "pageId": page_data.id,
+                    "chunkId": i,
+                    "url": page_data.url,
+                    "title": page_data.title,
+                    "memo": page_data.memo or "",
+                    "content": chunk,
+                    "summary": page_data.summary or "",
+                    "keywords": json.loads(page_data.keywords or "[]"),
+                    "createdAt": (
+                        page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
+                        if page_data.created_at.tzinfo is None
+                        else page_data.created_at.isoformat()
+                    ),
+                    "isSummary": i == 0,
+                }
 
-                    # UUID生成: pageId-chunkIdの文字列からUUID5を生成
-                    uuid_source = f"{page_data.id}-{i}"
-                    chunk_uuid = generate_uuid5(uuid_source)
+                # UUID生成: pageId-chunkIdの文字列からUUID5を生成
+                uuid_source = f"{page_data.id}-{i}"
+                chunk_uuid = generate_uuid5(uuid_source)
 
-                    collection.data.insert(properties=weaviate_object, uuid=chunk_uuid)
+                collection.data.insert(properties=weaviate_object, uuid=chunk_uuid)
 
-                    if i == 0:
-                        first_chunk_id = str(chunk_uuid)
+                if i == 0:
+                    first_chunk_id = str(chunk_uuid)
 
-                return first_chunk_id or ""
+            return first_chunk_id or ""
 
         except Exception as e:
             raise VectorizerError(f"Failed to save chunks to Weaviate: {str(e)}")
@@ -195,9 +182,8 @@ class VectorizerService:
             Weaviateが利用可能かどうか
         """
         try:
-            with self._get_client() as client:
-                client.is_ready()
-                return True
+            self.weaviate_client.is_ready()
+            return True
         except Exception:
             return False
 
@@ -208,38 +194,37 @@ class VectorizerService:
             VectorizerError: スキーマ作成エラー
         """
         try:
-            with self._get_client() as client:
-                # 既存コレクション確認
-                if not client.collections.exists("GrimoireChunk"):
-                    # コレクション作成
-                    client.collections.create(
-                        name="GrimoireChunk",
-                        description="Grimoire Keeperで管理するWebページのチャンク",
-                        properties=[
-                            Property(name="pageId", data_type=DataType.INT),
-                            Property(name="chunkId", data_type=DataType.INT),
-                            Property(name="url", data_type=DataType.TEXT),
-                            Property(name="title", data_type=DataType.TEXT),
-                            Property(name="memo", data_type=DataType.TEXT),
-                            Property(name="content", data_type=DataType.TEXT),
-                            Property(name="summary", data_type=DataType.TEXT),
-                            Property(name="keywords", data_type=DataType.TEXT_ARRAY),
-                            Property(name="createdAt", data_type=DataType.DATE),
-                            Property(name="isSummary", data_type=DataType.BOOL),
-                        ],
-                        vector_config=[
-                            Configure.Vectors.text2vec_openai(
-                                name="content_vector", source_properties=["content"]
-                            ),
-                            Configure.Vectors.text2vec_openai(
-                                name="title_vector",
-                                source_properties=["title", "summary"],
-                            ),
-                            Configure.Vectors.text2vec_openai(
-                                name="memo_vector", source_properties=["memo"]
-                            ),
-                        ],
-                    )
+            # 既存コレクション確認
+            if not self.weaviate_client.collections.exists("GrimoireChunk"):
+                # コレクション作成
+                self.weaviate_client.collections.create(
+                    name="GrimoireChunk",
+                    description="Grimoire Keeperで管理するWebページのチャンク",
+                    properties=[
+                        Property(name="pageId", data_type=DataType.INT),
+                        Property(name="chunkId", data_type=DataType.INT),
+                        Property(name="url", data_type=DataType.TEXT),
+                        Property(name="title", data_type=DataType.TEXT),
+                        Property(name="memo", data_type=DataType.TEXT),
+                        Property(name="content", data_type=DataType.TEXT),
+                        Property(name="summary", data_type=DataType.TEXT),
+                        Property(name="keywords", data_type=DataType.TEXT_ARRAY),
+                        Property(name="createdAt", data_type=DataType.DATE),
+                        Property(name="isSummary", data_type=DataType.BOOL),
+                    ],
+                    vector_config=[
+                        Configure.Vectors.text2vec_openai(
+                            name="content_vector", source_properties=["content"]
+                        ),
+                        Configure.Vectors.text2vec_openai(
+                            name="title_vector",
+                            source_properties=["title", "summary"],
+                        ),
+                        Configure.Vectors.text2vec_openai(
+                            name="memo_vector", source_properties=["memo"]
+                        ),
+                    ],
+                )
 
         except Exception as e:
             raise VectorizerError(f"Failed to ensure schema: {str(e)}")
