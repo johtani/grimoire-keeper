@@ -20,7 +20,7 @@ async def initialize_database() -> bool:
     try:
         # SQLiteデータベース初期化
         db = DatabaseConnection()
-        db.initialize_tables()
+        await db.initialize_tables()
         print("✅ SQLite database tables created successfully!")
 
         # Weaviateスキーマ初期化
@@ -57,7 +57,7 @@ async def initialize_sqlite_only() -> bool:
     try:
         # SQLiteデータベース初期化
         db = DatabaseConnection()
-        db.initialize_tables()
+        await db.initialize_tables()
         print("✅ SQLite database tables created successfully!")
 
     except Exception as e:
@@ -84,7 +84,7 @@ async def check_database_status() -> bool:
         SELECT name FROM sqlite_master
         WHERE type='table' AND name IN ('pages', 'process_logs')
         """
-        tables = db.fetch_all(tables_query)
+        tables = await db.fetch_all(tables_query)
         table_names = [table["name"] for table in tables]
 
         print(f"📊 Found tables: {table_names}")
@@ -93,8 +93,10 @@ async def check_database_status() -> bool:
             print("✅ All required tables exist")
 
             # レコード数確認
-            pages_result = db.fetch_one("SELECT COUNT(*) as count FROM pages")
-            logs_result = db.fetch_one("SELECT COUNT(*) as count FROM process_logs")
+            pages_result = await db.fetch_one("SELECT COUNT(*) as count FROM pages")
+            logs_result = await db.fetch_one(
+                "SELECT COUNT(*) as count FROM process_logs"
+            )
 
             pages_count = pages_result["count"] if pages_result else 0
             logs_count = logs_result["count"] if logs_result else 0
@@ -120,12 +122,12 @@ async def reset_database() -> bool:
         db = DatabaseConnection()
 
         # テーブル削除
-        db.execute("DROP TABLE IF EXISTS process_logs")
-        db.execute("DROP TABLE IF EXISTS pages")
+        await db.execute("DROP TABLE IF EXISTS process_logs")
+        await db.execute("DROP TABLE IF EXISTS pages")
         print("🗑️  Existing tables dropped")
 
         # テーブル再作成
-        db.initialize_tables()
+        await db.initialize_tables()
         print("✅ Tables recreated successfully!")
 
     except Exception as e:

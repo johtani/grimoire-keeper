@@ -69,7 +69,7 @@ async def batch_retry_from_status(
     target_status = status_mapping[from_step]
 
     # 対象ページを取得
-    pages = page_repo.get_pages_by_status(target_status)
+    pages = await page_repo.get_pages_by_status(target_status)
 
     if not pages:
         print(f"No pages found with status '{target_status}'")
