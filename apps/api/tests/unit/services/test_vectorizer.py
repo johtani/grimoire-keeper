@@ -27,8 +27,8 @@ class TestVectorizerService:
 
         # PageRepositoryのモック
         mock_page_repo = MagicMock()
-        mock_page_repo.get_page = MagicMock()
-        mock_page_repo.update_weaviate_id = MagicMock()
+        mock_page_repo.get_page = AsyncMock()
+        mock_page_repo.update_weaviate_id = AsyncMock()
 
         # FileRepositoryのモック
         mock_file_repo = MagicMock()
