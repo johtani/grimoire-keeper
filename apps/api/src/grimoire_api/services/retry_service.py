@@ -1,5 +1,6 @@
 """Retry processing service."""
 
+import logging
 from typing import Any
 
 from ..repositories.log_repository import LogRepository
@@ -8,6 +9,8 @@ from ..utils.exceptions import GrimoireAPIError
 from .jina_client import JinaClient
 from .llm_service import LLMService
 from .vectorizer import VectorizerService
+
+logger = logging.getLogger(__name__)
 
 
 class RetryService:
@@ -147,8 +150,9 @@ class RetryService:
 
                         await asyncio.sleep(delay_seconds)
 
-                except Exception:
+                except Exception as e:
                     # 個別の失敗は無視して続行
+                    logger.error(f"Failed to retry page_id={page_id}: {e}")
                     continue
 
             return {
