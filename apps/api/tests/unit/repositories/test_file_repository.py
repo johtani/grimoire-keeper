@@ -98,6 +98,22 @@ class TestFileRepository:
         assert nested_path.is_dir()
 
     @pytest.mark.asyncio
+    async def test_get_existing_page_ids_empty(self: Any, file_repo: Any) -> None:
+        """ファイルがない場合に空セットを返す."""
+        result = file_repo.get_existing_page_ids()
+        assert result == set()
+
+    @pytest.mark.asyncio
+    async def test_get_existing_page_ids(self: Any, file_repo: Any) -> None:
+        """保存済みファイルのページIDセットを返す."""
+        await file_repo.save_json_file(1, {"data": "a"})
+        await file_repo.save_json_file(42, {"data": "b"})
+        await file_repo.save_json_file(100, {"data": "c"})
+
+        result = file_repo.get_existing_page_ids()
+        assert result == {1, 42, 100}
+
+    @pytest.mark.asyncio
     async def test_unicode_content(self: Any, file_repo: Any) -> None:
         """Unicode文字を含むコンテンツのテスト."""
         page_id = 1

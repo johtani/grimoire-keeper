@@ -234,17 +234,19 @@ class PageRepository:
             """
             results = await self.db.fetch_all(query, (limit, offset))
 
+            failed_rows = await self.db.fetch_all(
+                "SELECT DISTINCT page_id FROM process_logs WHERE status = 'failed' AND page_id IS NOT NULL"  # noqa: E501
+            )
+            failed_page_ids = {row["page_id"] for row in failed_rows}
+            existing_json_ids = self.file_repo.get_existing_page_ids()
+
             pages = []
             for row in results:
-                error_check = await self.db.fetch_one(
-                    "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",  # noqa: E501
-                    (row["id"],),
-                )
                 status = self._compute_page_status(
-                    row["summary"], row["weaviate_id"], bool(error_check)
+                    row["summary"], row["weaviate_id"], row["id"] in failed_page_ids
                 )
 
-                has_json_file = await self.file_repo.file_exists(row["id"])
+                has_json_file = row["id"] in existing_json_ids
 
                 pages.append(
                     {
