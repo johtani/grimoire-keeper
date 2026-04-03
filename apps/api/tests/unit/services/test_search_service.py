@@ -19,8 +19,8 @@ class TestSearchService:
     def test_init_default_values(self: Any) -> None:
         """デフォルト値での初期化テスト."""
         service = SearchService()
-        assert service.weaviate_host == "weaviate"  # settings.WEAVIATE_HOST
-        assert service.weaviate_port == 8089
+        assert service.weaviate_host == "localhost"  # settings.WEAVIATE_HOST
+        assert service.weaviate_port == 8080
 
     def test_init_custom_values(self: Any) -> None:
         """カスタム値での初期化テスト."""

@@ -14,11 +14,11 @@ class TestUrlProcessorService:
     def mock_services(self: Any) -> Any:
         """モックサービス群."""
         page_repo = AsyncMock()
-        page_repo.get_page_by_url = MagicMock()
-        page_repo.create_page = MagicMock()
+        page_repo.get_page_by_url = AsyncMock()
+        page_repo.create_page = AsyncMock()
 
         log_repo = AsyncMock()
-        log_repo.create_log = MagicMock()
+        log_repo.create_log = AsyncMock()
 
         return {
             "jina_client": AsyncMock(),
@@ -39,7 +39,8 @@ class TestUrlProcessorService:
             log_repo=mock_services["log_repo"],
         )
 
-    def test_prepare_url_processing_success(
+    @pytest.mark.asyncio
+    async def test_prepare_url_processing_success(
         self, url_processor, mock_services: Any
     ) -> None:
         """正常なURL処理準備テスト."""
@@ -54,7 +55,7 @@ class TestUrlProcessorService:
         mock_services["log_repo"].create_log.return_value = log_id
 
         # 処理実行
-        result = url_processor.prepare_url_processing(url, memo)
+        result = await url_processor.prepare_url_processing(url, memo)
 
         # 結果確認
         assert result["status"] == "prepared"
@@ -219,7 +220,8 @@ class TestUrlProcessorService:
             log_id, "llm_complete"
         )
 
-    def test_get_processing_status_completed(
+    @pytest.mark.asyncio
+    async def test_get_processing_status_completed(
         self, url_processor, mock_services: Any
     ) -> None:
         """完了済み処理状況取得テスト."""
@@ -242,36 +244,38 @@ class TestUrlProcessorService:
         mock_log.error_message = None
 
         # モック設定
-        mock_services["page_repo"].get_page = MagicMock(return_value=mock_page)
-        mock_services["log_repo"].get_logs_by_status = MagicMock(
+        mock_services["page_repo"].get_page = AsyncMock(return_value=mock_page)
+        mock_services["log_repo"].get_logs_by_status = AsyncMock(
             return_value=[mock_log]
         )
 
         # 処理実行
-        status = url_processor.get_processing_status(page_id)
+        status = await url_processor.get_processing_status(page_id)
 
         # 結果確認
         assert status["status"] == "completed"
         assert status["page"]["id"] == page_id
         assert status["page"]["title"] == "Test Title"
 
-    def test_get_processing_status_not_found(
+    @pytest.mark.asyncio
+    async def test_get_processing_status_not_found(
         self, url_processor, mock_services: Any
     ) -> None:
         """存在しないページの処理状況取得テスト."""
         page_id = 999
 
         # モック設定
-        mock_services["page_repo"].get_page = MagicMock(return_value=None)
+        mock_services["page_repo"].get_page = AsyncMock(return_value=None)
 
         # 処理実行
-        status = url_processor.get_processing_status(page_id)
+        status = await url_processor.get_processing_status(page_id)
 
         # 結果確認
         assert status["status"] == "not_found"
         assert "not found" in status["message"]
 
-    def test_process_url_already_exists(
+    @pytest.mark.asyncio
+    async def test_process_url_already_exists(
         self, url_processor, mock_services: Any
     ) -> None:
         """URL重複チェックテスト."""
@@ -285,7 +289,7 @@ class TestUrlProcessorService:
         mock_services["page_repo"].get_page_by_url.return_value = existing_page
 
         # 処理実行
-        result = url_processor.prepare_url_processing(url, memo)
+        result = await url_processor.prepare_url_processing(url, memo)
 
         # 結果確認
         assert result["status"] == "already_exists"
