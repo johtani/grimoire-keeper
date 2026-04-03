@@ -234,7 +234,7 @@ class TestUrlProcessorService:
         mock_page.title = "Test Title"
         mock_page.memo = "Test memo"
         mock_page.summary = "Test summary"
-        mock_page.keywords = '["test", "keyword"]'
+        mock_page.keywords = ["test", "keyword"]
         mock_page.created_at.isoformat.return_value = "2024-01-01T00:00:00"
 
         # モックログデータ

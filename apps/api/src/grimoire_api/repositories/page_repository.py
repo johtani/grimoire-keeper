@@ -148,7 +148,7 @@ class PageRepository:
             "title": page.title,
             "memo": page.memo,
             "summary": page.summary,
-            "keywords": json.loads(page.keywords) if page.keywords else [],
+            "keywords": page.keywords,
             "created_at": page.created_at,
             "updated_at": page.updated_at,
             "weaviate_id": page.weaviate_id,
@@ -253,9 +253,7 @@ class PageRepository:
                         "title": row["title"],
                         "memo": row["memo"],
                         "summary": row["summary"],
-                        "keywords": json.loads(row["keywords"])
-                        if row["keywords"]
-                        else [],
+                        "keywords": self._parse_keywords(row["keywords"]),
                         "created_at": datetime.fromisoformat(row["created_at"]),
                         "status": status,
                         "has_json_file": has_json_file,
@@ -311,6 +309,11 @@ class PageRepository:
                     """
         return ""
 
+    @staticmethod
+    def _parse_keywords(keywords_json: str | None) -> list[str]:
+        """キーワードJSON文字列をリストに変換."""
+        return json.loads(keywords_json) if keywords_json else []
+
     def _row_to_page(self, row: object) -> Page:
         """行データをPageモデルに変換."""
         return Page(
@@ -319,7 +322,7 @@ class PageRepository:
             title=row["title"],
             memo=row["memo"],
             summary=row["summary"],
-            keywords=row["keywords"],
+            keywords=self._parse_keywords(row["keywords"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             weaviate_id=row["weaviate_id"],

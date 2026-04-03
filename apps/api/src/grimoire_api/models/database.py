@@ -17,7 +17,7 @@ class Page:
     title: str
     memo: str | None
     summary: str | None
-    keywords: str | None  # JSON string
+    keywords: list[str]
     created_at: datetime
     updated_at: datetime
     weaviate_id: str | None

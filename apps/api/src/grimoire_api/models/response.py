@@ -44,7 +44,7 @@ class PageResponse(BaseModel):
     title: str | None
     memo: str | None
     summary: str | None
-    keywords: str | None
+    keywords: list[str] | None
     status: str
     created_at: str | None
     updated_at: str | None

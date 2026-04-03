@@ -1,6 +1,5 @@
 """URL processing service."""
 
-import json
 from typing import Any
 
 from ..repositories.log_repository import LogRepository
@@ -160,7 +159,7 @@ class UrlProcessorService:
                     "title": page.title,
                     "memo": page.memo,
                     "summary": page.summary,
-                    "keywords": json.loads(page.keywords) if page.keywords else [],
+                    "keywords": page.keywords,
                     "created_at": (
                         page.created_at.replace(tzinfo=None).isoformat()
                         if page.created_at.tzinfo is None
