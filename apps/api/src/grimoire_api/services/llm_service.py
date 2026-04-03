@@ -108,9 +108,6 @@ class LLMService:
 
             return result
 
-        except json.JSONDecodeError as e:
-            # この部分は上で処理されるため到達しないが、念のため残す
-            raise LLMServiceError(f"Failed to parse LLM response as JSON: {str(e)}")
         except Exception as e:
             raise LLMServiceError(f"LLM processing error: {str(e)}")
 
