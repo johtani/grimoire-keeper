@@ -103,6 +103,14 @@ class FileRepository:
         except Exception as e:
             raise FileOperationError(f"Failed to delete JSON file: {str(e)}")
 
+    def get_existing_page_ids(self) -> set[int]:
+        """ストレージ内の全JSONファイルのページIDを取得.
+
+        Returns:
+            JSONファイルが存在するページIDのセット
+        """
+        return {int(p.stem) for p in self.storage_path.glob("*.json")}
+
     async def file_exists(self, page_id: int) -> bool:
         """ファイル存在確認.
 
