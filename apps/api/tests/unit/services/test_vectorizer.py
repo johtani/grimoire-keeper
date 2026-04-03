@@ -17,6 +17,12 @@ class TestVectorizerService:
     def mock_dependencies(self: Any) -> Any:
         """依存関係のモック."""
         mock_collection = MagicMock()
+        # delete_many のデフォルトは削除対象なし (matches=0, failed=0) とする
+        mock_delete_result = MagicMock()
+        mock_delete_result.matches = 0
+        mock_delete_result.failed = 0
+        mock_collection.data.delete_many.return_value = mock_delete_result
+
         mock_collections = MagicMock()
         mock_collections.get.return_value = mock_collection
         mock_collections.exists.return_value = False
@@ -243,6 +249,107 @@ class TestVectorizerService:
 
         with pytest.raises(Exception, match="Weaviate delete error"):
             await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+
+    @pytest.mark.asyncio
+    async def test_delete_existing_chunks_no_matches(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """削除対象なし（matches=0）の場合はポーリングしないテスト."""
+        mock_collection = MagicMock()
+        mock_result = MagicMock()
+        mock_result.matches = 0
+        mock_result.failed = 0
+        mock_collection.data.delete_many.return_value = mock_result
+
+        with patch(
+            "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
+            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+
+        mock_collection.query.fetch_objects.assert_not_called()
+        mock_sleep.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_existing_chunks_completes_on_first_check(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """初回確認で削除完了する場合のテスト (sleep→check 順)."""
+        mock_collection = MagicMock()
+        mock_result = MagicMock()
+        mock_result.matches = 3
+        mock_result.failed = 0
+        mock_collection.data.delete_many.return_value = mock_result
+
+        # fetch_objects が空リストを返す（削除完了）
+        mock_query_result = MagicMock()
+        mock_query_result.objects = []
+        mock_collection.query.fetch_objects.return_value = mock_query_result
+
+        with patch(
+            "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
+            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+
+        # sleep→check 順のため: sleep 1回 → check 1回 → 完了
+        mock_collection.query.fetch_objects.assert_called_once()
+        mock_sleep.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_existing_chunks_completes_after_retries(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """数回リトライ後に削除完了する場合のテスト (sleep→check 順)."""
+        mock_collection = MagicMock()
+        mock_result = MagicMock()
+        mock_result.matches = 2
+        mock_result.failed = 0
+        mock_collection.data.delete_many.return_value = mock_result
+
+        # 最初の2回は残存オブジェクトあり、3回目で空
+        remaining_with_objects = MagicMock()
+        remaining_with_objects.objects = [MagicMock()]
+        remaining_empty = MagicMock()
+        remaining_empty.objects = []
+        mock_collection.query.fetch_objects.side_effect = [
+            remaining_with_objects,
+            remaining_with_objects,
+            remaining_empty,
+        ]
+
+        with patch(
+            "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
+            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+
+        # sleep→check 順のため: sleep と check が同じ回数
+        assert mock_collection.query.fetch_objects.call_count == 3
+        assert mock_sleep.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_delete_existing_chunks_timeout(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """タイムアウト（10回超え）で VectorizerError が発生するテスト."""
+        mock_collection = MagicMock()
+        mock_result = MagicMock()
+        mock_result.matches = 5
+        mock_result.failed = 0
+        mock_collection.data.delete_many.return_value = mock_result
+
+        # 常に残存オブジェクトあり（削除が完了しない）
+        remaining_with_objects = MagicMock()
+        remaining_with_objects.objects = [MagicMock()]
+        mock_collection.query.fetch_objects.return_value = remaining_with_objects
+
+        with patch(
+            "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
+        ):
+            with pytest.raises(
+                VectorizerError, match="did not complete within timeout"
+            ):
+                await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+
+        assert mock_collection.query.fetch_objects.call_count == 10
 
     @pytest.mark.asyncio
     async def test_save_chunks_weaviate_delete_failure(
