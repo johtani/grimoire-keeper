@@ -11,8 +11,8 @@
 すべてのコマンドは `uv` (Python パッケージマネージャ) を使用します。`/workspace` から実行してください。
 
 ```bash
-# チェックアウト後に依存関係を同期
-uv sync
+# チェックアウト後に依存関係を同期 (全ワークスペースメンバーをインストール)
+uv sync --all-packages
 
 # リント & 型チェック
 uv run ruff check .

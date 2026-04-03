@@ -38,7 +38,7 @@ sudo apt-get update && sudo apt-get install -y gh
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
-# 依存関係のインストール
-uv sync
+# 依存関係のインストール (全ワークスペースメンバーをインストール)
+uv sync --all-packages
 
 echo "Development environment setup completed!"

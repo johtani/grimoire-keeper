@@ -1,8 +1,12 @@
 """Test configuration and fixtures."""
 
+import os
 import tempfile
 import warnings
 from pathlib import Path
+
+# テスト時はOpenTelemetryを無効化 (モジュールインポート前に設定する必要がある)
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 import pytest
 import pytest_asyncio

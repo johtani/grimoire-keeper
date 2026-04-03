@@ -15,6 +15,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 def setup_telemetry(service_name: str, service_version: str = "0.1.0") -> None:
     """OpenTelemetryの初期化"""
 
+    if os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true":
+        return
+
     # OTel Collectorのエンドポイント
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
 
