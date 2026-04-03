@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from grimoire_api.services.search_service import SearchService
 from grimoire_api.utils.exceptions import VectorizerError
+from pydantic import ValidationError
 
 
 class TestSearchService:
@@ -273,6 +274,111 @@ class TestSearchService:
         filters: dict[str, Any] = {}
         result = search_service._build_weaviate_filter(filters)
         assert result is None
+
+    def test_build_weaviate_filter_empty_keywords(
+        self, search_service: SearchService
+    ) -> None:
+        """空キーワード配列フィルター構築テスト."""
+        filters: dict[str, Any] = {"keywords": []}
+        result = search_service._build_weaviate_filter(filters)
+        # 有効なキーワードが存在しないためフィルターは構築されない
+        assert result is None
+
+    def test_build_weaviate_filter_none_keywords(
+        self, search_service: SearchService
+    ) -> None:
+        """Noneキーワード値フィルター構築テスト."""
+        filters: dict[str, Any] = {"keywords": None}
+        result = search_service._build_weaviate_filter(filters)
+        # NoneはfalsyなのでNoneとして扱われ、フィルターは構築されない
+        assert result is None
+
+    def test_build_weaviate_filter_none_url(
+        self, search_service: SearchService
+    ) -> None:
+        """None URL値フィルター構築テスト."""
+        from unittest.mock import patch
+
+        filters: dict[str, Any] = {"url": None}
+        with patch("weaviate.classes.query.Filter") as mock_filter:
+            mock_filter.by_property.return_value.like.return_value = "url_filter"
+            result = search_service._build_weaviate_filter(filters)
+            # None は文字列化され "*None*" でフィルター構築される（現状挙動）
+            mock_filter.by_property.return_value.like.assert_called_with("*None*")
+            assert result == "url_filter"
+
+    def test_build_weaviate_filter_invalid_date_format(
+        self, search_service: SearchService
+    ) -> None:
+        """不正な日付フォーマットフィルター構築テスト."""
+        from unittest.mock import patch
+
+        filters = {"date_from": "not-a-date"}
+        with patch("weaviate.classes.query.Filter") as mock_filter:
+            mock_from_filter = MagicMock()
+            mock_filter.by_property.return_value.greater_or_equal.return_value = (
+                mock_from_filter
+            )
+            result = search_service._build_weaviate_filter(filters)
+            # 日付バリデーションはWeaviateに委譲するため、フィルターは構築される
+            mock_filter.by_property.assert_called_with("createdAt")
+            mock_filter.by_property.return_value.greater_or_equal.assert_called_with(
+                "not-a-date"
+            )
+            assert result == mock_from_filter
+
+    @pytest.mark.asyncio
+    async def test_vector_search_invalid_vector_name(
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
+    ) -> None:
+        """存在しないベクトル名での検索エラーテスト."""
+        mock_collection = mock_weaviate_client.collections.get.return_value
+        mock_collection.query.near_text.side_effect = Exception(
+            "Unknown target vector: invalid_vector"
+        )
+
+        with pytest.raises(VectorizerError, match="Vector search error"):
+            await search_service.vector_search(
+                "test query", vector_name="invalid_vector"
+            )
+
+    @pytest.mark.asyncio
+    async def test_keyword_search_empty_list(
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
+    ) -> None:
+        """空キーワードリストでのキーワード検索エラーテスト."""
+        mock_collection = mock_weaviate_client.collections.get.return_value
+        mock_collection.query.fetch_objects.side_effect = Exception(
+            "contains_any requires non-empty list"
+        )
+
+        with pytest.raises(VectorizerError, match="Keyword search error"):
+            await search_service.keyword_search([])
+
+    def test_convert_search_results_v4_null_properties(
+        self, search_service: SearchService
+    ) -> None:
+        """NULLプロパティを含む検索結果変換テスト."""
+        mock_obj = MagicMock()
+        mock_obj.metadata.certainty = 0.85
+        mock_obj.metadata.distance = None
+        mock_obj.properties = {
+            "pageId": None,
+            "chunkId": None,
+            "url": None,
+            "title": None,
+            "content": None,
+            "summary": None,
+            "keywords": None,
+            "createdAt": None,
+        }
+
+        mock_response = MagicMock()
+        mock_response.objects = [mock_obj]
+
+        # NULLプロパティはPydanticの型制約に違反するためValidationErrorが発生する
+        with pytest.raises(ValidationError):
+            search_service._convert_search_results_v4(mock_response)
 
     def test_convert_search_results_v4_certainty(
         self, search_service: SearchService
