@@ -1,9 +1,12 @@
 """Configuration settings."""
 
+import logging
 import os
 import sys
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -65,7 +68,7 @@ class Settings(BaseSettings):
                 "詳細は docs/development.md を参照してください。\n"
                 "=" * 70
             )
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             sys.exit(1)
 
 

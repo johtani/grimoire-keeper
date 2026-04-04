@@ -159,9 +159,7 @@ class PageRepository:
                 ]
             )
         except Exception as e:
-            raise DatabaseError(
-                f"Failed to update summary/keywords and step: {str(e)}"
-            )
+            raise DatabaseError(f"Failed to update summary/keywords and step: {str(e)}")
 
     async def update_weaviate_id_and_step(
         self, page_id: int, weaviate_id: str, step: str
@@ -182,9 +180,7 @@ class PageRepository:
                 ]
             )
         except Exception as e:
-            raise DatabaseError(
-                f"Failed to update weaviate_id and step: {str(e)}"
-            )
+            raise DatabaseError(f"Failed to update weaviate_id and step: {str(e)}")
 
     async def clear_weaviate_id(self, page_id: int) -> None:
         """Weaviate IDをクリア (ロールバック用)."""

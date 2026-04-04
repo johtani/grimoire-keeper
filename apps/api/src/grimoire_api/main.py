@@ -40,9 +40,9 @@ async def lifespan(app: FastAPI) -> Any:
     # 起動時処理 - データベース初期化
     success = await ensure_database_initialized()
     if success:
-        print("✅ Database initialized successfully")
+        logger.info("Database initialized successfully")
     else:
-        print("⚠️ Database initialization failed, but continuing startup")
+        logger.warning("Database initialization failed, but continuing startup")
 
     # 起動時処理 - Weaviate クライアント初期化
     try:
@@ -52,19 +52,18 @@ async def lifespan(app: FastAPI) -> Any:
             headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
         )
         app.state.weaviate_client = weaviate_client
-        print("✅ Weaviate client initialized successfully")
+        logger.info("Weaviate client initialized successfully")
     except Exception as e:
         app.state.weaviate_client = None
         logger.warning("Weaviate connection failed, continuing startup: %s", e)
-        print(f"⚠️ Weaviate connection failed, but continuing startup: {e}")
 
     yield
 
     # 終了時処理
     if getattr(app.state, "weaviate_client", None) is not None:
         app.state.weaviate_client.close()
-        print("🔄 Weaviate client closed")
-    print("🔄 Application shutting down")
+        logger.info("Weaviate client closed")
+    logger.info("Application shutting down")
 
 
 app = FastAPI(
