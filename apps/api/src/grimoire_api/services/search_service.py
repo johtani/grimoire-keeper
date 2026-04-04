@@ -5,6 +5,7 @@ from typing import Any
 import weaviate
 from weaviate.classes.query import MetadataQuery
 
+from ..config import settings
 from ..models.response import SearchResult
 from ..utils.exceptions import VectorizerError
 
@@ -44,7 +45,9 @@ class SearchService:
             VectorizerError: 検索エラー
         """
         try:
-            collection = self.weaviate_client.collections.get("GrimoireChunk")
+            collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_COLLECTION_NAME
+            )
 
             # フィルター条件構築
             where_filter = self._build_weaviate_filter(filters) if filters else None
@@ -111,7 +114,9 @@ class SearchService:
         try:
             from weaviate.classes.query import Filter
 
-            collection = self.weaviate_client.collections.get("GrimoireChunk")
+            collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_COLLECTION_NAME
+            )
 
             # キーワードフィルタで検索
             response = collection.query.fetch_objects(  # type: ignore[call-overload]

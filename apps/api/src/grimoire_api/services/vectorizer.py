@@ -9,6 +9,7 @@ from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
+from ..config import settings
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import VectorizerError
@@ -87,7 +88,9 @@ class VectorizerService:
         first_chunk_id = None
 
         try:
-            collection = self.weaviate_client.collections.get("GrimoireChunk")
+            collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_COLLECTION_NAME
+            )
 
             # 既存データを削除
             await self._delete_existing_chunks(collection, page_data.id)
@@ -196,10 +199,12 @@ class VectorizerService:
         """
         try:
             # 既存コレクション確認
-            if not self.weaviate_client.collections.exists("GrimoireChunk"):
+            if not self.weaviate_client.collections.exists(
+                settings.WEAVIATE_COLLECTION_NAME
+            ):
                 # コレクション作成
                 self.weaviate_client.collections.create(
-                    name="GrimoireChunk",
+                    name=settings.WEAVIATE_COLLECTION_NAME,
                     description="Grimoire Keeperで管理するWebページのチャンク",
                     properties=[
                         Property(name="pageId", data_type=DataType.INT),

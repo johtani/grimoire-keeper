@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from grimoire_api.config import settings
 from grimoire_api.models.database import Page
 from grimoire_api.services.vectorizer import VectorizerService
 from grimoire_api.utils.exceptions import VectorizerError
@@ -396,7 +397,7 @@ class TestVectorizerService:
 
         # 作成されたコレクションの確認
         call_args = mock_dependencies["weaviate_client"].collections.create.call_args
-        assert call_args[1]["name"] == "GrimoireChunk"
+        assert call_args[1]["name"] == settings.WEAVIATE_COLLECTION_NAME
 
     @pytest.mark.asyncio
     async def test_ensure_schema_already_exists(

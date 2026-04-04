@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Weaviate
     WEAVIATE_HOST: str = "localhost"
     WEAVIATE_PORT: int = 8080
+    WEAVIATE_COLLECTION_NAME: str = "GrimoireChunk"
 
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"
