@@ -34,7 +34,7 @@ class TestVectorizerService:
         # PageRepositoryのモック
         mock_page_repo = MagicMock()
         mock_page_repo.get_page = AsyncMock()
-        mock_page_repo.update_weaviate_id = AsyncMock()
+        mock_page_repo.update_weaviate_id_and_step = AsyncMock()
 
         # FileRepositoryのモック
         mock_file_repo = MagicMock()
@@ -112,11 +112,12 @@ class TestVectorizerService:
         # Weaviateへの保存が3回呼ばれたことを確認
         assert mock_dependencies["mock_collection"].data.insert.call_count == 3
 
-        # Weaviate ID更新が呼ばれたことを確認（UUID5で生成されたIDが使用される）
-        mock_dependencies["page_repo"].update_weaviate_id.assert_called_once()
-        call_args = mock_dependencies["page_repo"].update_weaviate_id.call_args
+        # Weaviate IDと成功ステップのアトミック更新が呼ばれたことを確認
+        mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_called_once()
+        call_args = mock_dependencies["page_repo"].update_weaviate_id_and_step.call_args
         assert call_args[0][0] == page_id  # page_id
         assert len(call_args[0][1]) == 36  # UUID形式の文字列長
+        assert call_args[0][2] == "vectorized"  # step
 
     @pytest.mark.asyncio
     async def test_vectorize_content_page_not_found(

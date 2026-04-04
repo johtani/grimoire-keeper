@@ -66,8 +66,10 @@ class VectorizerService:
             # Weaviate保存
             weaviate_id = await self._save_chunks_to_weaviate(page_data, chunks)
 
-            # ページにWeaviate ID保存
-            await self.page_repo.update_weaviate_id(page_id, weaviate_id)
+            # ページにWeaviate IDと成功ステップをアトミックに保存
+            await self.page_repo.update_weaviate_id_and_step(
+                page_id, weaviate_id, "vectorized"
+            )
 
         except Exception as e:
             raise VectorizerError(f"Vectorization error: {str(e)}")

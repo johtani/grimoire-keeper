@@ -113,6 +113,87 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update success step: {str(e)}")
 
+    async def update_title_and_step(self, page_id: int, title: str, step: str) -> None:
+        """タイトルと成功ステップをアトミックに更新."""
+        _step_sql = (
+            "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
+        )
+        try:
+            now = datetime.now()
+            await self.db.execute_transaction(
+                [
+                    (
+                        "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?",
+                        (title, now, page_id),
+                    ),
+                    (_step_sql, (step, now, page_id)),
+                ]
+            )
+        except Exception as e:
+            raise DatabaseError(f"Failed to update title and step: {str(e)}")
+
+    async def update_summary_keywords_and_step(
+        self, page_id: int, summary: str, keywords: list[str], step: str
+    ) -> None:
+        """要約・キーワードと成功ステップをアトミックに更新."""
+        _step_sql = (
+            "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
+        )
+        _summary_sql = (
+            "UPDATE pages SET summary = ?, keywords = ?, updated_at = ? WHERE id = ?"
+        )
+        try:
+            now = datetime.now()
+            await self.db.execute_transaction(
+                [
+                    (
+                        _summary_sql,
+                        (
+                            summary,
+                            json.dumps(keywords, ensure_ascii=False),
+                            now,
+                            page_id,
+                        ),
+                    ),
+                    (_step_sql, (step, now, page_id)),
+                ]
+            )
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to update summary/keywords and step: {str(e)}"
+            )
+
+    async def update_weaviate_id_and_step(
+        self, page_id: int, weaviate_id: str, step: str
+    ) -> None:
+        """Weaviate IDと成功ステップをアトミックに更新."""
+        _step_sql = (
+            "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
+        )
+        try:
+            now = datetime.now()
+            await self.db.execute_transaction(
+                [
+                    (
+                        "UPDATE pages SET weaviate_id = ?, updated_at = ? WHERE id = ?",
+                        (weaviate_id, now, page_id),
+                    ),
+                    (_step_sql, (step, now, page_id)),
+                ]
+            )
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to update weaviate_id and step: {str(e)}"
+            )
+
+    async def clear_weaviate_id(self, page_id: int) -> None:
+        """Weaviate IDをクリア (ロールバック用)."""
+        try:
+            query = "UPDATE pages SET weaviate_id = NULL, updated_at = ? WHERE id = ?"
+            await self.db.execute(query, (datetime.now(), page_id))
+        except Exception as e:
+            raise DatabaseError(f"Failed to clear weaviate_id: {str(e)}")
+
     async def save_json_file(self, page_id: int, data: dict) -> None:
         """JSONファイル保存."""
         await self.file_repo.save_json_file(page_id, data)
