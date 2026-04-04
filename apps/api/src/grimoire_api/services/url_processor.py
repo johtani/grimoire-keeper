@@ -42,11 +42,11 @@ class UrlProcessorService:
         """
         try:
             # 0. URL重複チェック
-            existing_page = await self.page_repo.get_page_by_url(url)
-            if existing_page:
+            existing_page_id = await self.page_repo.get_page_by_url(url)
+            if existing_page_id:
                 return {
                     "status": "already_exists",
-                    "page_id": existing_page.id,
+                    "page_id": existing_page_id,
                     "message": "URL already exists in the database",
                 }
 

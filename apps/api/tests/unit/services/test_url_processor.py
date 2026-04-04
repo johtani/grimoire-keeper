@@ -283,10 +283,8 @@ class TestUrlProcessorService:
         memo = "Test memo"
         existing_page_id = 123
 
-        # 既存ページのモック
-        existing_page = MagicMock()
-        existing_page.id = existing_page_id
-        mock_services["page_repo"].get_page_by_url.return_value = existing_page
+        # 既存ページIDのモック
+        mock_services["page_repo"].get_page_by_url.return_value = existing_page_id
 
         # 処理実行
         result = await url_processor.prepare_url_processing(url, memo)
