@@ -89,8 +89,12 @@ class UrlProcessorService:
             await self._save_llm_result(log_id, page_id, llm_result)
 
             # 5. ベクトル化処理
-            await self.vectorizer.vectorize_content(page_id)
-            await self.page_repo.update_success_step(page_id, "vectorized")
+            try:
+                await self.vectorizer.vectorize_content(page_id)
+            except Exception as e:
+                # Weaviate書き込み失敗時はDBのweaviate_idをクリアして整合性を保つ
+                await self.page_repo.clear_weaviate_id(page_id)
+                raise e
             await self.log_repo.update_status(log_id, "vectorize_complete")
 
             # 6. 完了ログ
@@ -120,9 +124,10 @@ class UrlProcessorService:
     ) -> None:
         """ダウンロード結果保存."""
         try:
-            await self.page_repo.update_page_title(page_id, result["data"]["title"])
             await self.page_repo.save_json_file(page_id, result)
-            await self.page_repo.update_success_step(page_id, "downloaded")
+            await self.page_repo.update_title_and_step(
+                page_id, result["data"]["title"], "downloaded"
+            )
             await self.log_repo.update_status(log_id, "download_complete")
         except Exception as e:
             await self.log_repo.update_status(log_id, "download_error", str(e))
@@ -131,10 +136,12 @@ class UrlProcessorService:
     async def _save_llm_result(self, log_id: int, page_id: int, result: dict) -> None:
         """LLM結果保存."""
         try:
-            await self.page_repo.update_summary_keywords(
-                page_id=page_id, summary=result["summary"], keywords=result["keywords"]
+            await self.page_repo.update_summary_keywords_and_step(
+                page_id=page_id,
+                summary=result["summary"],
+                keywords=result["keywords"],
+                step="llm_processed",
             )
-            await self.page_repo.update_success_step(page_id, "llm_processed")
             await self.log_repo.update_status(log_id, "llm_complete")
         except Exception as e:
             await self.log_repo.update_status(log_id, "llm_error", str(e))

@@ -17,6 +17,24 @@ class DatabaseConnection:
         """
         self.db_path = db_path or settings.DATABASE_PATH
 
+    async def execute_transaction(self, queries: list[tuple[str, tuple]]) -> None:
+        """複数クエリをひとつのトランザクションでアトミックに実行.
+
+        Args:
+            queries: (SQLクエリ, パラメータ) のリスト
+
+        Raises:
+            DatabaseError: 実行エラー (自動ロールバック)
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("PRAGMA busy_timeout=30000")
+                for query, params in queries:
+                    await conn.execute(query, params)
+                await conn.commit()
+        except Exception as e:
+            raise DatabaseError(f"Transaction execution error: {str(e)}")
+
     async def execute(self, query: str, params: tuple = ()) -> int | None:
         """クエリ実行.
 
