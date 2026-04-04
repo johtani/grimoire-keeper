@@ -1,5 +1,6 @@
 """Test page repository."""
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -232,3 +233,35 @@ class TestPageRepository:
         await page_repo.save_json_file(page_id, test_data)
 
         assert await page_repo.file_repo.file_exists(page_id)
+
+
+class TestConcurrentPageRepository:
+    """PageRepository 並行処理テストクラス."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_create_page_same_url(self, page_repo: Any) -> None:
+        """同一 URL への並行 create_page は重複レコードを作らない.
+
+        UNIQUE 制約により一方は成功し、もう一方は DatabaseError になる。
+        DB には1件のみ存在することを検証する。
+        """
+        url = "https://concurrent.example.com"
+
+        results = await asyncio.gather(
+            page_repo.create_page(url, "Title A"),
+            page_repo.create_page(url, "Title B"),
+            return_exceptions=True,
+        )
+
+        successes = [r for r in results if isinstance(r, int)]
+        errors = [r for r in results if isinstance(r, Exception)]
+
+        # 1件だけ成功し、1件は UNIQUE 制約エラーになる
+        assert len(successes) == 1
+        assert len(errors) == 1
+
+        # DB には重複レコードが存在しない
+        page_id = await page_repo.get_page_by_url(url)
+        assert page_id == successes[0]
+        pages = await page_repo.get_all_pages()
+        assert sum(1 for p in pages if p.url == url) == 1

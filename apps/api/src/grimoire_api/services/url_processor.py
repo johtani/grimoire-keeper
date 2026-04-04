@@ -66,6 +66,15 @@ class UrlProcessorService:
             }
 
         except Exception as e:
+            # UNIQUE制約違反は並行リクエストによる競合 — already_existsとして返す
+            if "UNIQUE constraint failed" in str(e):
+                existing_page_id = await self.page_repo.get_page_by_url(url)
+                if existing_page_id:
+                    return {
+                        "status": "already_exists",
+                        "page_id": existing_page_id,
+                        "message": "URL already exists in the database",
+                    }
             raise GrimoireAPIError(f"URL processing preparation failed: {str(e)}")
 
     async def process_url_background(self, page_id: int, log_id: int, url: str) -> None:

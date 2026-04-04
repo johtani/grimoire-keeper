@@ -1,9 +1,12 @@
 """Test URL processor service."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from grimoire_api.repositories.log_repository import LogRepository
+from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
 
 
@@ -299,3 +302,57 @@ class TestUrlProcessorService:
 
         # 新規作成が呼ばれないことを確認
         mock_services["page_repo"].create_page.assert_not_called()
+
+
+class TestConcurrentUrlProcessor:
+    """UrlProcessorService 並行処理テストクラス."""
+
+    @pytest.fixture
+    def make_url_processor(self, temp_db: Any, file_repo: Any) -> Any:
+        """実際の PageRepository を使った UrlProcessorService を生成するファクトリ."""
+
+        def _make() -> UrlProcessorService:
+            page_repo = PageRepository(db=temp_db, file_repo=file_repo)
+            log_repo = LogRepository(db=temp_db)
+            return UrlProcessorService(
+                jina_client=AsyncMock(),
+                llm_service=AsyncMock(),
+                vectorizer=AsyncMock(),
+                page_repo=page_repo,
+                log_repo=log_repo,
+            )
+
+        return _make
+
+    @pytest.mark.asyncio
+    async def test_concurrent_prepare_url_processing_same_url(
+        self, make_url_processor: Any, temp_db: Any
+    ) -> None:
+        """同一 URL への並行 prepare_url_processing は重複レコードを作らない.
+
+        2つの並行リクエストのうち一方が prepared、もう一方が already_exists を返し、
+        DB には1件のみ登録されることを検証する。
+        """
+        url = "https://concurrent.example.com"
+        processor1 = make_url_processor()
+        processor2 = make_url_processor()
+
+        results = await asyncio.gather(
+            processor1.prepare_url_processing(url),
+            processor2.prepare_url_processing(url),
+            return_exceptions=True,
+        )
+
+        # 例外が発生していないことを確認
+        for r in results:
+            assert not isinstance(r, Exception), f"Unexpected exception: {r}"
+
+        statuses = [r["status"] for r in results]
+        assert sorted(statuses) == ["already_exists", "prepared"]
+
+        # DB に重複レコードがないことを確認
+        from grimoire_api.repositories.page_repository import PageRepository
+
+        page_repo = PageRepository(db=temp_db)
+        pages = await page_repo.get_all_pages()
+        assert sum(1 for p in pages if p.url == url) == 1
