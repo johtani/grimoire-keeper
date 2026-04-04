@@ -12,14 +12,6 @@ client = TestClient(app)
 class TestProcessRouter:
     """URL処理ルーターテストクラス."""
 
-    def setup_method(self) -> None:
-        """各テスト前に dependency_overrides をクリア."""
-        app.dependency_overrides.clear()
-
-    def teardown_method(self) -> None:
-        """各テスト後に dependency_overrides をクリア."""
-        app.dependency_overrides.clear()
-
     def test_process_url_new(self) -> None:
         """新規URL処理リクエストのテスト."""
         mock_processor = AsyncMock()
