@@ -1,8 +1,9 @@
 """Tests for search router."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
+from grimoire_api.dependencies import get_search_service
 from grimoire_api.main import app
 from grimoire_api.models.response import SearchResult
 
@@ -12,12 +13,18 @@ client = TestClient(app)
 class TestSearchRouter:
     """検索ルーターテストクラス."""
 
-    @patch("grimoire_api.routers.search.SearchService")
-    def test_search_with_default_vector(self, mock_search_service: MagicMock) -> None:
+    def setup_method(self) -> None:
+        """各テスト前に dependency_overrides をクリア."""
+        app.dependency_overrides.clear()
+
+    def teardown_method(self) -> None:
+        """各テスト後に dependency_overrides をクリア."""
+        app.dependency_overrides.clear()
+
+    def test_search_with_default_vector(self) -> None:
         """デフォルトベクトルでの検索テスト."""
-        # モックサービス設定
-        mock_instance = AsyncMock()
-        mock_instance.vector_search.return_value = [
+        mock_service = AsyncMock()
+        mock_service.vector_search.return_value = [
             SearchResult(
                 page_id=1,
                 chunk_id=0,
@@ -31,23 +38,20 @@ class TestSearchRouter:
                 score=0.85,
             )
         ]
-        mock_search_service.return_value = mock_instance
+        app.dependency_overrides[get_search_service] = lambda: mock_service
 
-        # リクエスト実行
         response = client.post(
             "/api/v1/search",
             json={"query": "test query", "limit": 5},
         )
 
-        # レスポンス検証
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
         assert data["query"] == "test query"
         assert len(data["results"]) == 1
 
-        # サービス呼び出し検証
-        mock_instance.vector_search.assert_called_once_with(
+        mock_service.vector_search.assert_called_once_with(
             query="test query",
             limit=5,
             filters=None,
@@ -55,12 +59,10 @@ class TestSearchRouter:
             exclude_keywords=None,
         )
 
-    @patch("grimoire_api.routers.search.SearchService")
-    def test_search_with_custom_vector(self, mock_search_service: MagicMock) -> None:
+    def test_search_with_custom_vector(self) -> None:
         """カスタムベクトルでの検索テスト."""
-        # モックサービス設定
-        mock_instance = AsyncMock()
-        mock_instance.vector_search.return_value = [
+        mock_service = AsyncMock()
+        mock_service.vector_search.return_value = [
             SearchResult(
                 page_id=2,
                 chunk_id=0,
@@ -74,9 +76,8 @@ class TestSearchRouter:
                 score=0.92,
             )
         ]
-        mock_search_service.return_value = mock_instance
+        app.dependency_overrides[get_search_service] = lambda: mock_service
 
-        # リクエスト実行
         response = client.post(
             "/api/v1/search",
             json={
@@ -86,14 +87,12 @@ class TestSearchRouter:
             },
         )
 
-        # レスポンス検証
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
         assert data["query"] == "title query"
 
-        # サービス呼び出し検証
-        mock_instance.vector_search.assert_called_once_with(
+        mock_service.vector_search.assert_called_once_with(
             query="title query",
             limit=3,
             filters=None,
@@ -101,17 +100,12 @@ class TestSearchRouter:
             exclude_keywords=None,
         )
 
-    @patch("grimoire_api.routers.search.SearchService")
-    def test_search_with_filters_and_vector(
-        self, mock_search_service: MagicMock
-    ) -> None:
+    def test_search_with_filters_and_vector(self) -> None:
         """フィルターとベクトル指定での検索テスト."""
-        # モックサービス設定
-        mock_instance = AsyncMock()
-        mock_instance.vector_search.return_value = []
-        mock_search_service.return_value = mock_instance
+        mock_service = AsyncMock()
+        mock_service.vector_search.return_value = []
+        app.dependency_overrides[get_search_service] = lambda: mock_service
 
-        # リクエスト実行
         response = client.post(
             "/api/v1/search",
             json={
@@ -122,13 +116,11 @@ class TestSearchRouter:
             },
         )
 
-        # レスポンス検証
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 0
 
-        # サービス呼び出し検証
-        mock_instance.vector_search.assert_called_once_with(
+        mock_service.vector_search.assert_called_once_with(
             query="filtered query",
             limit=10,
             filters={"url": "example", "keywords": ["test"]},

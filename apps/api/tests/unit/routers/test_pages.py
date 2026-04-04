@@ -1,8 +1,9 @@
 """Test pages router."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
+from grimoire_api.dependencies import get_file_repository, get_page_repository
 from grimoire_api.main import app
 
 client = TestClient(app)
@@ -11,13 +12,18 @@ client = TestClient(app)
 class TestPagesRouter:
     """Test pages router endpoints."""
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_get_page_success(self, mock_repo_class):
+    def setup_method(self) -> None:
+        """各テスト前に dependency_overrides をクリア."""
+        app.dependency_overrides.clear()
+
+    def teardown_method(self) -> None:
+        """各テスト後に dependency_overrides をクリア."""
+        app.dependency_overrides.clear()
+
+    def test_get_page_success(self) -> None:
         """Test successful page retrieval."""
-        # Mock repository
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.get_by_id.return_value = {
+        mock_page_repo = AsyncMock()
+        mock_page_repo.get_by_id.return_value = {
             "id": 123,
             "url": "https://example.com",
             "title": "Test Article",
@@ -29,6 +35,11 @@ class TestPagesRouter:
             "weaviate_id": "test-uuid",
             "error_message": None,
         }
+        mock_file_repo = AsyncMock()
+        mock_file_repo.file_exists.return_value = False
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
+        app.dependency_overrides[get_file_repository] = lambda: mock_file_repo
 
         response = client.get("/api/v1/pages/123")
 
@@ -38,26 +49,24 @@ class TestPagesRouter:
         assert data["url"] == "https://example.com"
         assert data["title"] == "Test Article"
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_get_page_not_found(self, mock_repo_class):
+    def test_get_page_not_found(self) -> None:
         """Test page not found."""
-        # Mock repository
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.get_by_id.return_value = None
+        mock_page_repo = AsyncMock()
+        mock_page_repo.get_by_id.return_value = None
+        mock_file_repo = AsyncMock()
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
+        app.dependency_overrides[get_file_repository] = lambda: mock_file_repo
 
         response = client.get("/api/v1/pages/999")
 
         assert response.status_code == 404
         assert response.json()["detail"] == "Page not found"
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_list_pages_success(self, mock_repo_class):
+    def test_list_pages_success(self) -> None:
         """Test successful pages listing."""
-        # Mock repository
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.list_pages.return_value = (
+        mock_page_repo = AsyncMock()
+        mock_page_repo.list_pages.return_value = (
             [
                 {
                     "id": 123,
@@ -72,6 +81,8 @@ class TestPagesRouter:
             1,
         )
 
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
+
         response = client.get("/api/v1/pages")
 
         assert response.status_code == 200
@@ -80,47 +91,45 @@ class TestPagesRouter:
         assert len(data["pages"]) == 1
         assert data["pages"][0]["id"] == 123
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_list_pages_with_params(self, mock_repo_class):
+    def test_list_pages_with_params(self) -> None:
         """Test pages listing with parameters."""
-        # Mock repository
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.list_pages.return_value = ([], 0)
+        mock_page_repo = AsyncMock()
+        mock_page_repo.list_pages.return_value = ([], 0)
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
 
         response = client.get("/api/v1/pages?limit=10&offset=5&sort=title&order=asc")
 
         assert response.status_code == 200
-        # Verify repository was called with correct parameters
-        mock_repo.list_pages.assert_called_once_with(
+        mock_page_repo.list_pages.assert_called_once_with(
             limit=10, offset=5, sort="title", order="asc", status_filter=None
         )
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_list_pages_status_filter_all(self, mock_repo_class):
+    def test_list_pages_status_filter_all(self) -> None:
         """Test that status=all passes status_filter=None to repository."""
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.list_pages.return_value = ([], 0)
+        mock_page_repo = AsyncMock()
+        mock_page_repo.list_pages.return_value = ([], 0)
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
 
         response = client.get("/api/v1/pages?status=all")
 
         assert response.status_code == 200
-        mock_repo.list_pages.assert_called_once_with(
+        mock_page_repo.list_pages.assert_called_once_with(
             limit=20, offset=0, sort="created_at", order="desc", status_filter=None
         )
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_list_pages_status_filter_completed(self, mock_repo_class):
+    def test_list_pages_status_filter_completed(self) -> None:
         """Test that status=completed is passed to repository."""
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.list_pages.return_value = ([], 0)
+        mock_page_repo = AsyncMock()
+        mock_page_repo.list_pages.return_value = ([], 0)
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
 
         response = client.get("/api/v1/pages?status=completed")
 
         assert response.status_code == 200
-        mock_repo.list_pages.assert_called_once_with(
+        mock_page_repo.list_pages.assert_called_once_with(
             limit=20,
             offset=0,
             sort="created_at",
@@ -128,17 +137,17 @@ class TestPagesRouter:
             status_filter="completed",
         )
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_list_pages_status_filter_processing(self, mock_repo_class):
+    def test_list_pages_status_filter_processing(self) -> None:
         """Test that status=processing is passed to repository."""
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.list_pages.return_value = ([], 0)
+        mock_page_repo = AsyncMock()
+        mock_page_repo.list_pages.return_value = ([], 0)
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
 
         response = client.get("/api/v1/pages?status=processing")
 
         assert response.status_code == 200
-        mock_repo.list_pages.assert_called_once_with(
+        mock_page_repo.list_pages.assert_called_once_with(
             limit=20,
             offset=0,
             sort="created_at",
@@ -146,16 +155,16 @@ class TestPagesRouter:
             status_filter="processing",
         )
 
-    @patch("grimoire_api.routers.pages.PageRepository")
-    def test_list_pages_status_filter_failed(self, mock_repo_class):
+    def test_list_pages_status_filter_failed(self) -> None:
         """Test that status=failed is passed to repository."""
-        mock_repo = AsyncMock()
-        mock_repo_class.return_value = mock_repo
-        mock_repo.list_pages.return_value = ([], 0)
+        mock_page_repo = AsyncMock()
+        mock_page_repo.list_pages.return_value = ([], 0)
+
+        app.dependency_overrides[get_page_repository] = lambda: mock_page_repo
 
         response = client.get("/api/v1/pages?status=failed")
 
         assert response.status_code == 200
-        mock_repo.list_pages.assert_called_once_with(
+        mock_page_repo.list_pages.assert_called_once_with(
             limit=20, offset=0, sort="created_at", order="desc", status_filter="failed"
         )
