@@ -3,6 +3,8 @@
 import json
 from datetime import datetime
 
+import aiosqlite
+
 from ..models.database import Page
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
@@ -404,7 +406,7 @@ class PageRepository:
         """キーワードJSON文字列をリストに変換."""
         return json.loads(keywords_json) if keywords_json else []
 
-    def _row_to_page(self, row: object) -> Page:
+    def _row_to_page(self, row: aiosqlite.Row) -> Page:
         """行データをPageモデルに変換."""
         return Page(
             id=row["id"],

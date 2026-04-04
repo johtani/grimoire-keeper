@@ -64,3 +64,7 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 exclude = ["apps/bot", "apps/api/tests"]
+
+[[tool.mypy.overrides]]
+module = ["langdetect"]
+ignore_missing_imports = true

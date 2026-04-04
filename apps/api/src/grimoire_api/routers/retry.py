@@ -82,12 +82,13 @@ async def retry_all_failed(
         再処理結果
     """
     try:
-        kwargs = (
-            {"max_retries": request.max_retries, "delay_seconds": request.delay_seconds}
-            if request
-            else {}
-        )
-        result = await retry_service.retry_all_failed(**kwargs)
+        if request:
+            result = await retry_service.retry_all_failed(
+                max_retries=request.max_retries,
+                delay_seconds=request.delay_seconds,
+            )
+        else:
+            result = await retry_service.retry_all_failed()
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
