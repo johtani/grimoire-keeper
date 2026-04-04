@@ -26,13 +26,13 @@ class PageRepository:
         self.db = db or DatabaseConnection()
         self.file_repo = file_repo or FileRepository()
 
-    async def get_page_by_url(self, url: str) -> Page | None:
-        """URLでページ取得."""
+    async def get_page_by_url(self, url: str) -> int | None:
+        """URLでページIDを取得."""
         try:
-            query = "SELECT * FROM pages WHERE url = ?"
+            query = "SELECT id FROM pages WHERE url = ?"
             result = await self.db.fetch_one(query, (url,))
             if result:
-                return self._row_to_page(result)
+                return int(result["id"])
             return None
         except Exception as e:
             raise DatabaseError(f"Failed to get page by URL: {str(e)}")
@@ -53,7 +53,11 @@ class PageRepository:
     async def get_page(self, page_id: int) -> Page | None:
         """ページ取得."""
         try:
-            query = "SELECT * FROM pages WHERE id = ?"
+            query = """
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, created_at, updated_at
+            FROM pages WHERE id = ?
+            """
             result = await self.db.fetch_one(query, (page_id,))
             if result:
                 return self._row_to_page(result)
@@ -117,7 +121,9 @@ class PageRepository:
         """全ページ取得."""
         try:
             query = """
-            SELECT * FROM pages
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, created_at, updated_at
+            FROM pages
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
             """
@@ -186,7 +192,9 @@ class PageRepository:
 
             order_clause = f"ORDER BY {sort_by} {order.upper()}"
             query = f"""
-            SELECT * FROM pages
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, created_at, updated_at
+            FROM pages
             {where_clause}
             {order_clause}
             LIMIT ? OFFSET ?
@@ -227,7 +235,9 @@ class PageRepository:
 
             order_clause = f"ORDER BY {sort} {order.upper()}"
             query = f"""
-            SELECT * FROM pages
+            SELECT id, url, title, memo, summary, weaviate_id,
+                   last_success_step, created_at, updated_at
+            FROM pages
             {where_clause}
             {order_clause}
             LIMIT ? OFFSET ?
@@ -255,7 +265,6 @@ class PageRepository:
                         "title": row["title"],
                         "memo": row["memo"],
                         "summary": row["summary"],
-                        "keywords": self._parse_keywords(row["keywords"]),
                         "created_at": datetime.fromisoformat(row["created_at"]),
                         "status": status,
                         "has_json_file": has_json_file,
@@ -270,7 +279,9 @@ class PageRepository:
         """最後の成功ステップでページを取得."""
         try:
             query = """
-            SELECT * FROM pages
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, created_at, updated_at
+            FROM pages
             WHERE last_success_step = ?
             ORDER BY created_at ASC
             """
