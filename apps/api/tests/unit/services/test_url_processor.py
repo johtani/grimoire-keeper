@@ -100,8 +100,10 @@ class TestUrlProcessorService:
         mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
 
     @pytest.mark.asyncio
-    async def test_process_url_success(self, url_processor, mock_services: Any) -> None:
-        """統合URL処理テスト."""
+    async def test_prepare_and_background_full_flow(
+        self, url_processor, mock_services: Any
+    ) -> None:
+        """prepare_url_processing + process_url_background の統合フローテスト."""
         url = "https://example.com"
         memo = "Test memo"
         log_id = 1
@@ -120,17 +122,20 @@ class TestUrlProcessorService:
         }
 
         # 処理実行
-        result = await url_processor.process_url(url, memo)
+        prepare_result = await url_processor.prepare_url_processing(url, memo)
 
-        # 結果確認
-        assert result["status"] == "success"
-        assert result["page_id"] == page_id
-        assert "completed successfully" in result["message"]
-
-        # 各ステップが呼ばれたことを確認
+        # prepare結果確認
+        assert prepare_result["status"] == "prepared"
+        assert prepare_result["page_id"] == page_id
+        assert prepare_result["log_id"] == log_id
         mock_services["log_repo"].create_log.assert_called_once_with(
             url, "started", page_id
         )
+
+        # バックグラウンド処理実行
+        await url_processor.process_url_background(page_id, log_id, url)
+
+        # 各ステップが呼ばれたことを確認
         mock_services["jina_client"].fetch_content.assert_called_once_with(url)
         mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
             page_id
