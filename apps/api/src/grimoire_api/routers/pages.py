@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from ..dependencies import get_file_repository, get_page_repository
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
+from ..utils.exceptions import FileOperationError
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
 
@@ -33,7 +34,6 @@ async def get_pages(
         ページ一覧とメタデータ
     """
     try:
-        # ページ取得
         pages_data, total = await page_repo.list_pages(
             limit=limit,
             offset=offset,
@@ -78,7 +78,6 @@ async def get_page_detail(
         if not page_data:
             raise HTTPException(status_code=404, detail="Page not found")
 
-        # JSONファイルの存在チェックを追加
         page_data["has_json_file"] = await file_repo.file_exists(page_id)
 
         return page_data
@@ -107,17 +106,13 @@ async def get_page_json(
         HTTPException: ファイルが見つからない場合
     """
     try:
-        if not await file_repo.file_exists(page_id):
-            raise HTTPException(status_code=404, detail="JSON file not found")
-
         json_data = await file_repo.load_json_file(page_id)
-        # ブラウザで見やすくするためのheaderを追加
         return JSONResponse(
             content=json_data,
             headers={"Content-Type": "application/json; charset=utf-8"},
         )
 
-    except HTTPException:
-        raise
+    except FileOperationError:
+        raise HTTPException(status_code=404, detail="JSON file not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

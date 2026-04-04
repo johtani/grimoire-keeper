@@ -12,14 +12,6 @@ client = TestClient(app)
 class TestPagesRouter:
     """Test pages router endpoints."""
 
-    def setup_method(self) -> None:
-        """各テスト前に dependency_overrides をクリア."""
-        app.dependency_overrides.clear()
-
-    def teardown_method(self) -> None:
-        """各テスト後に dependency_overrides をクリア."""
-        app.dependency_overrides.clear()
-
     def test_get_page_success(self) -> None:
         """Test successful page retrieval."""
         mock_page_repo = AsyncMock()

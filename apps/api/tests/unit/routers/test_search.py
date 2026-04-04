@@ -13,14 +13,6 @@ client = TestClient(app)
 class TestSearchRouter:
     """検索ルーターテストクラス."""
 
-    def setup_method(self) -> None:
-        """各テスト前に dependency_overrides をクリア."""
-        app.dependency_overrides.clear()
-
-    def teardown_method(self) -> None:
-        """各テスト後に dependency_overrides をクリア."""
-        app.dependency_overrides.clear()
-
     def test_search_with_default_vector(self) -> None:
         """デフォルトベクトルでの検索テスト."""
         mock_service = AsyncMock()
