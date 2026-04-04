@@ -38,12 +38,25 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/bot/tests", "apps/api/tests"]
-python_files = ["test_*.py", "*_test.py"]
+testpaths = ["apps/api/tests", "apps/bot/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore"]
 addopts = [
     "--strict-markers",
+    "--disable-warnings",
+    "--tb=short",
+    "-q",
+    "--import-mode=importlib",
     "--cov=apps",
     "--cov-report=term-missing",
+]
+env = [
+    "PYTHONWARNINGS=ignore",
+    "ENV_FILE=.env.test",
 ]
 
 [tool.ruff]
