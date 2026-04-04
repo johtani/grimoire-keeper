@@ -6,6 +6,7 @@ from typing import Any
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import GrimoireAPIError
+from .base_processor import BaseProcessorService
 from .jina_client import JinaClient
 from .llm_service import LLMService
 from .vectorizer import VectorizerService
@@ -13,7 +14,7 @@ from .vectorizer import VectorizerService
 logger = logging.getLogger(__name__)
 
 
-class RetryService:
+class RetryService(BaseProcessorService):
     """再処理サービス."""
 
     def __init__(
@@ -25,11 +26,10 @@ class RetryService:
         log_repo: LogRepository,
     ):
         """初期化."""
+        super().__init__(page_repo=page_repo, log_repo=log_repo)
         self.jina_client = jina_client
         self.llm_service = llm_service
         self.vectorizer = vectorizer
-        self.page_repo = page_repo
-        self.log_repo = log_repo
 
     async def get_retry_start_point(self, page_id: int) -> str:
         """再処理開始ポイントを取得."""
@@ -200,29 +200,4 @@ class RetryService:
 
         except Exception as e:
             await self.log_repo.update_status(log_id, "failed", str(e))
-            raise
-
-    async def _save_download_result(
-        self, log_id: int, page_id: int, result: dict
-    ) -> None:
-        """ダウンロード結果保存."""
-        try:
-            await self.page_repo.update_page_title(page_id, result["data"]["title"])
-            await self.page_repo.save_json_file(page_id, result)
-            await self.page_repo.update_success_step(page_id, "downloaded")
-            await self.log_repo.update_status(log_id, "download_complete")
-        except Exception as e:
-            await self.log_repo.update_status(log_id, "download_error", str(e))
-            raise
-
-    async def _save_llm_result(self, log_id: int, page_id: int, result: dict) -> None:
-        """LLM結果保存."""
-        try:
-            await self.page_repo.update_summary_keywords(
-                page_id=page_id, summary=result["summary"], keywords=result["keywords"]
-            )
-            await self.page_repo.update_success_step(page_id, "llm_processed")
-            await self.log_repo.update_status(log_id, "llm_complete")
-        except Exception as e:
-            await self.log_repo.update_status(log_id, "llm_error", str(e))
             raise

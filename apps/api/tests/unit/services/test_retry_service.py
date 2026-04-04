@@ -7,6 +7,76 @@ import pytest
 from grimoire_api.services.retry_service import RetryService
 
 
+class TestRetryServiceSaveMethods:
+    """RetryService の _save_download_result / _save_llm_result テストクラス."""
+
+    @pytest.fixture
+    def mock_services(self) -> dict:
+        """モックサービス群."""
+        return {
+            "jina_client": AsyncMock(),
+            "llm_service": AsyncMock(),
+            "vectorizer": AsyncMock(),
+            "page_repo": AsyncMock(),
+            "log_repo": AsyncMock(),
+        }
+
+    @pytest.fixture
+    def retry_service(self, mock_services: Any) -> RetryService:
+        """RetryService フィクスチャ."""
+        return RetryService(
+            jina_client=mock_services["jina_client"],
+            llm_service=mock_services["llm_service"],
+            vectorizer=mock_services["vectorizer"],
+            page_repo=mock_services["page_repo"],
+            log_repo=mock_services["log_repo"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_save_download_result(
+        self, retry_service: RetryService, mock_services: Any
+    ) -> None:
+        """ダウンロード結果保存テスト."""
+        log_id = 1
+        page_id = 2
+        jina_result = {"data": {"title": "Test Title", "content": "Test content"}}
+
+        await retry_service._save_download_result(log_id, page_id, jina_result)
+
+        mock_services["page_repo"].save_json_file.assert_called_once_with(
+            page_id, jina_result
+        )
+        mock_services["page_repo"].update_title_and_step.assert_called_once_with(
+            page_id, "Test Title", "downloaded"
+        )
+        mock_services["log_repo"].update_status.assert_called_once_with(
+            log_id, "download_complete"
+        )
+
+    @pytest.mark.asyncio
+    async def test_save_llm_result(
+        self, retry_service: RetryService, mock_services: Any
+    ) -> None:
+        """LLM結果保存テスト."""
+        log_id = 1
+        page_id = 2
+        llm_result = {"summary": "Test summary", "keywords": ["test", "keyword"]}
+
+        await retry_service._save_llm_result(log_id, page_id, llm_result)
+
+        mock_services[
+            "page_repo"
+        ].update_summary_keywords_and_step.assert_called_once_with(
+            page_id=page_id,
+            summary="Test summary",
+            keywords=["test", "keyword"],
+            step="llm_processed",
+        )
+        mock_services["log_repo"].update_status.assert_called_once_with(
+            log_id, "llm_complete"
+        )
+
+
 class TestRetryAllFailed:
     """retry_all_failed メソッドのテストクラス."""
 
