@@ -3,20 +3,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from ..dependencies import get_file_repository, get_page_repository
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
-
-
-def get_page_repository() -> PageRepository:
-    """ページリポジトリ依存性注入."""
-    return PageRepository()
-
-
-def get_file_repository() -> FileRepository:
-    """ファイルリポジトリ依存性注入."""
-    return FileRepository()
 
 
 @router.get("/pages", response_model=dict)

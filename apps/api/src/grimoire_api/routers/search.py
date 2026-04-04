@@ -1,19 +1,14 @@
 """Search router."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 
+from ..dependencies import get_search_service
 from ..models.request import SearchRequest
 from ..models.response import SearchResponse
 from ..services.search_service import SearchService
 from ..utils.metrics import search_requests, search_results_count
 
 router = APIRouter(prefix="/api/v1", tags=["search"])
-
-
-def get_search_service(request: Request) -> SearchService:
-    """検索サービス依存性注入."""
-    weaviate_client = getattr(request.app.state, "weaviate_client", None)
-    return SearchService(weaviate_client=weaviate_client)
 
 
 @router.post("/search", response_model=SearchResponse)
