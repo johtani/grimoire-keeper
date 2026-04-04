@@ -3,6 +3,26 @@
 ## 前提条件
 - Docker Desktop がインストール済み
 - VS Code + Dev Containers 拡張機能がインストール済み
+- `bws` (Bitwarden Secrets Manager CLI) がインストール済み
+
+### bws CLI のインストール
+
+devcontainer を使用する場合は `.devcontainer/setup.sh` が自動インストールします。手動でインストールする場合は以下を参照してください。
+
+```bash
+# macOS (Homebrew)
+brew install bitwarden/tools/bws
+
+# Linux (GitHub Releases から直接インストール)
+BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | jq -r '.tag_name')
+curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
+sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/
+sudo chmod +x /usr/local/bin/bws
+rm /tmp/bws.zip
+
+# インストール確認
+bws --version
+```
 
 ## 1. 環境構築
 

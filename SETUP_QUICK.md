@@ -5,6 +5,10 @@
 ### 1. 環境準備
 ```bash
 # devcontainer起動後
+# ※ bws CLI は devcontainer 起動時に自動インストールされます
+# ※ 手動インストールが必要な場合は SETUP_API.md の「前提条件」を参照
+bws --version  # インストール確認
+
 cp .env.example .env
 # 非秘密の設定値を.envに記載 (BWS_ACCESS_TOKENは~/.config/bws.envへ)
 # APIキー類はBitwarden Secrets Managerで管理（詳細: docs/development.md）

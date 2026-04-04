@@ -11,6 +11,8 @@
 ```bash
 # 1. devcontainer起動
 # VSCode: Ctrl+Shift+P → "Dev Containers: Reopen in Container"
+# ※ devcontainer 起動時に bws CLI が自動インストールされます
+# ※ 手動インストールが必要な場合は SETUP_API.md の「前提条件」を参照
 
 # 2. プロジェクト初期化（自動実行済み）
 uv --version  # Python 3.13 + uv確認
