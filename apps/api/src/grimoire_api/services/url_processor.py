@@ -104,21 +104,6 @@ class UrlProcessorService:
         except Exception as e:
             await self.log_repo.update_status(log_id, "failed", str(e))
 
-    async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
-        """URL処理のメインフロー（後方互換性のため残存）."""
-        result = await self.prepare_url_processing(url, memo)
-
-        if result["status"] == "already_exists":
-            return result
-
-        await self.process_url_background(result["page_id"], result["log_id"], url)
-
-        return {
-            "status": "success",
-            "page_id": result["page_id"],
-            "message": "URL processing completed successfully",
-        }
-
     async def _save_download_result(
         self, log_id: int, page_id: int, result: dict
     ) -> None:
