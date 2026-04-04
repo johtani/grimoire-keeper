@@ -88,7 +88,7 @@ class DatabaseConnection:
                 conn.row_factory = aiosqlite.Row
                 await conn.execute("PRAGMA busy_timeout=30000")
                 async with conn.execute(query, params) as cursor:
-                    return await cursor.fetchall()
+                    return list(await cursor.fetchall())
         except Exception as e:
             raise DatabaseError(f"Fetch all error: {str(e)}")
 
