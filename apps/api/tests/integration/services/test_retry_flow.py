@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
@@ -77,7 +78,7 @@ async def setup_page_with_failed_log(
     page_repo: PageRepository,
     log_repo: LogRepository,
     url: str,
-    last_success_step: str | None,
+    last_success_step: ProcessingStep | None,
 ) -> tuple[int, int]:
     """テスト用ページと失敗ログをセットアップするヘルパー."""
     page_id = await page_repo.create_page(url=url, title="Test Page")
@@ -101,7 +102,10 @@ class TestRetryFromDownloadedState:
         jina_client, llm_service, vectorizer = mock_external_services
 
         page_id, _ = await setup_page_with_failed_log(
-            page_repo, log_repo, "https://example.com/downloaded", "downloaded"
+            page_repo,
+            log_repo,
+            "https://example.com/downloaded",
+            ProcessingStep.DOWNLOADED,
         )
 
         result = await retry_service.retry_single_page(page_id)
@@ -118,7 +122,7 @@ class TestRetryFromDownloadedState:
         # DB の last_success_step が "completed" になっている
         page = await page_repo.get_page(page_id)
         assert page is not None
-        assert page.last_success_step == "completed"
+        assert page.last_success_step == ProcessingStep.COMPLETED
 
 
 class TestRetryFromLlmProcessedState:
@@ -135,7 +139,10 @@ class TestRetryFromLlmProcessedState:
         jina_client, llm_service, vectorizer = mock_external_services
 
         page_id, _ = await setup_page_with_failed_log(
-            page_repo, log_repo, "https://example.com/llm-processed", "llm_processed"
+            page_repo,
+            log_repo,
+            "https://example.com/llm-processed",
+            ProcessingStep.LLM_PROCESSED,
         )
 
         result = await retry_service.retry_single_page(page_id)
@@ -151,7 +158,7 @@ class TestRetryFromLlmProcessedState:
 
         page = await page_repo.get_page(page_id)
         assert page is not None
-        assert page.last_success_step == "completed"
+        assert page.last_success_step == ProcessingStep.COMPLETED
 
 
 class TestRetryFromVectorizedState:
@@ -168,7 +175,10 @@ class TestRetryFromVectorizedState:
         jina_client, llm_service, vectorizer = mock_external_services
 
         page_id, _ = await setup_page_with_failed_log(
-            page_repo, log_repo, "https://example.com/vectorized", "vectorized"
+            page_repo,
+            log_repo,
+            "https://example.com/vectorized",
+            ProcessingStep.VECTORIZED,
         )
 
         result = await retry_service.retry_single_page(page_id)
@@ -196,11 +206,17 @@ class TestRetryMixedSuccessFailure:
 
         # ページ1: ベクトル化で失敗させる
         page_id1, _ = await setup_page_with_failed_log(
-            page_repo, log_repo, "https://example.com/fail", "llm_processed"
+            page_repo,
+            log_repo,
+            "https://example.com/fail",
+            ProcessingStep.LLM_PROCESSED,
         )
         # ページ2: 成功させる
         page_id2, _ = await setup_page_with_failed_log(
-            page_repo, log_repo, "https://example.com/success", "llm_processed"
+            page_repo,
+            log_repo,
+            "https://example.com/success",
+            ProcessingStep.LLM_PROCESSED,
         )
 
         async def vectorize_side_effect(pid: int) -> None:
@@ -226,12 +242,12 @@ class TestRetryMixedSuccessFailure:
         # 成功ページは completed になっている
         page2 = await page_repo.get_page(page_id2)
         assert page2 is not None
-        assert page2.last_success_step == "completed"
+        assert page2.last_success_step == ProcessingStep.COMPLETED
 
         # 失敗ページは completed になっていない
         page1 = await page_repo.get_page(page_id1)
         assert page1 is not None
-        assert page1.last_success_step != "completed"
+        assert page1.last_success_step != ProcessingStep.COMPLETED
 
 
 class TestRetryLogGeneration:
@@ -246,7 +262,10 @@ class TestRetryLogGeneration:
         page_repo, log_repo = repos
 
         page_id, _ = await setup_page_with_failed_log(
-            page_repo, log_repo, "https://example.com/log-test", "downloaded"
+            page_repo,
+            log_repo,
+            "https://example.com/log-test",
+            ProcessingStep.DOWNLOADED,
         )
 
         await retry_service.retry_single_page(page_id)

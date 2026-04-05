@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from ..models.database import ProcessingStep
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import GrimoireAPIError
@@ -98,7 +99,7 @@ class UrlProcessorService(BaseProcessorService):
             await self.log_repo.update_status(log_id, "vectorize_complete")
 
             # 6. 完了ログ
-            await self.page_repo.update_success_step(page_id, "completed")
+            await self.page_repo.update_success_step(page_id, ProcessingStep.COMPLETED)
             await self.log_repo.update_status(log_id, "completed")
 
         except Exception as e:

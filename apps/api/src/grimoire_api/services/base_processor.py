@@ -1,5 +1,6 @@
 """Base processor service with shared save logic."""
 
+from ..models.database import ProcessingStep
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 
@@ -19,7 +20,7 @@ class BaseProcessorService:
         try:
             await self.page_repo.save_json_file(page_id, result)
             await self.page_repo.update_title_and_step(
-                page_id, result["data"]["title"], "downloaded"
+                page_id, result["data"]["title"], ProcessingStep.DOWNLOADED
             )
             await self.log_repo.update_status(log_id, "download_complete")
         except Exception as e:
@@ -33,7 +34,7 @@ class BaseProcessorService:
                 page_id=page_id,
                 summary=result["summary"],
                 keywords=result["keywords"],
-                step="llm_processed",
+                step=ProcessingStep.LLM_PROCESSED,
             )
             await self.log_repo.update_status(log_id, "llm_complete")
         except Exception as e:

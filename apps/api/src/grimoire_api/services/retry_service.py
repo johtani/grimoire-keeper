@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from ..models.database import ProcessingStep
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import GrimoireAPIError
@@ -39,11 +40,11 @@ class RetryService(BaseProcessorService):
 
         if not page.last_success_step:
             return "download"
-        elif page.last_success_step == "downloaded":
+        elif page.last_success_step == ProcessingStep.DOWNLOADED:
             return "llm"
-        elif page.last_success_step == "llm_processed":
+        elif page.last_success_step == ProcessingStep.LLM_PROCESSED:
             return "vectorize"
-        elif page.last_success_step == "vectorized":
+        elif page.last_success_step == ProcessingStep.VECTORIZED:
             return "complete"
         else:
             return "download"
@@ -178,7 +179,9 @@ class RetryService(BaseProcessorService):
                 await self._save_llm_result(log_id, page_id, llm_result)
 
                 await self.vectorizer.vectorize_content(page_id)
-                await self.page_repo.update_success_step(page_id, "vectorized")
+                await self.page_repo.update_success_step(
+                    page_id, ProcessingStep.VECTORIZED
+                )
                 await self.log_repo.update_status(log_id, "vectorize_complete")
 
             elif start_point == "llm":
@@ -186,16 +189,20 @@ class RetryService(BaseProcessorService):
                 await self._save_llm_result(log_id, page_id, llm_result)
 
                 await self.vectorizer.vectorize_content(page_id)
-                await self.page_repo.update_success_step(page_id, "vectorized")
+                await self.page_repo.update_success_step(
+                    page_id, ProcessingStep.VECTORIZED
+                )
                 await self.log_repo.update_status(log_id, "vectorize_complete")
 
             elif start_point == "vectorize":
                 await self.vectorizer.vectorize_content(page_id)
-                await self.page_repo.update_success_step(page_id, "vectorized")
+                await self.page_repo.update_success_step(
+                    page_id, ProcessingStep.VECTORIZED
+                )
                 await self.log_repo.update_status(log_id, "vectorize_complete")
 
             # 完了処理
-            await self.page_repo.update_success_step(page_id, "completed")
+            await self.page_repo.update_success_step(page_id, ProcessingStep.COMPLETED)
             await self.log_repo.update_status(log_id, "completed")
 
         except Exception as e:
