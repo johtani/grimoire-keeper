@@ -8,10 +8,10 @@ from pathlib import Path
 
 import weaviate
 from grimoire_api.config import settings
+from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
-from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.chunking_service import ChunkingService
 from grimoire_api.services.jina_client import JinaClient
