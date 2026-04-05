@@ -11,6 +11,7 @@ from grimoire_api.config import settings
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
+from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.chunking_service import ChunkingService
 from grimoire_api.services.jina_client import JinaClient
@@ -66,9 +67,9 @@ async def batch_retry_from_status(
     try:
         # ステップに対応する成功ステータスを取得
         status_mapping = {
-            "download": "downloaded",
-            "llm": "llm_processed",
-            "vectorize": "vectorized",
+            "download": ProcessingStep.DOWNLOADED,
+            "llm": ProcessingStep.LLM_PROCESSED,
+            "vectorize": ProcessingStep.VECTORIZED,
         }
 
         if from_step not in status_mapping:
