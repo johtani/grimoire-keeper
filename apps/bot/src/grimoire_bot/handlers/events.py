@@ -1,6 +1,10 @@
 """イベントハンドラー"""
 
+import logging
+from typing import Any
+
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.context.say.async_say import AsyncSay
 
 from ..services.api_client import ApiClient
 from ..utils.parsers import parse_url_and_memo
@@ -10,7 +14,7 @@ def register_event_handlers(app: AsyncApp) -> None:
     """イベントハンドラーを登録"""
 
     @app.event("app_mention")
-    async def handle_app_mention(event, say):
+    async def handle_app_mention(event: dict[str, Any], say: AsyncSay) -> None:
         """メンション時の処理"""
         user = event["user"]
         text = event["text"]
@@ -19,7 +23,7 @@ def register_event_handlers(app: AsyncApp) -> None:
         clean_text = text.split(">", 1)[-1].strip()
 
         if not clean_text:
-            say(f"<@{user}> こんにちは！URLを教えてください。")
+            await say(f"<@{user}> こんにちは！URLを教えてください。")
             return
 
         # URLとmemoを分割
@@ -43,6 +47,8 @@ def register_event_handlers(app: AsyncApp) -> None:
             await say(f"<@{user}> URLが見つかりません。有効なURLを教えてください。")
 
     @app.event("message")
-    async def handle_message_events(body, logger):
+    async def handle_message_events(
+        body: dict[str, Any], logger: logging.Logger
+    ) -> None:
         """メッセージイベント（ログ用）"""
         logger.info(body)

@@ -1,7 +1,10 @@
 """スラッシュコマンドハンドラー"""
 
+from typing import Any
+
 from grimoire_shared.telemetry import get_meter, get_tracer
-from slack_bolt.async_app import AsyncApp
+from slack_bolt.async_app import AsyncAck, AsyncApp
+from slack_bolt.context.respond.async_respond import AsyncRespond
 
 from ..services.api_client import ApiClient
 from ..utils.blocks import (
@@ -34,7 +37,9 @@ def register_command_handlers(app: AsyncApp) -> None:
     """コマンドハンドラーを登録"""
 
     @app.command("/grimoire")
-    async def handle_grimoire_command(ack, respond, command):
+    async def handle_grimoire_command(
+        ack: AsyncAck, respond: AsyncRespond, command: dict[str, Any]
+    ) -> None:
         """グリモワールコマンド処理"""
         import time
 
@@ -133,8 +138,8 @@ def register_command_handlers(app: AsyncApp) -> None:
                         if url:
                             api_client = ApiClient()
                             result = await api_client.process_url(url, memo)
-                            page_id = result.get("page_id")
-                            url_span.set_attribute("process.page_id", page_id or 0)
+                            page_id = int(result.get("page_id", 0))
+                            url_span.set_attribute("process.page_id", page_id)
                             url_processing_counter.add(1, {"has_memo": str(bool(memo))})
                             blocks = create_url_processing_blocks(page_id, url)
                             await respond(blocks=blocks)
