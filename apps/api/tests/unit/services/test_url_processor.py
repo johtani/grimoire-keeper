@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
@@ -235,7 +236,7 @@ class TestUrlProcessorService:
             page_id, jina_result
         )
         mock_services["page_repo"].update_title_and_step.assert_called_once_with(
-            page_id, "Test Title", "downloaded"
+            page_id, "Test Title", ProcessingStep.DOWNLOADED
         )
         mock_services["log_repo"].update_status.assert_called_once_with(
             log_id, "download_complete"
@@ -258,7 +259,7 @@ class TestUrlProcessorService:
             page_id=page_id,
             summary="Test summary",
             keywords=["test", "keyword"],
-            step="llm_processed",
+            step=ProcessingStep.LLM_PROCESSED,
         )
         mock_services["log_repo"].update_status.assert_called_once_with(
             log_id, "llm_complete"

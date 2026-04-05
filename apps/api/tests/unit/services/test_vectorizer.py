@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from grimoire_api.config import settings
-from grimoire_api.models.database import Page
+from grimoire_api.models.database import Page, ProcessingStep
 from grimoire_api.services.vectorizer import VectorizerService
 from grimoire_api.utils.exceptions import VectorizerError
 
@@ -118,7 +118,7 @@ class TestVectorizerService:
         call_args = mock_dependencies["page_repo"].update_weaviate_id_and_step.call_args
         assert call_args[0][0] == page_id  # page_id
         assert len(call_args[0][1]) == 36  # UUID形式の文字列長
-        assert call_args[0][2] == "vectorized"  # step
+        assert call_args[0][2] == ProcessingStep.VECTORIZED  # step
 
     @pytest.mark.asyncio
     async def test_vectorize_content_page_not_found(

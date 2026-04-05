@@ -10,6 +10,7 @@ from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
 from ..config import settings
+from ..models.database import ProcessingStep
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import VectorizerError
@@ -69,7 +70,7 @@ class VectorizerService:
 
             # ページにWeaviate IDと成功ステップをアトミックに保存
             await self.page_repo.update_weaviate_id_and_step(
-                page_id, weaviate_id, "vectorized"
+                page_id, weaviate_id, ProcessingStep.VECTORIZED
             )
 
         except Exception as e:

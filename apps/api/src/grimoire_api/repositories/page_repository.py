@@ -5,7 +5,7 @@ from datetime import datetime
 
 import aiosqlite
 
-from ..models.database import Page
+from ..models.database import Page, ProcessingStep
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 from .file_repository import FileRepository
@@ -105,7 +105,7 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update weaviate_id: {str(e)}")
 
-    async def update_success_step(self, page_id: int, step: str) -> None:
+    async def update_success_step(self, page_id: int, step: ProcessingStep) -> None:
         """成功ステップ更新."""
         try:
             query = (
@@ -115,7 +115,9 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update success step: {str(e)}")
 
-    async def update_title_and_step(self, page_id: int, title: str, step: str) -> None:
+    async def update_title_and_step(
+        self, page_id: int, title: str, step: ProcessingStep
+    ) -> None:
         """タイトルと成功ステップをアトミックに更新."""
         _step_sql = (
             "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
@@ -135,7 +137,7 @@ class PageRepository:
             raise DatabaseError(f"Failed to update title and step: {str(e)}")
 
     async def update_summary_keywords_and_step(
-        self, page_id: int, summary: str, keywords: list[str], step: str
+        self, page_id: int, summary: str, keywords: list[str], step: ProcessingStep
     ) -> None:
         """要約・キーワードと成功ステップをアトミックに更新."""
         _step_sql = (
@@ -164,7 +166,7 @@ class PageRepository:
             raise DatabaseError(f"Failed to update summary/keywords and step: {str(e)}")
 
     async def update_weaviate_id_and_step(
-        self, page_id: int, weaviate_id: str, step: str
+        self, page_id: int, weaviate_id: str, step: ProcessingStep
     ) -> None:
         """Weaviate IDと成功ステップをアトミックに更新."""
         _step_sql = (
@@ -354,7 +356,9 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
 
-    async def get_pages_by_status(self, last_success_step: str) -> list[Page]:
+    async def get_pages_by_status(
+        self, last_success_step: ProcessingStep
+    ) -> list[Page]:
         """最後の成功ステップでページを取得."""
         try:
             query = """
@@ -419,6 +423,8 @@ class PageRepository:
             updated_at=datetime.fromisoformat(row["updated_at"]),
             weaviate_id=row["weaviate_id"],
             last_success_step=(
-                row["last_success_step"] if "last_success_step" in row.keys() else None
+                ProcessingStep(row["last_success_step"])
+                if "last_success_step" in row.keys() and row["last_success_step"]
+                else None
             ),
         )
