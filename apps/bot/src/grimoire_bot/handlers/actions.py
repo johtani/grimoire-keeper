@@ -1,6 +1,9 @@
 """ボタンアクションハンドラー"""
 
-from slack_bolt.async_app import AsyncApp
+from typing import Any
+
+from slack_bolt.async_app import AsyncAck, AsyncApp
+from slack_bolt.context.respond.async_respond import AsyncRespond
 
 from ..services.api_client import ApiClient
 from ..utils.formatters import format_error_message, format_process_status
@@ -10,7 +13,9 @@ def register_action_handlers(app: AsyncApp) -> None:
     """アクションハンドラーを登録"""
 
     @app.action("check_status")
-    async def handle_check_status(ack, body, respond):
+    async def handle_check_status(
+        ack: AsyncAck, body: dict[str, Any], respond: AsyncRespond
+    ) -> None:
         """ステータス確認ボタン"""
         await ack()
 
@@ -25,7 +30,9 @@ def register_action_handlers(app: AsyncApp) -> None:
             await respond(error_msg)
 
     @app.action("search_similar")
-    async def handle_search_similar(ack, body, respond):
+    async def handle_search_similar(
+        ack: AsyncAck, body: dict[str, Any], respond: AsyncRespond
+    ) -> None:
         """類似検索ボタン"""
         await ack()
 
