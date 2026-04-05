@@ -53,7 +53,7 @@ class TestLLMService:
             "keywords": ["test", "keyword", "example"],
         }
 
-        with patch("grimoire_api.services.llm_service.completion") as mock_completion:
+        with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_response = MagicMock()
             mock_response.model_dump.return_value = {
                 "choices": [{"message": {"content": json.dumps(expected_result)}}]
@@ -95,7 +95,7 @@ class TestLLMService:
         """不正なJSON応答のテスト."""
         page_id = 1
 
-        with patch("grimoire_api.services.llm_service.completion") as mock_completion:
+        with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "invalid json"
@@ -114,7 +114,7 @@ class TestLLMService:
         page_id = 1
         invalid_result = {"summary": "test"}  # keywordsが不足
 
-        with patch("grimoire_api.services.llm_service.completion") as mock_completion:
+        with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_response = MagicMock()
             mock_response.model_dump.return_value = {
                 "choices": [{"message": {"content": json.dumps(invalid_result)}}]
@@ -132,7 +132,7 @@ class TestLLMService:
         page_id = 1
         invalid_result = {"summary": "test summary", "keywords": "not a list"}
 
-        with patch("grimoire_api.services.llm_service.completion") as mock_completion:
+        with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_response = MagicMock()
             mock_response.model_dump.return_value = {
                 "choices": [{"message": {"content": json.dumps(invalid_result)}}]
@@ -149,7 +149,7 @@ class TestLLMService:
         """LiteLLM呼び出しエラーのテスト."""
         page_id = 1
 
-        with patch("grimoire_api.services.llm_service.completion") as mock_completion:
+        with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_completion.side_effect = Exception("API error")
 
             with pytest.raises(LLMServiceError, match="LLM processing error"):
@@ -174,7 +174,7 @@ class TestLLMService:
         page_id = 1
         expected_result = {"summary": "test", "keywords": ["test"]}
 
-        with patch("grimoire_api.services.llm_service.completion") as mock_completion:
+        with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_response = MagicMock()
             mock_response.model_dump.return_value = {
                 "choices": [{"message": {"content": json.dumps(expected_result)}}]

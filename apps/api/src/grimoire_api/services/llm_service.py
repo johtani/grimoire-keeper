@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-from litellm import completion
+from litellm import acompletion
 
 from ..config import settings
 from ..repositories.file_repository import FileRepository
@@ -60,7 +60,7 @@ class LLMService:
             }
             if settings.LLM_API_BASE:
                 kwargs["api_base"] = settings.LLM_API_BASE
-            response = completion(**kwargs)
+            response = await acompletion(**kwargs)
 
             # デバッグ用ログ出力
             logger.info(f"LiteLLM response type: {type(response)}")
