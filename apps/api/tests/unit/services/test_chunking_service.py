@@ -1,7 +1,10 @@
 """Test chunking service."""
 
+from unittest.mock import patch
+
 import pytest
 from grimoire_api.services.chunking_service import ChunkingService
+from langdetect import LangDetectException
 
 
 class TestChunkingService:
@@ -62,3 +65,28 @@ More detailed content here.
 
         assert isinstance(chunks, list)
         assert len(chunks) >= 1
+
+    def test_detect_language_returns_language_code(self, chunking_service):
+        """Test that _detect_language returns a language code for valid text."""
+        result = chunking_service._detect_language("This is an English text.")
+        assert result == "en"
+
+    def test_detect_language_returns_none_on_lang_detect_exception(
+        self, chunking_service
+    ):
+        """Test that _detect_language returns None on LangDetectException."""
+        with patch(
+            "grimoire_api.services.chunking_service.detect",
+            side_effect=LangDetectException(0, "No features in text"),
+        ):
+            result = chunking_service._detect_language("????")
+        assert result is None
+
+    def test_detect_language_propagates_other_exceptions(self, chunking_service):
+        """Test that _detect_language propagates non-LangDetectException errors."""
+        with patch(
+            "grimoire_api.services.chunking_service.detect",
+            side_effect=ValueError("unexpected error"),
+        ):
+            with pytest.raises(ValueError):
+                chunking_service._detect_language("some text")

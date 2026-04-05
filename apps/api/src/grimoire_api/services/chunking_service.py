@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from chonkie import MarkdownChef, RecursiveChunker
+from langdetect import LangDetectException, detect
 
 # CJK句読点: chonkie_coreのsplit_offsets (Rust) がシングルバイト扱いするため
 # 改行を付加してデリミタを回避する
@@ -65,10 +66,8 @@ class ChunkingService:
             言語コード ("en", "ja" 等) または None
         """
         try:
-            from langdetect import detect
-
             return str(detect(text[:2000]))
-        except Exception:
+        except LangDetectException:
             return None
 
     def _get_chunker_for_language(self, language: str | None) -> RecursiveChunker:
