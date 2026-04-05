@@ -139,8 +139,9 @@ class DatabaseConnection:
             # マイグレーション実行（カラムが既に存在する場合はエラーを無視）
             try:
                 await conn.execute(migration_query)
-            except Exception:
-                pass
+            except aiosqlite.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
 
             # インデックス作成
             await conn.execute(
