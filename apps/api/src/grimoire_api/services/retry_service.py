@@ -1,5 +1,6 @@
 """Retry processing service."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -147,8 +148,6 @@ class RetryService(BaseProcessorService):
                     retry_count += 1
 
                     if delay_seconds > 0:
-                        import asyncio
-
                         await asyncio.sleep(delay_seconds)
 
                 except Exception as e:
