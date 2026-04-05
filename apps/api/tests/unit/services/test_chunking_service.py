@@ -66,6 +66,17 @@ More detailed content here.
         assert isinstance(chunks, list)
         assert len(chunks) >= 1
 
+    def test_en_chunker_cached_on_init(self, chunking_service):
+        """Test that en_chunker is initialized in __init__."""
+        assert hasattr(chunking_service, "en_chunker")
+
+    def test_get_chunker_for_language_en_returns_same_instance(self, chunking_service):
+        """Test that _get_chunker_for_language returns the same en_chunker instance."""
+        chunker1 = chunking_service._get_chunker_for_language("en")
+        chunker2 = chunking_service._get_chunker_for_language("en")
+        assert chunker1 is chunker2
+        assert chunker1 is chunking_service.en_chunker
+
     def test_detect_language_returns_language_code(self, chunking_service):
         """Test that _detect_language returns a language code for valid text."""
         result = chunking_service._detect_language("This is an English text.")

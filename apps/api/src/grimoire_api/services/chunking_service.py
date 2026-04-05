@@ -38,6 +38,10 @@ class ChunkingService:
 
         # デフォルトチャンカー（日本語）
         self.default_chunker = self._create_chunker("markdown_jp.json")
+        # 英語チャンカー（キャッシュ）
+        self.en_chunker = RecursiveChunker.from_recipe(
+            "markdown", lang="en", chunk_size=chunk_size
+        )
 
     def _create_chunker(self, recipe_file: str) -> RecursiveChunker:
         """レシピファイルからチャンカーを作成.
@@ -87,9 +91,7 @@ class ChunkingService:
 
         # 英語の場合は英語レシピを使用
         if lang_code in ["en", "english"]:
-            return RecursiveChunker.from_recipe(
-                "markdown", lang="en", chunk_size=self.chunk_size
-            )
+            return self.en_chunker
 
         # それ以外は日本語レシピを使用（デフォルト）
         return self.default_chunker
