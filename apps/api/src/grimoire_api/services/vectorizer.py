@@ -19,6 +19,19 @@ from .chunking_service import ChunkingService
 logger = logging.getLogger(__name__)
 
 
+def _insert_chunks_sync(
+    collection: Any, objects_to_insert: list[tuple[dict, Any]]
+) -> None:
+    """チャンクを同期的にWeaviateに挿入する (asyncio.to_thread から呼び出す).
+
+    Args:
+        collection: Weaviateコレクション
+        objects_to_insert: (weaviate_object, chunk_uuid) のリスト
+    """
+    for weaviate_object, chunk_uuid in objects_to_insert:
+        collection.data.insert(properties=weaviate_object, uuid=chunk_uuid)
+
+
 class VectorizerService:
     """ベクトル化サービス."""
 
@@ -96,6 +109,8 @@ class VectorizerService:
             # 既存データを削除
             await self._delete_existing_chunks(collection, page_data.id)
 
+            # 挿入オブジェクトリストを構築
+            objects_to_insert: list[tuple[dict, Any]] = []
             for i, chunk in enumerate(chunks):
                 weaviate_object = {
                     "pageId": page_data.id,
@@ -113,15 +128,15 @@ class VectorizerService:
                     ),
                     "isSummary": i == 0,
                 }
-
                 # UUID生成: pageId-chunkIdの文字列からUUID5を生成
                 uuid_source = f"{page_data.id}-{i}"
                 chunk_uuid = generate_uuid5(uuid_source)
-
-                collection.data.insert(properties=weaviate_object, uuid=chunk_uuid)
-
+                objects_to_insert.append((weaviate_object, chunk_uuid))
                 if i == 0:
                     first_chunk_id = str(chunk_uuid)
+
+            # 同期 insert をスレッドプールで実行してイベントループをブロックしない
+            await asyncio.to_thread(_insert_chunks_sync, collection, objects_to_insert)
 
             return first_chunk_id or ""
 
@@ -139,8 +154,9 @@ class VectorizerService:
             VectorizerError: 削除がタイムアウトした場合
         """
         try:
-            result = collection.data.delete_many(
-                where=Filter.by_property("pageId").equal(page_id)
+            result = await asyncio.to_thread(
+                collection.data.delete_many,
+                where=Filter.by_property("pageId").equal(page_id),
             )
             if hasattr(result, "matches"):
                 logger.info("Deleted %d chunks for page %d", result.matches, page_id)
@@ -158,7 +174,8 @@ class VectorizerService:
             wait_sec = 0.1
             for attempt in range(max_retries):
                 await asyncio.sleep(wait_sec)
-                remaining = collection.query.fetch_objects(
+                remaining = await asyncio.to_thread(
+                    collection.query.fetch_objects,
                     filters=Filter.by_property("pageId").equal(page_id),
                     limit=1,
                 )
