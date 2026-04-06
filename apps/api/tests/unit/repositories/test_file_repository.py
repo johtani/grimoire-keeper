@@ -100,7 +100,7 @@ class TestFileRepository:
     @pytest.mark.asyncio
     async def test_get_existing_page_ids_empty(self: Any, file_repo: Any) -> None:
         """ファイルがない場合に空セットを返す."""
-        result = file_repo.get_existing_page_ids()
+        result = await file_repo.get_existing_page_ids()
         assert result == set()
 
     @pytest.mark.asyncio
@@ -110,7 +110,7 @@ class TestFileRepository:
         await file_repo.save_json_file(42, {"data": "b"})
         await file_repo.save_json_file(100, {"data": "c"})
 
-        result = file_repo.get_existing_page_ids()
+        result = await file_repo.get_existing_page_ids()
         assert result == {1, 42, 100}
 
     @pytest.mark.asyncio

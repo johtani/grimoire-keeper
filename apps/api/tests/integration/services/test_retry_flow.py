@@ -24,7 +24,7 @@ def mock_file_repo() -> MagicMock:
     """ファイルシステム書き込みを避けるためのモック FileRepository."""
     repo = MagicMock()
     repo.save_json_file = AsyncMock(return_value=None)
-    repo.get_existing_page_ids = MagicMock(return_value=set())
+    repo.get_existing_page_ids = AsyncMock(return_value=set())
     return repo
 
 

@@ -1,5 +1,6 @@
 """Page repository."""
 
+import asyncio
 import json
 from datetime import datetime
 
@@ -325,11 +326,13 @@ class PageRepository:
             """
             results = await self.db.fetch_all(query, (limit, offset))
 
-            failed_rows = await self.db.fetch_all(
-                "SELECT DISTINCT page_id FROM process_logs WHERE status = 'failed' AND page_id IS NOT NULL"  # noqa: E501
+            failed_rows, existing_json_ids = await asyncio.gather(
+                self.db.fetch_all(
+                    "SELECT DISTINCT page_id FROM process_logs WHERE status = 'failed' AND page_id IS NOT NULL"  # noqa: E501
+                ),
+                self.file_repo.get_existing_page_ids(),
             )
             failed_page_ids = {row["page_id"] for row in failed_rows}
-            existing_json_ids = self.file_repo.get_existing_page_ids()
 
             pages = []
             for row in results:
