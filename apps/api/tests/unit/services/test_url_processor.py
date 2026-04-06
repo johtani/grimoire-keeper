@@ -30,6 +30,7 @@ class TestUrlProcessorService:
             "vectorizer": AsyncMock(),
             "page_repo": page_repo,
             "log_repo": log_repo,
+            "file_repo": AsyncMock(),
         }
 
     @pytest.fixture
@@ -41,6 +42,7 @@ class TestUrlProcessorService:
             vectorizer=mock_services["vectorizer"],
             page_repo=mock_services["page_repo"],
             log_repo=mock_services["log_repo"],
+            file_repo=mock_services["file_repo"],
         )
 
     @pytest.mark.asyncio
@@ -232,7 +234,7 @@ class TestUrlProcessorService:
         await url_processor._save_download_result(log_id, page_id, jina_result)
 
         # 各メソッドが呼ばれたことを確認
-        mock_services["page_repo"].save_json_file.assert_called_once_with(
+        mock_services["file_repo"].save_json_file.assert_called_once_with(
             page_id, jina_result
         )
         mock_services["page_repo"].update_title_and_step.assert_called_once_with(
@@ -362,6 +364,7 @@ class TestConcurrentUrlProcessor:
                 vectorizer=AsyncMock(),
                 page_repo=page_repo,
                 log_repo=log_repo,
+                file_repo=AsyncMock(),
             )
 
         return _make

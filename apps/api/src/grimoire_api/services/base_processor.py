@@ -1,6 +1,7 @@
 """Base processor service with shared save logic."""
 
 from ..models.database import ProcessingStep
+from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 
@@ -8,17 +9,23 @@ from ..repositories.page_repository import PageRepository
 class BaseProcessorService:
     """保存ロジックを共有するベースクラス."""
 
-    def __init__(self, page_repo: PageRepository, log_repo: LogRepository):
+    def __init__(
+        self,
+        page_repo: PageRepository,
+        log_repo: LogRepository,
+        file_repo: FileRepository,
+    ):
         """初期化."""
         self.page_repo = page_repo
         self.log_repo = log_repo
+        self.file_repo = file_repo
 
     async def _save_download_result(
         self, log_id: int, page_id: int, result: dict
     ) -> None:
         """ダウンロード結果保存."""
         try:
-            await self.page_repo.save_json_file(page_id, result)
+            await self.file_repo.save_json_file(page_id, result)
             await self.page_repo.update_title_and_step(
                 page_id, result["data"]["title"], ProcessingStep.DOWNLOADED
             )

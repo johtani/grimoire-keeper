@@ -20,6 +20,7 @@ class TestRetryServiceSaveMethods:
             "vectorizer": AsyncMock(),
             "page_repo": AsyncMock(),
             "log_repo": AsyncMock(),
+            "file_repo": AsyncMock(),
         }
 
     @pytest.fixture
@@ -31,6 +32,7 @@ class TestRetryServiceSaveMethods:
             vectorizer=mock_services["vectorizer"],
             page_repo=mock_services["page_repo"],
             log_repo=mock_services["log_repo"],
+            file_repo=mock_services["file_repo"],
         )
 
     @pytest.mark.asyncio
@@ -44,7 +46,7 @@ class TestRetryServiceSaveMethods:
 
         await retry_service._save_download_result(log_id, page_id, jina_result)
 
-        mock_services["page_repo"].save_json_file.assert_called_once_with(
+        mock_services["file_repo"].save_json_file.assert_called_once_with(
             page_id, jina_result
         )
         mock_services["page_repo"].update_title_and_step.assert_called_once_with(
@@ -92,6 +94,7 @@ class TestRetryAllFailed:
             "vectorizer": AsyncMock(),
             "page_repo": page_repo,
             "log_repo": log_repo,
+            "file_repo": AsyncMock(),
         }
 
     @pytest.fixture
@@ -103,6 +106,7 @@ class TestRetryAllFailed:
             vectorizer=mock_services["vectorizer"],
             page_repo=mock_services["page_repo"],
             log_repo=mock_services["log_repo"],
+            file_repo=mock_services["file_repo"],
         )
 
     @pytest.mark.asyncio

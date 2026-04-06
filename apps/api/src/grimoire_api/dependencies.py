@@ -124,6 +124,7 @@ def get_url_processor_service(
     vectorizer: VectorizerService = Depends(get_vectorizer_service),
     page_repo: PageRepository = Depends(get_page_repository),
     log_repo: LogRepository = Depends(get_log_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
 ) -> UrlProcessorService:
     """URL 処理サービス依存性注入."""
     return UrlProcessorService(
@@ -132,6 +133,7 @@ def get_url_processor_service(
         vectorizer=vectorizer,
         page_repo=page_repo,
         log_repo=log_repo,
+        file_repo=file_repo,
     )
 
 
@@ -141,6 +143,7 @@ def get_retry_service(
     vectorizer: VectorizerService = Depends(get_vectorizer_service),
     page_repo: PageRepository = Depends(get_page_repository),
     log_repo: LogRepository = Depends(get_log_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
 ) -> RetryService:
     """再処理サービス依存性注入."""
     return RetryService(
@@ -149,4 +152,5 @@ def get_retry_service(
         vectorizer=vectorizer,
         page_repo=page_repo,
         log_repo=log_repo,
+        file_repo=file_repo,
     )
