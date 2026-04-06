@@ -12,6 +12,7 @@ from .repositories.page_repository import PageRepository
 from .services.chunking_service import ChunkingService
 from .services.jina_client import JinaClient
 from .services.llm_service import LLMService
+from .services.page_service import PageService
 from .services.retry_service import RetryService
 from .services.search_service import SearchService
 from .services.url_processor import UrlProcessorService
@@ -53,10 +54,9 @@ def get_jina_client() -> JinaClient:
 
 def get_page_repository(
     db: DatabaseConnection = Depends(get_db_connection),
-    file_repo: FileRepository = Depends(get_file_repository),
 ) -> PageRepository:
     """ページリポジトリ依存性注入."""
-    return PageRepository(db, file_repo)
+    return PageRepository(db)
 
 
 def get_log_repository(
@@ -64,6 +64,15 @@ def get_log_repository(
 ) -> LogRepository:
     """ログリポジトリ依存性注入."""
     return LogRepository(db)
+
+
+def get_page_service(
+    page_repo: PageRepository = Depends(get_page_repository),
+    log_repo: LogRepository = Depends(get_log_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
+) -> PageService:
+    """ページサービス依存性注入."""
+    return PageService(page_repo, log_repo, file_repo)
 
 
 def get_llm_service(
@@ -115,6 +124,7 @@ def get_url_processor_service(
     vectorizer: VectorizerService = Depends(get_vectorizer_service),
     page_repo: PageRepository = Depends(get_page_repository),
     log_repo: LogRepository = Depends(get_log_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
 ) -> UrlProcessorService:
     """URL 処理サービス依存性注入."""
     return UrlProcessorService(
@@ -123,6 +133,7 @@ def get_url_processor_service(
         vectorizer=vectorizer,
         page_repo=page_repo,
         log_repo=log_repo,
+        file_repo=file_repo,
     )
 
 
@@ -132,6 +143,7 @@ def get_retry_service(
     vectorizer: VectorizerService = Depends(get_vectorizer_service),
     page_repo: PageRepository = Depends(get_page_repository),
     log_repo: LogRepository = Depends(get_log_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
 ) -> RetryService:
     """再処理サービス依存性注入."""
     return RetryService(
@@ -140,4 +152,5 @@ def get_retry_service(
         vectorizer=vectorizer,
         page_repo=page_repo,
         log_repo=log_repo,
+        file_repo=file_repo,
     )

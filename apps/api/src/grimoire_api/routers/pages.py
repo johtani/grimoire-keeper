@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from ..dependencies import get_file_repository, get_page_repository
+from ..dependencies import get_file_repository, get_page_service
 from ..repositories.file_repository import FileRepository
-from ..repositories.page_repository import PageRepository
+from ..services.page_service import PageService
 from ..utils.exceptions import FileOperationError
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
@@ -18,7 +18,7 @@ async def get_pages(
     sort: str = Query("created_at", regex="^(id|url|title|created_at|updated_at)$"),
     order: str = Query("desc", regex="^(asc|desc)$"),
     status: str = Query("all", regex="^(all|completed|processing|failed)$"),
-    page_repo: PageRepository = Depends(get_page_repository),
+    page_service: PageService = Depends(get_page_service),
 ) -> dict:
     """ページ一覧取得.
 
@@ -28,13 +28,13 @@ async def get_pages(
         sort: ソートフィールド
         order: ソート順
         status: ステータスフィルター
-        page_repo: ページリポジトリ
+        page_service: ページサービス
 
     Returns:
         ページ一覧とメタデータ
     """
     try:
-        pages_data, total = await page_repo.list_pages(
+        pages_data, total = await page_service.list_pages(
             limit=limit,
             offset=offset,
             sort=sort,
@@ -57,14 +57,14 @@ async def get_pages(
 @router.get("/pages/{page_id}")
 async def get_page_detail(
     page_id: int,
-    page_repo: PageRepository = Depends(get_page_repository),
+    page_service: PageService = Depends(get_page_service),
     file_repo: FileRepository = Depends(get_file_repository),
 ) -> dict:
     """ページ詳細取得.
 
     Args:
         page_id: ページID
-        page_repo: ページリポジトリ
+        page_service: ページサービス
         file_repo: ファイルリポジトリ
 
     Returns:
@@ -74,7 +74,7 @@ async def get_page_detail(
         HTTPException: ページが見つからない場合
     """
     try:
-        page_data = await page_repo.get_by_id(page_id)
+        page_data = await page_service.get_page_detail(page_id)
         if not page_data:
             raise HTTPException(status_code=404, detail="Page not found")
 

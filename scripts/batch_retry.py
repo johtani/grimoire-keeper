@@ -41,7 +41,7 @@ async def batch_retry_from_status(
     # 依存関係初期化
     db = DatabaseConnection()
     file_repo = FileRepository()
-    page_repo = PageRepository(db, file_repo)
+    page_repo = PageRepository(db)
     log_repo = LogRepository(db)
 
     jina_client = JinaClient()
@@ -62,6 +62,7 @@ async def batch_retry_from_status(
         vectorizer=vectorizer,
         page_repo=page_repo,
         log_repo=log_repo,
+        file_repo=file_repo,
     )
 
     try:

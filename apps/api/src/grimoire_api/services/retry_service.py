@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from ..models.database import ProcessingStep
+from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import GrimoireAPIError
@@ -26,9 +27,10 @@ class RetryService(BaseProcessorService):
         vectorizer: VectorizerService,
         page_repo: PageRepository,
         log_repo: LogRepository,
+        file_repo: FileRepository,
     ):
         """初期化."""
-        super().__init__(page_repo=page_repo, log_repo=log_repo)
+        super().__init__(page_repo=page_repo, log_repo=log_repo, file_repo=file_repo)
         self.jina_client = jina_client
         self.llm_service = llm_service
         self.vectorizer = vectorizer

@@ -4,44 +4,25 @@ import asyncio
 from typing import Any
 
 import pytest
+from grimoire_api.models.database import Page
 from grimoire_api.repositories.log_repository import LogRepository
-from grimoire_api.repositories.page_repository import PageRepository
 
 
-class TestPageStatus:
-    """ページステータス判定のテストクラス."""
-
-    @pytest.mark.asyncio
-    async def test_get_by_id_status_completed(self, page_repo: Any) -> None:
-        """summary と weaviate_id が両方ある場合 completed を返す."""
-        page_id = await page_repo.create_page("https://example.com", "Test")
-        await page_repo.update_summary_keywords(page_id, "summary text", ["kw"])
-        await page_repo.update_weaviate_id(page_id, "weaviate-uuid")
-
-        result = await page_repo.get_by_id(page_id)
-        assert result is not None
-        assert result["status"] == "completed"
+class TestListPages:
+    """list_pages の純粋SQLテスト."""
 
     @pytest.mark.asyncio
-    async def test_get_by_id_status_processing(self, page_repo: Any) -> None:
-        """process_logs に failed がない場合 processing を返す."""
-        page_id = await page_repo.create_page("https://example.com", "Test")
+    async def test_list_pages_returns_page_models(self, page_repo: Any) -> None:
+        """list_pages が Page モデルのリストを返す."""
+        page_id = await page_repo.create_page("https://example.com", "Title")
+        await page_repo.update_summary_keywords(page_id, "summary", ["kw"])
+        await page_repo.update_weaviate_id(page_id, "uuid-1")
 
-        result = await page_repo.get_by_id(page_id)
-        assert result is not None
-        assert result["status"] == "processing"
-
-    @pytest.mark.asyncio
-    async def test_get_by_id_status_failed(self, page_repo: Any, temp_db: Any) -> None:
-        """process_logs に failed がある場合 failed を返す."""
-        log_repo = LogRepository(db=temp_db)
-        page_id = await page_repo.create_page("https://example.com", "Test")
-        log_id = await log_repo.create_log("https://example.com", "processing", page_id)
-        await log_repo.update_status(log_id, "failed", "error occurred")
-
-        result = await page_repo.get_by_id(page_id)
-        assert result is not None
-        assert result["status"] == "failed"
+        pages, total = await page_repo.list_pages()
+        assert total == 1
+        assert len(pages) == 1
+        assert isinstance(pages[0], Page)
+        assert pages[0].id == page_id
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_completed(self, page_repo: Any) -> None:
@@ -54,7 +35,7 @@ class TestPageStatus:
 
         pages, total = await page_repo.list_pages(status_filter="completed")
         assert total == 1
-        assert pages[0]["status"] == "completed"
+        assert pages[0].weaviate_id == "uuid-1"
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_processing(
@@ -73,7 +54,7 @@ class TestPageStatus:
 
         pages, total = await page_repo.list_pages(status_filter="processing")
         assert total == 1
-        assert pages[0]["status"] == "processing"
+        assert pages[0].url == "https://processing.com"
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_failed(
@@ -92,22 +73,7 @@ class TestPageStatus:
 
         pages, total = await page_repo.list_pages(status_filter="failed")
         assert total == 1
-        assert pages[0]["status"] == "failed"
-
-    def test_compute_page_status_completed(self, page_repo: PageRepository) -> None:
-        """_compute_page_status: summary+weaviate_id あれば completed."""
-        assert page_repo._compute_page_status("summary", "uuid", False) == "completed"
-        assert page_repo._compute_page_status("summary", "uuid", True) == "completed"
-
-    def test_compute_page_status_failed(self, page_repo: PageRepository) -> None:
-        """_compute_page_status: failed log があれば failed."""
-        assert page_repo._compute_page_status(None, None, True) == "failed"
-        assert page_repo._compute_page_status("summary", None, True) == "failed"
-
-    def test_compute_page_status_processing(self, page_repo: PageRepository) -> None:
-        """_compute_page_status: failed log がなければ processing."""
-        assert page_repo._compute_page_status(None, None, False) == "processing"
-        assert page_repo._compute_page_status("summary", None, False) == "processing"
+        assert pages[0].url == "https://failed.com"
 
 
 class TestPageRepository:
@@ -225,14 +191,14 @@ class TestPageRepository:
         assert len(pages) == 3
 
     @pytest.mark.asyncio
-    async def test_save_json_file(self, page_repo: Any) -> None:
+    async def test_save_json_file(self, page_repo: Any, file_repo: Any) -> None:
         """JSONファイル保存テスト."""
         page_id = 1
         test_data = {"data": {"title": "Test Title", "content": "Test content"}}
 
-        await page_repo.save_json_file(page_id, test_data)
+        await file_repo.save_json_file(page_id, test_data)
 
-        assert await page_repo.file_repo.file_exists(page_id)
+        assert await file_repo.file_exists(page_id)
 
 
 class TestConcurrentPageRepository:
