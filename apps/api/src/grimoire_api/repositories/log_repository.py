@@ -93,3 +93,27 @@ class LogRepository:
             ]
         except Exception as e:
             raise DatabaseError(f"Failed to get all logs: {str(e)}")
+
+    async def get_failed_page_ids(self) -> set[int]:
+        """failedステータスのpage_idセットを取得."""
+        try:
+            rows = await self.db.fetch_all(
+                "SELECT DISTINCT page_id FROM process_logs WHERE status = 'failed' AND page_id IS NOT NULL"  # noqa: E501
+            )
+            return {row["page_id"] for row in rows}
+        except Exception as e:
+            raise DatabaseError(f"Failed to get failed page ids: {str(e)}")
+
+    async def get_latest_error(self, page_id: int) -> str | None:
+        """最新のエラーメッセージを取得."""
+        try:
+            query = """
+            SELECT error_message FROM process_logs
+            WHERE page_id = ? AND status = 'failed' AND error_message IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+            result = await self.db.fetch_one(query, (page_id,))
+            return result["error_message"] if result else None
+        except Exception:
+            return None

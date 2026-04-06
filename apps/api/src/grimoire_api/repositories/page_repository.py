@@ -1,6 +1,5 @@
 """Page repository."""
 
-import asyncio
 import json
 from datetime import datetime
 
@@ -9,7 +8,6 @@ import aiosqlite
 from ..models.database import Page, ProcessingStep
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
-from .file_repository import FileRepository
 
 
 class PageRepository:
@@ -18,16 +16,13 @@ class PageRepository:
     def __init__(
         self,
         db: DatabaseConnection | None = None,
-        file_repo: FileRepository | None = None,
     ):
         """初期化.
 
         Args:
             db: データベース接続
-            file_repo: ファイルリポジトリ
         """
         self.db = db or DatabaseConnection()
-        self.file_repo = file_repo or FileRepository()
 
     async def get_page_by_url(self, url: str) -> int | None:
         """URLでページIDを取得."""
@@ -195,10 +190,6 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to clear weaviate_id: {str(e)}")
 
-    async def save_json_file(self, page_id: int, data: dict) -> None:
-        """JSONファイル保存."""
-        await self.file_repo.save_json_file(page_id, data)
-
     async def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
         """全ページ取得."""
         try:
@@ -213,51 +204,6 @@ class PageRepository:
             return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get all pages: {str(e)}")
-
-    async def get_by_id(self, page_id: int) -> dict | None:
-        """ページIDで取得."""
-        page = await self.get_page(page_id)
-        if not page:
-            return None
-
-        error_message = await self._get_latest_error(page_id)
-
-        error_check = await self.db.fetch_one(
-            "SELECT 1 FROM process_logs WHERE page_id = ? AND status = 'failed'",
-            (page_id,),
-        )
-        status = self._compute_page_status(
-            page.summary, page.weaviate_id, bool(error_check)
-        )
-
-        return {
-            "id": page.id,
-            "url": page.url,
-            "title": page.title,
-            "memo": page.memo,
-            "summary": page.summary,
-            "keywords": page.keywords,
-            "created_at": page.created_at,
-            "updated_at": page.updated_at,
-            "weaviate_id": page.weaviate_id,
-            "status": status,
-            "error_message": error_message,
-            "last_success_step": page.last_success_step,
-        }
-
-    async def _get_latest_error(self, page_id: int) -> str | None:
-        """最新のエラーメッセージを取得."""
-        try:
-            query = """
-            SELECT error_message FROM process_logs
-            WHERE page_id = ? AND status = 'failed' AND error_message IS NOT NULL
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
-            result = await self.db.fetch_one(query, (page_id,))
-            return result["error_message"] if result else None
-        except Exception:
-            return None
 
     async def get_pages(
         self,
@@ -306,8 +252,8 @@ class PageRepository:
         sort: str = "created_at",
         order: str = "desc",
         status_filter: str | None = None,
-    ) -> tuple[list[dict], int]:
-        """ページ一覧取得 (async)."""
+    ) -> tuple[list[Page], int]:
+        """ページ一覧取得 (Page モデルのリストと総数を返す)."""
         try:
             where_clause = self._status_where_clause(status_filter)
 
@@ -317,7 +263,7 @@ class PageRepository:
 
             order_clause = f"ORDER BY {sort} {order.upper()}"
             query = f"""
-            SELECT id, url, title, memo, summary, weaviate_id,
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
                    last_success_step, created_at, updated_at
             FROM pages
             {where_clause}
@@ -325,36 +271,7 @@ class PageRepository:
             LIMIT ? OFFSET ?
             """
             results = await self.db.fetch_all(query, (limit, offset))
-
-            failed_rows, existing_json_ids = await asyncio.gather(
-                self.db.fetch_all(
-                    "SELECT DISTINCT page_id FROM process_logs WHERE status = 'failed' AND page_id IS NOT NULL"  # noqa: E501
-                ),
-                self.file_repo.get_existing_page_ids(),
-            )
-            failed_page_ids = {row["page_id"] for row in failed_rows}
-
-            pages = []
-            for row in results:
-                status = self._compute_page_status(
-                    row["summary"], row["weaviate_id"], row["id"] in failed_page_ids
-                )
-
-                has_json_file = row["id"] in existing_json_ids
-
-                pages.append(
-                    {
-                        "id": row["id"],
-                        "url": row["url"],
-                        "title": row["title"],
-                        "memo": row["memo"],
-                        "summary": row["summary"],
-                        "created_at": datetime.fromisoformat(row["created_at"]),
-                        "status": status,
-                        "has_json_file": has_json_file,
-                    }
-                )
-
+            pages = [self._row_to_page(row) for row in results]
             return pages, total
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
@@ -375,17 +292,6 @@ class PageRepository:
             return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get pages by status: {str(e)}")
-
-    def _compute_page_status(
-        self,
-        summary: str | None,
-        weaviate_id: str | None,
-        has_failed_log: bool,
-    ) -> str:
-        """ページステータスを計算する単一の定義."""
-        if summary and weaviate_id:
-            return "completed"
-        return "failed" if has_failed_log else "processing"
 
     def _status_where_clause(self, status_filter: str | None) -> str:
         """ステータスフィルター用SQL WHERE句を生成."""

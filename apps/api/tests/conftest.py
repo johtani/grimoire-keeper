@@ -50,10 +50,10 @@ def file_repo(temp_storage: str) -> FileRepository:
 
 @pytest_asyncio.fixture
 async def page_repo(
-    temp_db: DatabaseConnection, file_repo: FileRepository
+    temp_db: DatabaseConnection,
 ) -> PageRepository:
     """ページリポジトリフィクスチャ."""
-    return PageRepository(db=temp_db, file_repo=file_repo)
+    return PageRepository(db=temp_db)
 
 
 @pytest_asyncio.fixture

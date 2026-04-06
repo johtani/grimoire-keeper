@@ -350,11 +350,11 @@ class TestConcurrentUrlProcessor:
     """UrlProcessorService 並行処理テストクラス."""
 
     @pytest.fixture
-    def make_url_processor(self, temp_db: Any, file_repo: Any) -> Any:
+    def make_url_processor(self, temp_db: Any) -> Any:
         """実際の PageRepository を使った UrlProcessorService を生成するファクトリ."""
 
         def _make() -> UrlProcessorService:
-            page_repo = PageRepository(db=temp_db, file_repo=file_repo)
+            page_repo = PageRepository(db=temp_db)
             log_repo = LogRepository(db=temp_db)
             return UrlProcessorService(
                 jina_client=AsyncMock(),
