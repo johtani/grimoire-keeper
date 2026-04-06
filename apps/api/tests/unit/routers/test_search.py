@@ -2,8 +2,9 @@
 
 from unittest.mock import AsyncMock
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from grimoire_api.dependencies import get_search_service
+from grimoire_api.dependencies import get_search_service, get_weaviate_client
 from grimoire_api.main import app
 from grimoire_api.models.response import SearchResult
 
@@ -91,6 +92,22 @@ class TestSearchRouter:
             vector_name="title_vector",
             exclude_keywords=None,
         )
+
+    def test_search_weaviate_unavailable(self) -> None:
+        """Weaviate未接続時に503が返ることのテスト."""
+
+        def raise_503() -> None:
+            raise HTTPException(status_code=503, detail="Weaviate is not available")
+
+        app.dependency_overrides[get_weaviate_client] = raise_503
+
+        response = client.post(
+            "/api/v1/search",
+            json={"query": "test query"},
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Weaviate is not available"
 
     def test_search_with_filters_and_vector(self) -> None:
         """フィルターとベクトル指定での検索テスト."""
