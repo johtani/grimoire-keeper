@@ -2,8 +2,9 @@
 
 from unittest.mock import AsyncMock
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from grimoire_api.dependencies import get_url_processor_service
+from grimoire_api.dependencies import get_url_processor_service, get_weaviate_client
 from grimoire_api.main import app
 
 client = TestClient(app)
@@ -73,6 +74,22 @@ class TestProcessRouter:
         mock_processor.prepare_url_processing.assert_called_once_with(
             "https://example.com/", "test memo"
         )
+
+    def test_process_url_weaviate_unavailable(self) -> None:
+        """Weaviate未接続時に503が返ることのテスト."""
+
+        def raise_503() -> None:
+            raise HTTPException(status_code=503, detail="Weaviate is not available")
+
+        app.dependency_overrides[get_weaviate_client] = raise_503
+
+        response = client.post(
+            "/api/v1/process-url",
+            json={"url": "https://example.com"},
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Weaviate is not available"
 
     def test_process_url_error(self) -> None:
         """URL処理エラー時のテスト."""

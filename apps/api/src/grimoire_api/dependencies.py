@@ -1,9 +1,9 @@
 """Shared dependency injection functions for FastAPI routers."""
 
 from functools import lru_cache
-from typing import Any
 
-from fastapi import Depends, Request
+import weaviate
+from fastapi import Depends, HTTPException, Request
 
 from .repositories.database import DatabaseConnection
 from .repositories.file_repository import FileRepository
@@ -78,23 +78,32 @@ def get_llm_service(
 # ---------------------------------------------------------------------------
 
 
-def get_weaviate_client(request: Request) -> Any:
-    """Weaviate クライアントを app.state から取得."""
-    return getattr(request.app.state, "weaviate_client", None)
+def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
+    """Weaviate クライアントを app.state から取得.
+
+    Raises:
+        HTTPException: Weaviate が未接続の場合 (503)
+    """
+    client: weaviate.WeaviateClient | None = getattr(
+        request.app.state, "weaviate_client", None
+    )
+    if client is None:
+        raise HTTPException(status_code=503, detail="Weaviate is not available")
+    return client
 
 
 def get_vectorizer_service(
     page_repo: PageRepository = Depends(get_page_repository),
     file_repo: FileRepository = Depends(get_file_repository),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    weaviate_client: Any = Depends(get_weaviate_client),
+    weaviate_client: weaviate.WeaviateClient = Depends(get_weaviate_client),
 ) -> VectorizerService:
     """ベクトル化サービス依存性注入."""
     return VectorizerService(page_repo, file_repo, chunking_service, weaviate_client)
 
 
 def get_search_service(
-    weaviate_client: Any = Depends(get_weaviate_client),
+    weaviate_client: weaviate.WeaviateClient = Depends(get_weaviate_client),
 ) -> SearchService:
     """検索サービス依存性注入."""
     return SearchService(weaviate_client=weaviate_client)
