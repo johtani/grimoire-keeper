@@ -333,6 +333,50 @@ class TestVectorizerService:
         assert mock_collection.query.fetch_objects.call_count == 10
 
     @pytest.mark.asyncio
+    async def test_save_chunks_uses_asyncio_to_thread(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """_save_chunks_to_weaviate が asyncio.to_thread で insert することを確認."""
+        mock_page = Page(
+            id=1,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            weaviate_id=None,
+        )
+        chunks = ["chunk1", "chunk2"]
+
+        # asyncio.to_thread をパッチして同期的に実行しつつ呼び出しを記録する
+        async def fake_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        with patch(
+            "grimoire_api.services.vectorizer.asyncio.to_thread",
+            side_effect=fake_to_thread,
+        ) as mock_to_thread:
+            await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
+
+        # asyncio.to_thread が _insert_chunks_sync で呼ばれたことを確認
+        from grimoire_api.services.vectorizer import _insert_chunks_sync
+
+        insert_calls = [
+            call
+            for call in mock_to_thread.call_args_list
+            if call[0][0] is _insert_chunks_sync
+        ]
+        assert len(insert_calls) == 1
+
+        # _insert_chunks_sync に渡されたオブジェクトリストが正しいことを確認
+        _, objects_to_insert = insert_calls[0][0][1], insert_calls[0][0][2]
+        assert len(objects_to_insert) == 2
+        assert objects_to_insert[0][0]["content"] == "chunk1"
+        assert objects_to_insert[1][0]["content"] == "chunk2"
+
+    @pytest.mark.asyncio
     async def test_save_chunks_weaviate_delete_failure(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
