@@ -28,9 +28,11 @@ argument-hint: "[コミットメッセージ]"
    ```bash
    uv run ruff format .
    uv run ruff check .
+   uv run mypy .
    ```
-   - エラーがあれば `--fix` で自動修正を試みる: `uv run ruff check --fix .`
+   - ruff エラーがあれば `--fix` で自動修正を試みる: `uv run ruff check --fix .`
    - 自動修正できないエラーは手動で修正する
+   - mypy エラーがあれば手動で修正する (mypy 設定により apps/bot と apps/api/tests は除外)
    - 修正後は再度テストを実行して回帰がないことを確認する
 
 4. **変更をコミットする**

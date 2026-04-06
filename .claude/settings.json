@@ -1,6 +1,9 @@
 {
-  "enabledPlugins": {
-    "weaviate@weaviate-plugins": true
+  "permissions": {
+    "allow": [
+      "Edit(/.claude/skills/ship/**)",
+      "Edit(/.claude/skills/start-issue/**)"
+    ]
   },
   "hooks": {
     "PreToolUse": [
@@ -16,5 +19,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "weaviate@weaviate-plugins": true
   }
 }
