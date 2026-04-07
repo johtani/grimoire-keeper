@@ -29,7 +29,17 @@
 
 - Python 3.13+
 - Docker & Docker Compose
-- Bitwarden Secrets Manager account (for secret management / シークレット管理用)
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- `bws` (Bitwarden Secrets Manager CLI) — devcontainer 使用時は自動インストール
+
+  ```bash
+  # macOS
+  brew install bitwarden/tools/bws
+  # Linux
+  BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | jq -r '.tag_name')
+  curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
+  sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/ && sudo chmod +x /usr/local/bin/bws && rm /tmp/bws.zip
+  ```
 
 ### Installation / インストール
 
@@ -42,13 +52,20 @@
 2. **Set up environment / 環境設定**
    ```bash
    cp .env.example .env
-   # Edit .env with non-secret settings (BWS_ACCESS_TOKEN goes to ~/.config/bws.env)
-   # 非秘密の設定値を.envに設定 (BWS_ACCESS_TOKENは~/.config/bws.envへ)
+   # 非秘密の設定値を .env に記載
+   # BWS_ACCESS_TOKEN は ~/.config/bws.env に保存 (リポジトリ外)
+   mkdir -p ~/.config
+   echo 'BWS_ACCESS_TOKEN=your-access-token' > ~/.config/bws.env
+   chmod 600 ~/.config/bws.env
    ```
+
+   > **devcontainer を使う場合 / Using devcontainer:**
+   > VS Code で `Ctrl+Shift+P` → "Dev Containers: Reopen in Container" を実行すると
+   > bws CLI のインストールと依存関係のセットアップが自動で行われます。
 
 3. **Install dependencies / 依存関係のインストール**
    ```bash
-   uv sync
+   uv sync --all-packages
    ```
 
 4. **Start Weaviate / Weaviateの起動**
@@ -58,12 +75,20 @@
 
 5. **Initialize database / データベースの初期化**
    ```bash
-   python scripts/init_database.py init
+   uv run python scripts/init_database.py init
+   # Weaviate が起動していない場合は SQLite のみ先に初期化可能:
+   # uv run python scripts/init_database.py sqlite
    ```
 
 6. **Start the API / APIの起動**
    ```bash
    bash scripts/dev.sh
+   ```
+
+7. **Verify / 動作確認**
+   ```bash
+   curl http://localhost:8000/api/v1/health
+   # ブラウザで http://localhost:8000/docs を開いて API ドキュメントを確認
    ```
 
 ## 📖 Usage / 使用方法
@@ -173,6 +198,27 @@ uv run pytest apps/api/tests/integration/ -v
 
 # All tests with coverage / カバレッジ付き全テスト
 uv run pytest --cov=apps --cov-report=html
+```
+
+## 🔧 Troubleshooting / トラブルシューティング
+
+**Weaviate 接続エラー**
+```bash
+docker compose ps weaviate       # 状態確認
+docker compose restart weaviate  # 再起動
+```
+
+**データベースエラー**
+```bash
+uv run python scripts/init_database.py check  # 状態確認
+uv run python scripts/init_database.py reset  # リセット (全データ削除)
+uv run python scripts/db_cli.py               # SQLite 直接操作
+```
+
+**API キーエラー**
+```bash
+cat ~/.config/bws.env  # BWS_ACCESS_TOKEN 確認
+bws secret list        # Bitwarden からシークレット取得テスト
 ```
 
 ## 📊 API Reference / API リファレンス
@@ -285,15 +331,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📚 Documentation / ドキュメント
 
-For detailed documentation, see the [docs/](docs/) directory:
-詳細なドキュメントについては、[docs/](docs/)ディレクトリを参照してください：
-
-- [Backend Architecture / バックエンドアーキテクチャ](docs/architecture.md)
-- [API Reference / APIリファレンス](docs/api-reference.md)
-- [Retry Processing Guide / 再処理ガイド](docs/retry-processing.md)
-- [Development Guide / 開発ガイド](docs/development.md)
-- [Web UI Guide / Web UIガイド](docs/web-ui-guide.md)
+- [API Reference / APIリファレンス](docs/api-reference.md) — エンドポイント詳細とリトライ処理
 - [Slack Bot Usage / Slack Bot使用方法](docs/slack-bot-usage.md)
+- [CLAUDE.md](CLAUDE.md) — 開発ガイド・アーキテクチャ詳細 (Claude Code 向け)
 
 ## 🐛 Issues & Support / 問題とサポート
 
