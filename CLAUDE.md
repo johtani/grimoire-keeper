@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-**Grimoire Keeper** は個人向けの AI による URL コンテンツ要約・セマンティック検索システムです。Jina AI Reader でウェブページを取得し、Google Gemini (LiteLLM 経由) で要約し、Weaviate にベクトル埋め込みを保存し、FastAPI バックエンドで検索・取得を提供します。
+**Grimoire Keeper** は個人向けの AI による URL コンテンツ要約・セマンティック検索システムです。Jina AI Reader でウェブページを取得し、LLM (LiteLLM 経由、デフォルトはローカル LLM の `openai/qwen3-35b`) で要約し、Weaviate にベクトル埋め込みを保存し、FastAPI バックエンドで検索・取得を提供します。
 
 ## よく使うコマンド
 
@@ -19,7 +19,7 @@ uv run ruff check .
 uv run ruff format .
 uv run mypy .          # mypy 設定により apps/bot と apps/api/tests は除外
 
-# 全テストを実行 (pytest.ini により apps/api/tests のみ対象)
+# 全テストを実行 (pyproject.toml の [tool.pytest.ini_options] により apps/api/tests のみ対象)
 uv run pytest
 
 # ユニットテストのみ実行
@@ -62,7 +62,7 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 1. `POST /api/v1/process-url` — 同期処理: 重複チェック、`Page` レコード作成、ID を返却
 2. バックグラウンドタスクが非同期で実行:
    - **Jina Client** が Jina AI Reader API 経由でページコンテンツを取得
-   - **LLM Service** が Gemini (gemini-2.5-flash-lite via LiteLLM) を呼び出し → 要約 + 20 キーワードを JSON で返却
+   - **LLM Service** が LiteLLM 経由で LLM を呼び出し → 要約 + 20 キーワードを JSON で返却 (デフォルトは `openai/qwen3-35b`、`LLM_MODEL` 環境変数で変更可能)
    - **ChunkingService** がコンテンツを分割 (Chonkie 使用)、**VectorizerService** がチャンクを Weaviate コレクション `GrimoireChunk` に 3 つの名前付きベクトルで保存: `content_vector`、`title_vector`、`memo_vector` (要約チャンクは `isSummary=true` でフラグ付け)
 3. 各ステップで `Page` の `last_success_step` を更新してスマートリトライに対応
 
@@ -93,14 +93,34 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 
 環境変数は `.env` (テスト時は `.env.test`) から読み込まれます。必要な API キー:
 - `JINA_API_KEY` — Jina AI Reader
-- `GOOGLE_API_KEY` — Google Gemini
+- `GOOGLE_API_KEY` — Google Gemini (クラウド LLM 使用時のみ)
 - `OPENAI_API_KEY` — Weaviate text2vec-openai 埋め込み (`text-embedding-ada-002`)
 
 `BWS_ACCESS_TOKEN` は `~/.config/bws.env` に保存します (リポジトリ外)。その他のシークレットは起動時に `bws run` が Bitwarden Secrets Manager から取得してサブプロセスに注入します (キーのプレフィックスは `GRIMOIRE_KEEPER_`)。`.env` には非秘密の設定値のみ記載します。開発は `scripts/dev.sh`、本番は `scripts/start.sh` を使用します。
 
+### bws CLI のインストール
+
+devcontainer 起動時に `.devcontainer/setup.sh` が自動インストールします。手動インストールの場合:
+
+```bash
+# macOS
+brew install bitwarden/tools/bws
+
+# Linux
+BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | jq -r '.tag_name')
+curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
+sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/ && sudo chmod +x /usr/local/bin/bws && rm /tmp/bws.zip
+```
+
+Bitwarden Secrets Manager に登録するシークレット (プレフィックス `GRIMOIRE_KEEPER_`):
+- `GRIMOIRE_KEEPER_OPENAI_API_KEY`
+- `GRIMOIRE_KEEPER_JINA_API_KEY`
+- `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` / `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` / `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` (Slack bot 用)
+- `GRIMOIRE_KEEPER_LLM_API_KEY` (クラウド LLM 使用時のみ)
+
 ## テストの注意事項
 
-- `pytest.ini` (独立ファイル) で `testpaths = apps/api/tests`、`asyncio_mode = auto`、`ENV_FILE=.env.test` を設定
+- `pyproject.toml` の `[tool.pytest.ini_options]` で `testpaths = apps/api/tests`、`asyncio_mode = auto`、`ENV_FILE=.env.test` を設定
 - ユニットテストは外部依存をモック化; インテグレーションテストは Weaviate の起動が必要
 - `.env.test` にはユニットテストに十分なダミー API キーが含まれる
 - カバレッジは `apps/` ディレクトリのみ対象

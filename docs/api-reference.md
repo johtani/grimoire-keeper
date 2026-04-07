@@ -474,3 +474,46 @@ const failedPagesResponse = await fetch(
 );
 const failedPages = await failedPagesResponse.json();
 ```
+---
+
+## Retry Processing / リトライ処理
+
+URL 処理がいずれかのステージで失敗した場合、システムは失敗を記録し、最後に成功したステップからインテリジェントなリトライを可能にします。
+
+### 処理ステージ
+
+| ステージ | `last_success_step` 値 | 説明 |
+|---------|----------------------|------|
+| コンテンツ取得 | `downloaded` | Jina AI Reader でページを取得 |
+| LLM 処理 | `llm_processed` | 要約とキーワードを生成 |
+| ベクトル化 | `vectorized` | Weaviate にベクトルを保存 |
+| 完了 | `completed` | 全処理完了 |
+
+### スマートリスタートロジック
+
+リトライ時は `last_success_step` に基づいて再開ポイントを決定します:
+
+| 最後の成功ステップ | 再開位置 |
+|------------------|---------|
+| `NULL` または空 | コンテンツ取得から |
+| `downloaded` | LLM 処理から (取得をスキップ) |
+| `llm_processed` | ベクトル化から (取得・LLM をスキップ) |
+| `vectorized` | 完了処理のみ |
+| `completed` | リトライ不要 |
+
+### リトライ API
+
+**個別リトライ:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/retry/123"
+```
+
+**一括リトライ (失敗した全ページ):**
+```bash
+curl -X POST "http://localhost:8000/api/v1/retry-failed"
+```
+
+**失敗ページ一覧:**
+```bash
+curl -X GET "http://localhost:8000/api/v1/pages?status=failed"
+```
