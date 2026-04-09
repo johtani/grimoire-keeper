@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"
 
+    # Build Info
+    GIT_COMMIT: str = "unknown"
+    BUILD_DATE: str = "unknown"
+
     model_config = SettingsConfigDict(
         env_file=os.environ.get("ENV_FILE", ".env"),
         extra="ignore",  # 余分な環境変数を無視
