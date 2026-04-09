@@ -36,6 +36,9 @@ services:
     build:
       context: .
       dockerfile: ./apps/api/Dockerfile.prod
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
     ports:
       - "8000:8000"
     volumes:

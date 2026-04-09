@@ -40,6 +40,11 @@ sudo chown -R $USER:$USER /opt/grimoire-keeper-data
 echo "既存サービス停止中..."
 docker compose -f docker-compose.prod.yml down
 
+# ビルド情報を環境変数にセット
+export GIT_COMMIT=$(git rev-parse --short HEAD)
+export BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "ビルド情報: commit=${GIT_COMMIT}, date=${BUILD_DATE}"
+
 # イメージビルド
 echo "イメージビルド中..."
 bws run -- docker compose -f docker-compose.prod.yml build --no-cache

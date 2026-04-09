@@ -24,6 +24,12 @@ WORKDIR /app/apps/api
 # 依存関係インストール
 RUN uv sync
 
+# ビルド情報
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_DATE=${BUILD_DATE}
+
 # データディレクトリ作成
 RUN mkdir -p /data /app/apps/api/data/json
 
