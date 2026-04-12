@@ -64,3 +64,34 @@ class TestLogRepository:
 
         logs = await log_repo.get_all_logs()
         assert len(logs) >= 3
+
+    @pytest.mark.asyncio
+    async def test_has_failed_log_returns_true_when_failed(self, log_repo: Any) -> None:
+        """失敗ログが存在する場合 True を返すテスト."""
+        page_id = 1
+        log_id = await log_repo.create_log("https://example.com", "started", page_id)
+        await log_repo.update_status(log_id, "failed", "some error")
+
+        result = await log_repo.has_failed_log(page_id)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_has_failed_log_returns_false_when_no_failed(
+        self, log_repo: Any
+    ) -> None:
+        """失敗ログが存在しない場合 False を返すテスト."""
+        page_id = 99
+        result = await log_repo.has_failed_log(page_id)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_has_failed_log_returns_false_when_only_succeeded(
+        self, log_repo: Any
+    ) -> None:
+        """成功ログのみの場合 False を返すテスト."""
+        page_id = 2
+        log_id = await log_repo.create_log("https://example.com", "started", page_id)
+        await log_repo.update_status(log_id, "completed")
+
+        result = await log_repo.has_failed_log(page_id)
+        assert result is False
