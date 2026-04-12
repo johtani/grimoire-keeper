@@ -104,6 +104,18 @@ class LogRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get failed page ids: {str(e)}")
 
+    async def has_failed_log(self, page_id: int) -> bool:
+        """指定ページの失敗ログが存在するか確認."""
+        try:
+            query = (
+                "SELECT 1 FROM process_logs"
+                " WHERE page_id = ? AND status = 'failed' LIMIT 1"
+            )
+            result = await self.db.fetch_one(query, (page_id,))
+            return result is not None
+        except Exception as e:
+            raise DatabaseError(f"Failed to check failed log: {str(e)}")
+
     async def get_latest_error(self, page_id: int) -> str | None:
         """最新のエラーメッセージを取得."""
         try:

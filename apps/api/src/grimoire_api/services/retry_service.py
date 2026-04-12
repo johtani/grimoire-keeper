@@ -63,8 +63,7 @@ class RetryService(BaseProcessorService):
             if not page:
                 raise GrimoireAPIError(f"Page {page_id} not found")
 
-            failed_logs = await self.log_repo.get_logs_by_status("failed")
-            is_failed = any(log.page_id == page_id for log in failed_logs)
+            is_failed = await self.log_repo.has_failed_log(page_id)
 
             if not is_failed:
                 return {
