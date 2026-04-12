@@ -30,10 +30,14 @@ class RetryService(BaseProcessorService):
         file_repo: FileRepository,
     ):
         """初期化."""
-        super().__init__(page_repo=page_repo, log_repo=log_repo, file_repo=file_repo)
-        self.jina_client = jina_client
-        self.llm_service = llm_service
-        self.vectorizer = vectorizer
+        super().__init__(
+            jina_client=jina_client,
+            llm_service=llm_service,
+            vectorizer=vectorizer,
+            page_repo=page_repo,
+            log_repo=log_repo,
+            file_repo=file_repo,
+        )
 
     async def get_retry_start_point(self, page_id: int) -> str:
         """再処理開始ポイントを取得."""
@@ -172,40 +176,9 @@ class RetryService(BaseProcessorService):
     ) -> None:
         """指定ポイントから再処理実行."""
         try:
-            if start_point == "download":
-                jina_result = await self.jina_client.fetch_content(url)
-                await self._save_download_result(log_id, page_id, jina_result)
-
-                llm_result = await self.llm_service.generate_summary_keywords(page_id)
-                await self._save_llm_result(log_id, page_id, llm_result)
-
-                await self.vectorizer.vectorize_content(page_id)
-                await self.page_repo.update_success_step(
-                    page_id, ProcessingStep.VECTORIZED
-                )
-                await self.log_repo.update_status(log_id, "vectorize_complete")
-
-            elif start_point == "llm":
-                llm_result = await self.llm_service.generate_summary_keywords(page_id)
-                await self._save_llm_result(log_id, page_id, llm_result)
-
-                await self.vectorizer.vectorize_content(page_id)
-                await self.page_repo.update_success_step(
-                    page_id, ProcessingStep.VECTORIZED
-                )
-                await self.log_repo.update_status(log_id, "vectorize_complete")
-
-            elif start_point == "vectorize":
-                await self.vectorizer.vectorize_content(page_id)
-                await self.page_repo.update_success_step(
-                    page_id, ProcessingStep.VECTORIZED
-                )
-                await self.log_repo.update_status(log_id, "vectorize_complete")
-
-            # 完了処理
-            await self.page_repo.update_success_step(page_id, ProcessingStep.COMPLETED)
-            await self.log_repo.update_status(log_id, "completed")
-
+            await self._run_pipeline_from(
+                page_id=page_id, log_id=log_id, url=url, start_point=start_point
+            )
         except Exception as e:
             await self.log_repo.update_status(log_id, "failed", str(e))
             raise

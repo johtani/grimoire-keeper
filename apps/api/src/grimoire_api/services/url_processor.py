@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from ..models.database import ProcessingStep
 from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
@@ -26,10 +25,14 @@ class UrlProcessorService(BaseProcessorService):
         file_repo: FileRepository,
     ):
         """初期化."""
-        super().__init__(page_repo=page_repo, log_repo=log_repo, file_repo=file_repo)
-        self.jina_client = jina_client
-        self.llm_service = llm_service
-        self.vectorizer = vectorizer
+        super().__init__(
+            jina_client=jina_client,
+            llm_service=llm_service,
+            vectorizer=vectorizer,
+            page_repo=page_repo,
+            log_repo=log_repo,
+            file_repo=file_repo,
+        )
 
     async def prepare_url_processing(
         self, url: str, memo: str | None = None
@@ -83,27 +86,9 @@ class UrlProcessorService(BaseProcessorService):
     async def process_url_background(self, page_id: int, log_id: int, url: str) -> None:
         """バックグラウンド処理."""
         try:
-            # 3. Jina AI Reader処理
-            jina_result = await self.jina_client.fetch_content(url)
-            await self._save_download_result(log_id, page_id, jina_result)
-
-            # 4. LLM処理
-            llm_result = await self.llm_service.generate_summary_keywords(page_id)
-            await self._save_llm_result(log_id, page_id, llm_result)
-
-            # 5. ベクトル化処理
-            try:
-                await self.vectorizer.vectorize_content(page_id)
-            except Exception as e:
-                # Weaviate書き込み失敗時はDBのweaviate_idをクリアして整合性を保つ
-                await self.page_repo.clear_weaviate_id(page_id)
-                raise e
-            await self.log_repo.update_status(log_id, "vectorize_complete")
-
-            # 6. 完了ログ
-            await self.page_repo.update_success_step(page_id, ProcessingStep.COMPLETED)
-            await self.log_repo.update_status(log_id, "completed")
-
+            await self._run_pipeline_from(
+                page_id=page_id, log_id=log_id, url=url, start_point="download"
+            )
         except Exception as e:
             await self.log_repo.update_status(log_id, "failed", str(e))
 
