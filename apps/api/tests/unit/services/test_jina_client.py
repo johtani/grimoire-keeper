@@ -1,7 +1,7 @@
 """Test Jina AI Reader client."""
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -18,6 +18,7 @@ class TestJinaClient:
         client = JinaClient(api_key=api_key)
         assert client.api_key == api_key
         assert client.base_url == "https://r.jina.ai"
+        assert client._client is None
 
     def test_init_without_api_key(self: Any) -> None:
         """APIキー未指定での初期化テスト."""
@@ -25,6 +26,52 @@ class TestJinaClient:
             mock_settings.JINA_API_KEY = "settings_api_key"
             client = JinaClient()
             assert client.api_key == "settings_api_key"
+            assert client._client is None
+
+    @pytest.mark.asyncio
+    async def test_get_client_creates_client_on_first_call(self: Any) -> None:
+        """初回呼び出しで AsyncClient が生成されるテスト."""
+        client = JinaClient(api_key="test_key")
+        assert client._client is None
+
+        http_client = await client._get_client()
+
+        assert http_client is not None
+        assert isinstance(http_client, httpx.AsyncClient)
+        assert client._client is http_client
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_client_returns_same_instance(self: Any) -> None:
+        """2回目の呼び出しで同一インスタンスが返されるテスト."""
+        client = JinaClient(api_key="test_key")
+
+        http_client_1 = await client._get_client()
+        http_client_2 = await client._get_client()
+
+        assert http_client_1 is http_client_2
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_close_calls_aclose(self: Any) -> None:
+        """close() が aclose() を呼び出すテスト."""
+        client = JinaClient(api_key="test_key")
+        mock_http_client = AsyncMock()
+        client._client = mock_http_client
+
+        await client.close()
+
+        mock_http_client.aclose.assert_called_once()
+        assert client._client is None
+
+    @pytest.mark.asyncio
+    async def test_close_when_client_is_none(self: Any) -> None:
+        """_client が None のとき close() は何もしないテスト."""
+        client = JinaClient(api_key="test_key")
+        assert client._client is None
+
+        # 例外が発生しないことを確認
+        await client.close()
 
     @pytest.mark.asyncio
     async def test_fetch_content_success(self: Any) -> None:
@@ -36,17 +83,16 @@ class TestJinaClient:
             "data": {"title": "Test Title", "content": "Test content", "url": test_url},
         }
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_response = AsyncMock()
-            mock_response.json = lambda: expected_response  # 同期メソッドとして設定
-            mock_response.raise_for_status = AsyncMock(return_value=None)
+        mock_response = MagicMock()
+        mock_response.json.return_value = expected_response
+        mock_response.raise_for_status = MagicMock(return_value=None)
 
-            mock_async_client = AsyncMock()
-            mock_async_client.get = AsyncMock(return_value=mock_response)
-            mock_client.return_value.__aenter__.return_value = mock_async_client
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(return_value=mock_response)
+        client._client = mock_http_client
 
-            result = await client.fetch_content(test_url)
-            assert result == expected_response
+        result = await client.fetch_content(test_url)
+        assert result == expected_response
 
     @pytest.mark.asyncio
     async def test_fetch_content_no_api_key(self: Any) -> None:
@@ -65,20 +111,19 @@ class TestJinaClient:
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_response = AsyncMock()
-            mock_response.status_code = 401
-            mock_response.text = "Unauthorized"
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
 
-            http_error = httpx.HTTPStatusError(
-                "401 Unauthorized", request=AsyncMock(), response=mock_response
-            )
-            mock_client.return_value.__aenter__.return_value.get.side_effect = (
-                http_error
-            )
+        http_error = httpx.HTTPStatusError(
+            "401 Unauthorized", request=MagicMock(), response=mock_response
+        )
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(side_effect=http_error)
+        client._client = mock_http_client
 
-            with pytest.raises(JinaClientError, match="Jina API HTTP error 401"):
-                await client.fetch_content(test_url)
+        with pytest.raises(JinaClientError, match="Jina API HTTP error 401"):
+            await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
     async def test_fetch_content_request_error(self: Any) -> None:
@@ -86,14 +131,13 @@ class TestJinaClient:
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            request_error = httpx.RequestError("Connection failed")
-            mock_client.return_value.__aenter__.return_value.get.side_effect = (
-                request_error
-            )
+        request_error = httpx.RequestError("Connection failed")
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(side_effect=request_error)
+        client._client = mock_http_client
 
-            with pytest.raises(JinaClientError, match="Jina API request error"):
-                await client.fetch_content(test_url)
+        with pytest.raises(JinaClientError, match="Jina API request error"):
+            await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
     async def test_health_check_success(self: Any) -> None:
@@ -121,14 +165,13 @@ class TestJinaClient:
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            timeout_error = httpx.TimeoutException("Request timeout")
-            mock_client.return_value.__aenter__.return_value.get.side_effect = (
-                timeout_error
-            )
+        timeout_error = httpx.TimeoutException("Request timeout")
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(side_effect=timeout_error)
+        client._client = mock_http_client
 
-            with pytest.raises(JinaClientError, match="Jina API request error"):
-                await client.fetch_content(test_url)
+        with pytest.raises(JinaClientError, match="Jina API request error"):
+            await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
     async def test_fetch_content_rate_limit(self: Any) -> None:
@@ -136,20 +179,19 @@ class TestJinaClient:
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_response = AsyncMock()
-            mock_response.status_code = 429
-            mock_response.text = "Too Many Requests"
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.text = "Too Many Requests"
 
-            http_error = httpx.HTTPStatusError(
-                "429 Too Many Requests", request=AsyncMock(), response=mock_response
-            )
-            mock_client.return_value.__aenter__.return_value.get.side_effect = (
-                http_error
-            )
+        http_error = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=MagicMock(), response=mock_response
+        )
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(side_effect=http_error)
+        client._client = mock_http_client
 
-            with pytest.raises(JinaClientError, match="Jina API HTTP error 429"):
-                await client.fetch_content(test_url)
+        with pytest.raises(JinaClientError, match="Jina API HTTP error 429"):
+            await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
     async def test_fetch_content_invalid_api_key(self: Any) -> None:
@@ -157,20 +199,19 @@ class TestJinaClient:
         client = JinaClient(api_key="invalid_key")
         test_url = "https://example.com"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_response = AsyncMock()
-            mock_response.status_code = 401
-            mock_response.text = "Unauthorized"
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
 
-            http_error = httpx.HTTPStatusError(
-                "401 Unauthorized", request=AsyncMock(), response=mock_response
-            )
-            mock_client.return_value.__aenter__.return_value.get.side_effect = (
-                http_error
-            )
+        http_error = httpx.HTTPStatusError(
+            "401 Unauthorized", request=MagicMock(), response=mock_response
+        )
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(side_effect=http_error)
+        client._client = mock_http_client
 
-            with pytest.raises(JinaClientError, match="Jina API HTTP error 401"):
-                await client.fetch_content(test_url)
+        with pytest.raises(JinaClientError, match="Jina API HTTP error 401"):
+            await client.fetch_content(test_url)
 
     @pytest.mark.asyncio
     async def test_fetch_content_headers(self: Any) -> None:
@@ -178,23 +219,22 @@ class TestJinaClient:
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_response = AsyncMock()
-            mock_response.json = lambda: {"data": {}}  # 同期メソッドとして設定
-            mock_response.raise_for_status = AsyncMock(return_value=None)
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": {}}
+        mock_response.raise_for_status = MagicMock(return_value=None)
 
-            mock_get = AsyncMock(return_value=mock_response)
-            mock_async_client = AsyncMock()
-            mock_async_client.get = mock_get
-            mock_client.return_value.__aenter__.return_value = mock_async_client
+        mock_get = AsyncMock(return_value=mock_response)
+        mock_http_client = AsyncMock()
+        mock_http_client.get = mock_get
+        client._client = mock_http_client
 
-            await client.fetch_content(test_url)
+        await client.fetch_content(test_url)
 
-            # ヘッダーが正しく設定されていることを確認
-            call_args = mock_get.call_args
-            headers = call_args[1]["headers"]
+        # ヘッダーが正しく設定されていることを確認
+        call_args = mock_get.call_args
+        headers = call_args[1]["headers"]
 
-            assert headers["Accept"] == "application/json"
-            assert headers["Authorization"] == "Bearer test_key"
-            assert headers["X-Return-Format"] == "markdown"
-            assert headers["X-With-Images-Summary"] == "true"
+        assert headers["Accept"] == "application/json"
+        assert headers["Authorization"] == "Bearer test_key"
+        assert headers["X-Return-Format"] == "markdown"
+        assert headers["X-With-Images-Summary"] == "true"
