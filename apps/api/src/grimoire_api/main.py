@@ -14,6 +14,7 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 
 from .config import settings
+from .dependencies import get_jina_client
 from .routers import health, pages, process, retry, search
 from .utils.database_init import ensure_database_initialized
 
@@ -63,6 +64,8 @@ async def lifespan(app: FastAPI) -> Any:
     if getattr(app.state, "weaviate_client", None) is not None:
         app.state.weaviate_client.close()
         logger.info("Weaviate client closed")
+    await get_jina_client().close()
+    logger.info("Jina client closed")
     logger.info("Application shutting down")
 
 
