@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ブックマークレット設定 - Grimoire Keeper</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+    <style>
+        .bookmarklet-link {
+            display: inline-block;
+            padding: 0.5rem 1.25rem;
+            background-color: #0d6efd;
+            color: #fff;
+            border-radius: 0.375rem;
+            text-decoration: none;
+            font-weight: 500;
+            cursor: grab;
+            user-select: none;
+        }
+        .bookmarklet-link:hover {
+            background-color: #0b5ed7;
+            color: #fff;
+        }
+        .bookmarklet-link:active {
+            cursor: grabbing;
+        }
+        .code-block {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.8rem;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.75rem;
+            height: 1.75rem;
+            background-color: #0d6efd;
+            color: #fff;
+            border-radius: 50%;
+            font-weight: 600;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        .id-guide {
+            background-color: #f8f9fa;
+            border-left: 3px solid #0d6efd;
+            padding: 0.75rem 1rem;
+            border-radius: 0 0.25rem 0.25rem 0;
+            font-size: 0.875rem;
+        }
+        .drag-area {
+            background-color: #e7f1ff;
+            border: 2px dashed #0d6efd;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        #previewDisabled {
+            color: #6c757d;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">📚 Grimoire Keeper</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="index.html">検索</a>
+                <a class="nav-link" href="pages.html">ページ管理</a>
+                <a class="nav-link" href="register.html">URL登録</a>
+                <a class="nav-link active" href="bookmarklet.html">ブックマークレット</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+
+                <!-- 概要 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4 class="mb-0">ブックマークレット設定</h4>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-2">ブラウザで見ているページを1クリックで Slack 経由 Grimoire Keeper に登録できます。</p>
+                        <p class="mb-0 text-muted small">
+                            クリックすると、現在のURLと任意のメモが <code>@Bot URL</code> 形式でクリップボードにコピーされ、
+                            Slack デスクトップアプリの指定チャンネルが開きます。あとは貼り付けて送信するだけです。
+                        </p>
+                    </div>
+                </div>
+
+                <!-- ステップ1: ID 入力 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><span class="step-number me-2">1</span> Slack の ID を入力</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-4">
+                            <label for="teamId" class="form-label fw-semibold">ワークスペース ID <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="teamId" placeholder="例: T01AB2CD3EF">
+                            <div class="id-guide mt-2">
+                                <strong>調べ方:</strong> Slack Web (<code>app.slack.com</code>) を開き、URL の
+                                <code>https://app.slack.com/client/<strong>T〇〇〇</strong>/...</code> の <code>T</code> で始まる部分をコピー
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="channelId" class="form-label fw-semibold">チャンネル ID <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="channelId" placeholder="例: C01AB2CD3EF">
+                            <div class="id-guide mt-2">
+                                <strong>調べ方:</strong> Slack でチャンネル名を右クリック →「リンクをコピー」→
+                                コピーした URL 末尾の <code>C</code> で始まる部分をコピー
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="botId" class="form-label fw-semibold">ボットユーザー ID <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="botId" placeholder="例: U01AB2CD3EF">
+                            <div class="id-guide mt-2">
+                                <strong>調べ方:</strong> Slack でボットのプロフィールを開く →
+                                「…」メニュー →「メンバー ID をコピー」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ステップ2: ブックマークレット -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><span class="step-number me-2">2</span> ブックマークバーに追加</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            ブックマークバーが表示されていない場合は
+                            <kbd>Ctrl+Shift+B</kbd> (Windows/Linux) / <kbd>Cmd+Shift+B</kbd> (Mac) で表示できます。
+                        </p>
+                        <div class="drag-area mb-3">
+                            <p class="mb-2 text-muted small">下のボタンをブックマークバーにドラッグしてください</p>
+                            <span id="previewDisabled">ID をすべて入力するとリンクが生成されます</span>
+                            <a id="bookmarkletLink" href="#" class="bookmarklet-link d-none" onclick="return false;">
+                                📚 Grimoire に登録
+                            </a>
+                        </div>
+                        <p class="text-muted small mb-0">
+                            ドラッグが難しい場合は、リンクを右クリック →「ブックマークに追加」でも登録できます。
+                        </p>
+                    </div>
+                </div>
+
+                <!-- ステップ3: 使い方 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><span class="step-number me-2">3</span> 使い方</h5>
+                    </div>
+                    <div class="card-body">
+                        <ol class="mb-0">
+                            <li class="mb-2">登録したいページを開く</li>
+                            <li class="mb-2">ブックマークバーの <strong>「📚 Grimoire に登録」</strong> をクリック</li>
+                            <li class="mb-2">メモを入力（任意）して OK</li>
+                            <li class="mb-2">Slack デスクトップアプリが開く</li>
+                            <li><kbd>Cmd+V</kbd> / <kbd>Ctrl+V</kbd> で貼り付けて <kbd>Enter</kbd> で送信</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- 生成されたコード (参考) -->
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">生成されたコード（参考）</h5>
+                        <button class="btn btn-sm btn-outline-secondary" id="copyCodeBtn" disabled>コピー</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="code-block" id="codePreview">ID をすべて入力するとコードが表示されます。</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function buildBookmarklet(teamId, channelId, botId) {
+            var code = "(function(){"
+                + "var url=location.href;"
+                + "var memo=prompt('メモ (任意):')||'';"
+                + "var cmd='<@" + botId + "> '+url+(memo?' '+memo:'');"
+                + "navigator.clipboard.writeText(cmd).then(function(){"
+                + "location.href='slack://channel?id=" + channelId + "&team=" + teamId + "';"
+                + "});"
+                + "})();";
+            return "javascript:" + code;
+        }
+
+        function buildReadableCode(teamId, channelId, botId) {
+            return "javascript:(function(){\n"
+                + "  var url = location.href;\n"
+                + "  var memo = prompt('メモ (任意):') || '';\n"
+                + "  var cmd = '<@" + botId + "> ' + url + (memo ? ' ' + memo : '');\n"
+                + "  navigator.clipboard.writeText(cmd).then(function(){\n"
+                + "    location.href = 'slack://channel?id=" + channelId + "&team=" + teamId + "';\n"
+                + "  });\n"
+                + "})();";
+        }
+
+        function update() {
+            var teamId = document.getElementById('teamId').value.trim();
+            var channelId = document.getElementById('channelId').value.trim();
+            var botId = document.getElementById('botId').value.trim();
+
+            var link = document.getElementById('bookmarkletLink');
+            var preview = document.getElementById('previewDisabled');
+            var codePreview = document.getElementById('codePreview');
+            var copyBtn = document.getElementById('copyCodeBtn');
+
+            if (teamId && channelId && botId) {
+                var bookmarklet = buildBookmarklet(teamId, channelId, botId);
+                link.href = bookmarklet;
+                link.classList.remove('d-none');
+                preview.classList.add('d-none');
+                codePreview.textContent = buildReadableCode(teamId, channelId, botId);
+                copyBtn.disabled = false;
+            } else {
+                link.classList.add('d-none');
+                preview.classList.remove('d-none');
+                codePreview.textContent = 'ID をすべて入力するとコードが表示されます。';
+                copyBtn.disabled = true;
+            }
+        }
+
+        document.getElementById('teamId').addEventListener('input', update);
+        document.getElementById('channelId').addEventListener('input', update);
+        document.getElementById('botId').addEventListener('input', update);
+
+        document.getElementById('copyCodeBtn').addEventListener('click', function() {
+            var teamId = document.getElementById('teamId').value.trim();
+            var channelId = document.getElementById('channelId').value.trim();
+            var botId = document.getElementById('botId').value.trim();
+            if (teamId && channelId && botId) {
+                navigator.clipboard.writeText(buildReadableCode(teamId, channelId, botId));
+                this.textContent = 'コピーしました！';
+                var btn = this;
+                setTimeout(function(){ btn.textContent = 'コピー'; }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>
