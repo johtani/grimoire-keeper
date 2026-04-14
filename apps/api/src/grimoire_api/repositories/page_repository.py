@@ -9,6 +9,9 @@ from ..models.database import Page, ProcessingStep
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 
+_ALLOWED_SORT_FIELDS = frozenset({"id", "url", "title", "created_at", "updated_at"})
+_ALLOWED_ORDER = frozenset({"ASC", "DESC"})
+
 
 class PageRepository:
     """ページリポジトリ."""
@@ -205,6 +208,16 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get all pages: {str(e)}")
 
+    @staticmethod
+    def _validate_sort_params(sort_field: str, order: str) -> str:
+        """ソートパラメータのホワイトリスト検証を行い、正規化した order を返す."""
+        if sort_field not in _ALLOWED_SORT_FIELDS:
+            raise ValueError(f"Invalid sort field: {sort_field}")
+        order_upper = order.upper()
+        if order_upper not in _ALLOWED_ORDER:
+            raise ValueError(f"Invalid order: {order}")
+        return order_upper
+
     async def get_pages(
         self,
         limit: int = 20,
@@ -214,11 +227,12 @@ class PageRepository:
         status_filter: str | None = None,
     ) -> list[Page]:
         """ページ一覧取得."""
+        order_upper = self._validate_sort_params(sort_by, order)
         try:
             where_clause = self._status_where_clause(status_filter)
             params: list = []
 
-            order_clause = f"ORDER BY {sort_by} {order.upper()}"
+            order_clause = f"ORDER BY {sort_by} {order_upper}"
             query = f"""
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
                    last_success_step, created_at, updated_at
@@ -254,6 +268,7 @@ class PageRepository:
         status_filter: str | None = None,
     ) -> tuple[list[Page], int]:
         """ページ一覧取得 (Page モデルのリストと総数を返す)."""
+        order_upper = self._validate_sort_params(sort, order)
         try:
             where_clause = self._status_where_clause(status_filter)
 
@@ -261,7 +276,7 @@ class PageRepository:
             count_result = await self.db.fetch_one(count_query)
             total = count_result["total"] if count_result else 0
 
-            order_clause = f"ORDER BY {sort} {order.upper()}"
+            order_clause = f"ORDER BY {sort} {order_upper}"
             query = f"""
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
                    last_success_step, created_at, updated_at

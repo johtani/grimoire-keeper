@@ -75,6 +75,18 @@ class TestListPages:
         assert total == 1
         assert pages[0].url == "https://failed.com"
 
+    @pytest.mark.asyncio
+    async def test_list_pages_invalid_sort_field(self, page_repo: Any) -> None:
+        """無効な sort フィールドで ValueError が送出される."""
+        with pytest.raises(ValueError, match="Invalid sort field"):
+            await page_repo.list_pages(sort="invalid_field")
+
+    @pytest.mark.asyncio
+    async def test_list_pages_invalid_order(self, page_repo: Any) -> None:
+        """無効な order で ValueError が送出される."""
+        with pytest.raises(ValueError, match="Invalid order"):
+            await page_repo.list_pages(order="random")
+
 
 class TestPageRepository:
     """PageRepositoryのテストクラス."""
@@ -189,6 +201,18 @@ class TestPageRepository:
 
         pages = await page_repo.get_all_pages(limit=3)
         assert len(pages) == 3
+
+    @pytest.mark.asyncio
+    async def test_get_pages_invalid_sort_field(self, page_repo: Any) -> None:
+        """無効な sort_by フィールドで ValueError が送出される."""
+        with pytest.raises(ValueError, match="Invalid sort field"):
+            await page_repo.get_pages(sort_by="invalid_field")
+
+    @pytest.mark.asyncio
+    async def test_get_pages_invalid_order(self, page_repo: Any) -> None:
+        """無効な order で ValueError が送出される."""
+        with pytest.raises(ValueError, match="Invalid order"):
+            await page_repo.get_pages(order="random")
 
     @pytest.mark.asyncio
     async def test_save_json_file(self, page_repo: Any, file_repo: Any) -> None:
