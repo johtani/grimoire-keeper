@@ -19,7 +19,7 @@ uv run ruff check .
 uv run ruff format .
 uv run mypy .          # mypy 設定により apps/bot と apps/api/tests は除外
 
-# 全テストを実行 (pyproject.toml の [tool.pytest.ini_options] により apps/api/tests のみ対象)
+# 全テストを実行 (pyproject.toml の [tool.pytest.ini_options] により apps/api/tests と apps/bot/tests が対象)
 uv run pytest
 
 # ユニットテストのみ実行
@@ -50,7 +50,7 @@ uv run python scripts/init_database.py init
 
 ```
 apps/api/   — FastAPI バックエンド (メインアプリケーション)
-apps/bot/   — Slack ボット (将来実装)
+apps/bot/   — Slack ボット
 apps/web/   — Nginx 静的 Web UI
 shared/     — サービス間で共有する OpenTelemetry インストルメンテーション
 ```

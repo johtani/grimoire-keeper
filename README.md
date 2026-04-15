@@ -153,7 +153,7 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 grimoire-keeper/
 ├── apps/
 │   ├── api/           # FastAPI backend / FastAPIバックエンド
-│   └── bot/           # Slack bot (future) / Slackボット（将来）
+│   └── bot/           # Slack bot / Slackボット
 ├── shared/            # Shared utilities / 共有ユーティリティ
 ├── docs/              # Documentation / ドキュメント
 ├── scripts/           # Utility scripts / ユーティリティスクリプト

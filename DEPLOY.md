@@ -11,7 +11,7 @@
 - **Bitwarden Secrets Manager Access Token** (`BWS_ACCESS_TOKEN`)
 
 > API キー・Slack トークンは Bitwarden Secrets Manager で管理します。
-> 詳細は [docs/development.md](docs/development.md) を参照してください。
+> 詳細は [CLAUDE.md](CLAUDE.md) の「設定とシークレット」セクションを参照してください。
 
 ## デプロイ手順
 
