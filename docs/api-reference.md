@@ -16,7 +16,7 @@ Currently, no authentication is required. API keys for external services are con
 
 ### Health Check
 
-#### `GET /health`
+#### `GET /api/v1/health`
 
 Check the health status of the API and its dependencies.
 
@@ -131,16 +131,22 @@ curl -X GET "http://localhost:8000/api/v1/process-status/123"
 
 #### `POST /api/v1/search`
 
-Search processed content using vector similarity or keyword matching.
+Search processed content using vector similarity search.
 
-**Query Parameters:**
+**Request Body:**
+```json
+{
+  "query": "machine learning",
+  "limit": 5
+}
+```
+
+**Request Body Parameters:**
 - `query` (string, required): Search query text
 - `limit` (integer, optional, default=5): Maximum number of results
-- `search_type` (string, optional, default="vector"): Search type ("vector" or "keyword")
-- `url_filter` (string, optional): Filter by URL substring
-- `keywords_filter` (array, optional): Filter by specific keywords
-- `date_from` (string, optional): Filter by date range (ISO format)
-- `date_to` (string, optional): Filter by date range (ISO format)
+- `filters` (object, optional): Weaviate filter object for narrowing results
+- `vector_name` (string, optional, default="content_vector"): Named vector to search against (`content_vector`, `title_vector`, or `memo_vector`)
+- `exclude_keywords` (array of strings, optional): Keywords to exclude from results
 
 **Response:**
 ```json
@@ -160,31 +166,62 @@ Search processed content using vector similarity or keyword matching.
     }
   ],
   "total": 1,
-  "query": "machine learning",
-  "search_type": "vector"
+  "query": "machine learning"
 }
 ```
 
 **Status Codes:**
 - `200 OK`: Search completed successfully
-- `400 Bad Request`: Invalid query parameters
 - `500 Internal Server Error`: Search error
 
 **Examples:**
 
 Vector search:
 ```bash
-curl -X GET "http://localhost:8000/api/v1/search?query=machine%20learning&limit=10"
+curl -X POST "http://localhost:8000/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "machine learning", "limit": 10}'
 ```
 
-Keyword search:
+Search with title vector:
 ```bash
-curl -X GET "http://localhost:8000/api/v1/search?query=AI&search_type=keyword&limit=5"
+curl -X POST "http://localhost:8000/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "AI introduction", "vector_name": "title_vector", "limit": 5}'
 ```
 
-Filtered search:
+Search with keyword exclusion:
 ```bash
-curl -X GET "http://localhost:8000/api/v1/search?query=python&url_filter=github.com&date_from=2024-01-01"
+curl -X POST "http://localhost:8000/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "python", "limit": 10, "exclude_keywords": ["tutorial", "beginner"]}'
+```
+
+---
+
+#### `POST /api/v1/search/keywords`
+
+Search processed content by matching against stored keywords.
+
+**Request Body:**
+```json
+["machine learning", "AI", "neural networks"]
+```
+
+**Query Parameters:**
+- `limit` (integer, optional, default=5): Maximum number of results
+
+**Response:** Same format as `POST /api/v1/search`
+
+**Status Codes:**
+- `200 OK`: Search completed successfully
+- `500 Internal Server Error`: Search error
+
+**Examples:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/search/keywords?limit=10" \
+  -H "Content-Type: application/json" \
+  -d '["machine learning", "AI"]'
 ```
 
 ---
