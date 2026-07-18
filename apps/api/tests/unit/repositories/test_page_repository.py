@@ -4,8 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
-from grimoire_api.models.database import Page
-from grimoire_api.repositories.log_repository import LogRepository
+from grimoire_api.models.database import Page, PageStatus
 
 
 class TestListPages:
@@ -30,6 +29,7 @@ class TestListPages:
         page_id1 = await page_repo.create_page("https://example1.com", "Title1")
         await page_repo.update_summary_keywords(page_id1, "summary", ["kw"])
         await page_repo.update_weaviate_id(page_id1, "uuid-1")
+        await page_repo.update_status(page_id1, PageStatus.SUCCEEDED)
 
         await page_repo.create_page("https://example2.com", "Title2")
 
@@ -42,15 +42,10 @@ class TestListPages:
         self, page_repo: Any, temp_db: Any
     ) -> None:
         """processing フィルターが failed ログのないページのみ返す."""
-        log_repo = LogRepository(db=temp_db)
-
         await page_repo.create_page("https://processing.com", "Processing")
 
         page_id_failed = await page_repo.create_page("https://failed.com", "Failed")
-        log_id = await log_repo.create_log(
-            "https://failed.com", "processing", page_id_failed
-        )
-        await log_repo.update_status(log_id, "failed", "error")
+        await page_repo.update_status(page_id_failed, PageStatus.FAILED)
 
         pages, total = await page_repo.list_pages(status_filter="processing")
         assert total == 1
@@ -61,15 +56,10 @@ class TestListPages:
         self, page_repo: Any, temp_db: Any
     ) -> None:
         """failed フィルターが failed ログのあるページのみ返す."""
-        log_repo = LogRepository(db=temp_db)
-
         await page_repo.create_page("https://processing.com", "Processing")
 
         page_id_failed = await page_repo.create_page("https://failed.com", "Failed")
-        log_id = await log_repo.create_log(
-            "https://failed.com", "processing", page_id_failed
-        )
-        await log_repo.update_status(log_id, "failed", "error")
+        await page_repo.update_status(page_id_failed, PageStatus.FAILED)
 
         pages, total = await page_repo.list_pages(status_filter="failed")
         assert total == 1

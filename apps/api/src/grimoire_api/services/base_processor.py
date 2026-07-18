@@ -1,7 +1,8 @@
 """Base processor service with shared save logic."""
 
-from ..models.database import ProcessingStep
+from ..models.database import PipelineStartStep, ProcessingStep
 from ..repositories.file_repository import FileRepository
+from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from .jina_client import JinaClient
@@ -20,6 +21,7 @@ class BaseProcessorService:
         page_repo: PageRepository,
         log_repo: LogRepository,
         file_repo: FileRepository,
+        job_repo: JobRepository | None = None,
     ):
         """初期化."""
         self.jina_client = jina_client
@@ -28,6 +30,7 @@ class BaseProcessorService:
         self.page_repo = page_repo
         self.log_repo = log_repo
         self.file_repo = file_repo
+        self.job_repo = job_repo
 
     async def _save_download_result(
         self, log_id: int, page_id: int, result: dict
@@ -58,7 +61,12 @@ class BaseProcessorService:
             raise
 
     async def _run_pipeline_from(
-        self, page_id: int, log_id: int, url: str, start_point: str
+        self,
+        page_id: int,
+        log_id: int,
+        url: str,
+        start_point: PipelineStartStep | str,
+        job_id: int | None = None,
     ) -> None:
         """指定ポイントからパイプラインを実行する.
 
@@ -66,17 +74,24 @@ class BaseProcessorService:
             page_id: 処理対象ページID
             log_id: ログID
             url: 処理対象URL
-            start_point: 開始ポイント ("download" | "llm" | "vectorize")
+            start_point: 型制約された開始ポイント
         """
-        if start_point == "download":
+        start_step = PipelineStartStep(start_point)
+        if start_step == PipelineStartStep.DOWNLOAD:
             jina_result = await self.jina_client.fetch_content(url)
             await self._save_download_result(log_id, page_id, jina_result)
-            start_point = "llm"
-        if start_point == "llm":
+            if self.job_repo and job_id:
+                await self.job_repo.update_step(job_id, ProcessingStep.DOWNLOADED)
+        if start_step in (PipelineStartStep.DOWNLOAD, PipelineStartStep.LLM):
             llm_result = await self.llm_service.generate_summary_keywords(page_id)
             await self._save_llm_result(log_id, page_id, llm_result)
-            start_point = "vectorize"
-        if start_point == "vectorize":
+            if self.job_repo and job_id:
+                await self.job_repo.update_step(job_id, ProcessingStep.LLM_PROCESSED)
+        if start_step in (
+            PipelineStartStep.DOWNLOAD,
+            PipelineStartStep.LLM,
+            PipelineStartStep.VECTORIZE,
+        ):
             try:
                 await self.vectorizer.vectorize_content(page_id)
             except Exception:
@@ -84,6 +99,10 @@ class BaseProcessorService:
                 raise
             await self.page_repo.update_success_step(page_id, ProcessingStep.VECTORIZED)
             await self.log_repo.update_status(log_id, "vectorize_complete")
+            if self.job_repo and job_id:
+                await self.job_repo.update_step(job_id, ProcessingStep.VECTORIZED)
 
         await self.page_repo.update_success_step(page_id, ProcessingStep.COMPLETED)
         await self.log_repo.update_status(log_id, "completed")
+        if self.job_repo and job_id:
+            await self.job_repo.update_step(job_id, ProcessingStep.COMPLETED)

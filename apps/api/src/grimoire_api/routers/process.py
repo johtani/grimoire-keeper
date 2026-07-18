@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..dependencies import get_url_processor_service
 from ..models.request import ProcessUrlRequest
@@ -14,17 +14,19 @@ from ..utils.metrics import url_processing_duration, url_processing_requests
 router = APIRouter(prefix="/api/v1", tags=["process"])
 
 
-@router.post("/process-url", response_model=ProcessUrlResponse)
+@router.post(
+    "/process-url",
+    response_model=ProcessUrlResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def process_url(
     request: ProcessUrlRequest,
-    background_tasks: BackgroundTasks,
     processor: UrlProcessorService = Depends(get_url_processor_service),
 ) -> ProcessUrlResponse:
     """URL処理エンドポイント.
 
     Args:
         request: URL処理リクエスト
-        background_tasks: バックグラウンドタスク
         processor: URL処理サービス
 
     Returns:
@@ -49,19 +51,12 @@ async def process_url(
                 message=result["message"],
             )
 
-        # バックグラウンドタスクに非同期処理を追加
-        background_tasks.add_task(
-            processor.process_url_background,
-            result["page_id"],
-            result["log_id"],
-            str(request.url),
-        )
-
-        url_processing_requests.add(1, {"status": "processing"})
+        url_processing_requests.add(1, {"status": "queued"})
         return ProcessUrlResponse(
-            status="processing",
+            status="queued",
             page_id=result["page_id"],
-            message="URL processing started",
+            job_id=result["job_id"],
+            message="URL processing queued",
         )
 
     except Exception as e:

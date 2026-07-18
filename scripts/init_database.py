@@ -93,14 +93,14 @@ async def check_database_status() -> bool:
         # テーブル存在確認
         tables_query = """
         SELECT name FROM sqlite_master
-        WHERE type='table' AND name IN ('pages', 'process_logs')
+        WHERE type='table' AND name IN ('pages', 'process_logs', 'jobs')
         """
         tables = await db.fetch_all(tables_query)
         table_names = [table["name"] for table in tables]
 
         print(f"📊 Found tables: {table_names}")
 
-        if "pages" in table_names and "process_logs" in table_names:
+        if {"pages", "process_logs", "jobs"}.issubset(table_names):
             print("✅ All required tables exist")
 
             # レコード数確認
@@ -108,12 +108,15 @@ async def check_database_status() -> bool:
             logs_result = await db.fetch_one(
                 "SELECT COUNT(*) as count FROM process_logs"
             )
+            jobs_result = await db.fetch_one("SELECT COUNT(*) as count FROM jobs")
 
             pages_count = pages_result["count"] if pages_result else 0
             logs_count = logs_result["count"] if logs_result else 0
+            jobs_count = jobs_result["count"] if jobs_result else 0
 
             print(f"📈 Pages: {pages_count} records")
             print(f"📈 Process logs: {logs_count} records")
+            print(f"📈 Jobs: {jobs_count} records")
         else:
             print("❌ Required tables are missing")
             return False
@@ -133,6 +136,7 @@ async def reset_database() -> bool:
         db = DatabaseConnection()
 
         # テーブル削除
+        await db.execute("DROP TABLE IF EXISTS jobs")
         await db.execute("DROP TABLE IF EXISTS process_logs")
         await db.execute("DROP TABLE IF EXISTS pages")
         print("🗑️  Existing tables dropped")

@@ -20,6 +20,7 @@ class TestProcessRouter:
             "status": "prepared",
             "page_id": 1,
             "log_id": 10,
+            "job_id": 100,
             "message": "Processing prepared",
         }
         app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
@@ -29,9 +30,10 @@ class TestProcessRouter:
             json={"url": "https://example.com"},
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "processing"
+        assert data["status"] == "queued"
+        assert data["job_id"] == 100
         assert data["page_id"] == 1
 
     def test_process_url_already_exists(self) -> None:
@@ -49,7 +51,7 @@ class TestProcessRouter:
             json={"url": "https://example.com"},
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
         assert data["status"] == "already_exists"
         assert data["page_id"] == 42
@@ -61,6 +63,7 @@ class TestProcessRouter:
             "status": "prepared",
             "page_id": 2,
             "log_id": 20,
+            "job_id": 200,
             "message": "Processing prepared",
         }
         app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
@@ -70,7 +73,7 @@ class TestProcessRouter:
             json={"url": "https://example.com", "memo": "test memo"},
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         mock_processor.prepare_url_processing.assert_called_once_with(
             "https://example.com/", "test memo"
         )

@@ -10,6 +10,7 @@ class ProcessUrlResponse(BaseModel):
 
     status: str
     page_id: int
+    job_id: int | None = None
     message: str
 
 

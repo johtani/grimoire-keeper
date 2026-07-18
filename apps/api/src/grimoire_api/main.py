@@ -14,8 +14,20 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 
 from .config import settings
-from .dependencies import get_jina_client
+from .dependencies import (
+    get_chunking_service,
+    get_db_connection,
+    get_file_repository,
+    get_jina_client,
+)
+from .repositories.job_repository import JobRepository
+from .repositories.log_repository import LogRepository
+from .repositories.page_repository import PageRepository
 from .routers import health, pages, process, retry, search
+from .services.base_processor import BaseProcessorService
+from .services.job_worker import JobWorker
+from .services.llm_service import LLMService
+from .services.vectorizer import VectorizerService
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
@@ -58,9 +70,38 @@ async def lifespan(app: FastAPI) -> Any:
         app.state.weaviate_client = None
         logger.warning("Weaviate connection failed, continuing startup: %s", e)
 
+    job_worker = None
+    if app.state.weaviate_client is not None:
+        db = get_db_connection()
+        page_repo = PageRepository(db)
+        log_repo = LogRepository(db)
+        job_repo = JobRepository(db)
+        file_repo = get_file_repository()
+        processor = BaseProcessorService(
+            jina_client=get_jina_client(),
+            llm_service=LLMService(file_repo),
+            vectorizer=VectorizerService(
+                page_repo,
+                file_repo,
+                get_chunking_service(),
+                app.state.weaviate_client,
+            ),
+            page_repo=page_repo,
+            log_repo=log_repo,
+            file_repo=file_repo,
+            job_repo=job_repo,
+        )
+        job_worker = JobWorker(job_repo, page_repo, log_repo, processor)
+        await job_worker.start()
+        app.state.job_worker = job_worker
+        logger.info("Persistent job worker started")
+
     yield
 
     # 終了時処理
+    if job_worker is not None:
+        await job_worker.stop()
+        logger.info("Persistent job worker stopped")
     if getattr(app.state, "weaviate_client", None) is not None:
         app.state.weaviate_client.close()
         logger.info("Weaviate client closed")
