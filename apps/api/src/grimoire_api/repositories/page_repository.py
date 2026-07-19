@@ -5,7 +5,7 @@ from datetime import datetime
 
 import aiosqlite
 
-from ..models.database import Page, ProcessingStep
+from ..models.database import Page, PageStatus, ProcessingStep
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 
@@ -42,8 +42,8 @@ class PageRepository:
         """Page作成."""
         try:
             query = """
-            INSERT INTO pages (url, title, memo, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO pages (url, title, memo, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'queued', ?, ?)
             """
             now = datetime.now()
             lastrowid = await self.db.execute(query, (url, title, memo, now, now))
@@ -56,7 +56,7 @@ class PageRepository:
         try:
             query = """
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, created_at, updated_at
+                   last_success_step, status, created_at, updated_at
             FROM pages WHERE id = ?
             """
             result = await self.db.fetch_one(query, (page_id,))
@@ -113,6 +113,16 @@ class PageRepository:
             await self.db.execute(query, (step, datetime.now(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update success step: {str(e)}")
+
+    async def update_status(self, page_id: int, status: PageStatus) -> None:
+        """ページの現在状態を更新する."""
+        try:
+            await self.db.execute(
+                "UPDATE pages SET status=?, updated_at=? WHERE id=?",
+                (status.value, datetime.now(), page_id),
+            )
+        except Exception as e:
+            raise DatabaseError(f"Failed to update page status: {e}")
 
     async def update_title_and_step(
         self, page_id: int, title: str, step: ProcessingStep
@@ -198,7 +208,7 @@ class PageRepository:
         try:
             query = """
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, created_at, updated_at
+                   last_success_step, status, created_at, updated_at
             FROM pages
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
@@ -235,7 +245,7 @@ class PageRepository:
             order_clause = f"ORDER BY {sort_by} {order_upper}"
             query = f"""
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, created_at, updated_at
+                   last_success_step, status, created_at, updated_at
             FROM pages
             {where_clause}
             {order_clause}
@@ -279,7 +289,7 @@ class PageRepository:
             order_clause = f"ORDER BY {sort} {order_upper}"
             query = f"""
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, created_at, updated_at
+                   last_success_step, status, created_at, updated_at
             FROM pages
             {where_clause}
             {order_clause}
@@ -298,7 +308,7 @@ class PageRepository:
         try:
             query = """
             SELECT id, url, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, created_at, updated_at
+                   last_success_step, status, created_at, updated_at
             FROM pages
             WHERE last_success_step = ?
             ORDER BY created_at ASC
@@ -311,22 +321,11 @@ class PageRepository:
     def _status_where_clause(self, status_filter: str | None) -> str:
         """ステータスフィルター用SQL WHERE句を生成."""
         if status_filter == "completed":
-            return "WHERE summary IS NOT NULL AND weaviate_id IS NOT NULL"
+            return "WHERE status = 'succeeded'"
         elif status_filter == "processing":
-            return """
-                    WHERE (summary IS NULL OR weaviate_id IS NULL)
-                    AND id NOT IN (
-                        SELECT DISTINCT page_id FROM process_logs
-                        WHERE status = 'failed' AND page_id IS NOT NULL
-                    )
-                    """
+            return "WHERE status IN ('queued', 'processing')"
         elif status_filter == "failed":
-            return """
-                    WHERE id IN (
-                        SELECT DISTINCT page_id FROM process_logs
-                        WHERE status = 'failed' AND page_id IS NOT NULL
-                    )
-                    """
+            return "WHERE status = 'failed'"
         return ""
 
     @staticmethod
@@ -351,4 +350,5 @@ class PageRepository:
                 if "last_success_step" in row.keys() and row["last_success_step"]
                 else None
             ),
+            status=PageStatus(row["status"]),
         )

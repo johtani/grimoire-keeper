@@ -18,6 +18,49 @@ class ProcessingStep(str, Enum):
     COMPLETED = "completed"
 
 
+class PipelineStartStep(str, Enum):
+    """パイプラインの開始ステップ."""
+
+    DOWNLOAD = "download"
+    LLM = "llm"
+    VECTORIZE = "vectorize"
+
+
+class ReprocessStartStep(str, Enum):
+    """API で指定できる再処理開始ステップ."""
+
+    AUTO = "auto"
+    DOWNLOAD = "download"
+    LLM = "llm"
+    VECTORIZE = "vectorize"
+
+
+class PageStatus(str, Enum):
+    """ページの現在状態."""
+
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class JobKind(str, Enum):
+    """ジョブ種別."""
+
+    INITIAL = "initial"
+    RETRY = "retry"
+    REPROCESS = "reprocess"
+
+
+class JobStatus(str, Enum):
+    """ジョブ状態."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 @dataclass
 class Page:
     """ページデータモデル."""
@@ -32,6 +75,24 @@ class Page:
     updated_at: datetime
     weaviate_id: str | None
     last_success_step: ProcessingStep | None = None
+    status: PageStatus = PageStatus.QUEUED
+
+
+@dataclass
+class Job:
+    """永続処理ジョブ."""
+
+    id: int
+    page_id: int
+    kind: JobKind
+    status: JobStatus
+    current_step: ProcessingStep | None
+    start_step: PipelineStartStep
+    attempt: int
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
 
 
 @dataclass

@@ -101,6 +101,11 @@ curl -X POST "http://localhost:8000/api/v1/process-url" \
   -d '{"url": "https://example.com", "memo": "Interesting article"}'
 ```
 
+The API persists a job and immediately returns `202 Accepted` with `page_id` and
+`job_id`. A single worker in the API process executes queued jobs.
+API はジョブを永続化し、`page_id` と `job_id` を含む `202 Accepted` を即座に返します。
+キューに入ったジョブは API プロセス内の単一ワーカーが処理します。
+
 ### Search content / コンテンツの検索
 
 ```bash
@@ -127,22 +132,28 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Client    │───▶│  FastAPI    │───▶│  Weaviate   │
-│ クライアント │    │     API     │    │ (Vector DB) │
-└─────────────┘    └─────────────┘    └─────────────┘
-                           │
-                           ▼
-                   ┌─────────────┐
-                   │   SQLite    │
-                   │ (Metadata)  │
-                   └─────────────┘
+│   Client    │───▶│  FastAPI    │───▶│   SQLite    │
+│ クライアント │    │     API     │    │ Pages/Jobs  │
+└─────────────┘    └─────────────┘    └──────┬──────┘
+                           │                  │
+                           │           Persistent queue
+                           │                  ▼
+                           │           ┌─────────────┐
+                           └──────────▶│ Job Worker  │
+                                      └──────┬──────┘
+                                             │
+                              ┌──────────────┼──────────────┐
+                              ▼              ▼              ▼
+                         Jina / LLM      JSON Cache      Weaviate
 ```
 
 ### Components / コンポーネント
 
 - **FastAPI Backend**: RESTful API for URL processing and search / URL処理と検索のためのRESTful API
-- **Weaviate**: Vector database for semantic search / セマンティック検索用ベクトルデータベース
-- **SQLite**: Metadata storage and processing logs / メタデータ保存と処理ログ
+- **SQLite**: Source of truth for pages, current status, jobs, and audit logs / ページ、現在状態、ジョブ、監査ログの正本
+- **JSON Cache**: Replaceable Jina response artifacts used for reprocessing / 再処理に利用するJinaレスポンス成果物
+- **Job Worker**: Single persistent-job worker that resumes queued/interrupted work after startup / 起動後にキュー・中断ジョブを再開する単一ワーカー
+- **Weaviate**: Rebuildable semantic-search index / 再構築可能なセマンティック検索索引
 - **External APIs**: Jina AI Reader, Google Gemini, OpenAI Embeddings / 外部API
 
 ## 🛠️ Development / 開発
@@ -231,6 +242,7 @@ bws secret list        # Bitwarden からシークレット取得テスト
 | `GET` | `/api/v1/search` | Search processed content / 処理済みコンテンツを検索 |
 | `GET` | `/api/v1/process-status/{id}` | Check processing status / 処理状況を確認 |
 | `POST` | `/api/v1/retry/{id}` | Retry failed processing for specific page / 特定ページの失敗処理を再実行 |
+| `POST` | `/api/v1/reprocess/{id}` | Reprocess any page from a selected step / 任意ページを指定ステップから再処理 |
 | `POST` | `/api/v1/retry-failed` | Retry all failed pages / 失敗した全ページを再実行 |
 | `GET` | `/api/v1/pages` | List pages with status filtering / ステータスフィルタ付きページ一覧 |
 | `GET` | `/api/v1/pages/{id}` | Get page details with error info / エラー情報付きページ詳細 |
@@ -248,9 +260,10 @@ POST /api/v1/process-url
 
 Response:
 {
-  "status": "processing",
+  "status": "queued",
   "page_id": 123,
-  "message": "URL processing started"
+  "job_id": 456,
+  "message": "URL processing queued"
 }
 ```
 

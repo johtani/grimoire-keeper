@@ -23,7 +23,7 @@ class TestRetryRouter:
 
         response = client.post("/api/v1/retry/1")
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
         assert data["status"] == "success"
         assert data["page_id"] == 1
@@ -53,7 +53,7 @@ class TestRetryRouter:
             json={"from_step": "llm"},
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
         assert data["status"] == "success"
         mock_service.reprocess_page.assert_called_once_with(2, "llm")
@@ -66,7 +66,7 @@ class TestRetryRouter:
 
         response = client.post("/api/v1/reprocess/3")
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         mock_service.reprocess_page.assert_called_once_with(3, "auto")
 
     def test_retry_all_failed_success(self) -> None:
@@ -81,7 +81,7 @@ class TestRetryRouter:
 
         response = client.post("/api/v1/retry-failed")
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
         assert data["total"] == 3
         assert data["success"] == 3
@@ -101,7 +101,14 @@ class TestRetryRouter:
             json={"max_retries": 5, "delay_seconds": 2},
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 202
         mock_service.retry_all_failed.assert_called_once_with(
             max_retries=5, delay_seconds=2
         )
+
+    def test_reprocess_rejects_unknown_step(self) -> None:
+        """未知の from_step は Pydantic により 422 になる."""
+        app.dependency_overrides[get_retry_service] = lambda: AsyncMock()
+        response = client.post("/api/v1/reprocess/2", json={"from_step": "unknown"})
+
+        assert response.status_code == 422

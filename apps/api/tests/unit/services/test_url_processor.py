@@ -5,7 +5,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from grimoire_api.models.database import ProcessingStep
+from grimoire_api.models.database import PageStatus, ProcessingStep
+from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
@@ -31,6 +32,7 @@ class TestUrlProcessorService:
             "page_repo": page_repo,
             "log_repo": log_repo,
             "file_repo": AsyncMock(),
+            "job_repo": AsyncMock(),
         }
 
     @pytest.fixture
@@ -43,6 +45,7 @@ class TestUrlProcessorService:
             page_repo=mock_services["page_repo"],
             log_repo=mock_services["log_repo"],
             file_repo=mock_services["file_repo"],
+            job_repo=mock_services["job_repo"],
         )
 
     @pytest.mark.asyncio
@@ -59,6 +62,7 @@ class TestUrlProcessorService:
         mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["page_repo"].create_page.return_value = page_id
         mock_services["log_repo"].create_log.return_value = log_id
+        mock_services["job_repo"].enqueue.return_value = 99
 
         # 処理実行
         result = await url_processor.prepare_url_processing(url, memo)
@@ -67,6 +71,7 @@ class TestUrlProcessorService:
         assert result["status"] == "prepared"
         assert result["page_id"] == page_id
         assert result["log_id"] == log_id
+        assert result["job_id"] == 99
         assert "prepared" in result["message"]
 
         # 各ステップが呼ばれたことを確認
@@ -283,6 +288,7 @@ class TestUrlProcessorService:
         mock_page.summary = "Test summary"
         mock_page.keywords = ["test", "keyword"]
         mock_page.created_at.isoformat.return_value = "2024-01-01T00:00:00"
+        mock_page.status = PageStatus.SUCCEEDED
 
         # モックログデータ
         mock_log = MagicMock()
@@ -358,6 +364,7 @@ class TestConcurrentUrlProcessor:
         def _make() -> UrlProcessorService:
             page_repo = PageRepository(db=temp_db)
             log_repo = LogRepository(db=temp_db)
+            job_repo = JobRepository(db=temp_db)
             return UrlProcessorService(
                 jina_client=AsyncMock(),
                 llm_service=AsyncMock(),
@@ -365,6 +372,7 @@ class TestConcurrentUrlProcessor:
                 page_repo=page_repo,
                 log_repo=log_repo,
                 file_repo=AsyncMock(),
+                job_repo=job_repo,
             )
 
         return _make

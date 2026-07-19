@@ -1,28 +1,15 @@
 """Retry processing router."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..dependencies import get_retry_service
+from ..models.request import ReprocessRequest, RetryAllRequest
 from ..services.retry_service import RetryService
 
 router = APIRouter(prefix="/api/v1", tags=["retry"])
 
 
-class RetryAllRequest(BaseModel):
-    """一括再処理リクエスト."""
-
-    max_retries: int | None = None
-    delay_seconds: int = 1
-
-
-class ReprocessRequest(BaseModel):
-    """再処理リクエスト."""
-
-    from_step: str = "auto"  # "auto", "download", "llm", "vectorize"
-
-
-@router.post("/retry/{page_id}")
+@router.post("/retry/{page_id}", status_code=status.HTTP_202_ACCEPTED)
 async def retry_page(
     page_id: int,
     retry_service: RetryService = Depends(get_retry_service),
@@ -43,7 +30,7 @@ async def retry_page(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/reprocess/{page_id}")
+@router.post("/reprocess/{page_id}", status_code=status.HTTP_202_ACCEPTED)
 async def reprocess_page(
     page_id: int,
     request: ReprocessRequest | None = None,
@@ -67,7 +54,7 @@ async def reprocess_page(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/retry-failed")
+@router.post("/retry-failed", status_code=status.HTTP_202_ACCEPTED)
 async def retry_all_failed(
     request: RetryAllRequest | None = None,
     retry_service: RetryService = Depends(get_retry_service),

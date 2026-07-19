@@ -60,15 +60,15 @@ Process a URL to extract content, generate summary/keywords, and store in vector
 **Response:**
 ```json
 {
-  "status": "processing",
+  "status": "queued",
   "page_id": 123,
-  "message": "URL processing started"
+  "job_id": 456,
+  "message": "URL processing queued"
 }
 ```
 
 **Status Codes:**
-- `200 OK`: Processing started successfully
-- `400 Bad Request`: Invalid URL format
+- `202 Accepted`: The persistent job was queued successfully
 - `422 Unprocessable Entity`: Validation error
 - `500 Internal Server Error`: Processing error
 
@@ -111,6 +111,7 @@ Check the processing status of a specific URL.
 ```
 
 **Status Values:**
+- `queued`: Persisted and waiting for the worker
 - `processing`: Still being processed
 - `completed`: Successfully completed
 - `failed`: Processing failed
@@ -118,7 +119,7 @@ Check the processing status of a specific URL.
 
 **Status Codes:**
 - `200 OK`: Status retrieved successfully
-- `404 Not Found`: Page ID not found
+- Unknown IDs are represented by `status: "not_found"` in a `200 OK` response
 
 **Example:**
 ```bash
@@ -350,27 +351,58 @@ Retry processing for a specific failed page, resuming from the last successful s
 {
   "status": "retry_started",
   "page_id": 123,
-  "restart_from": "llm_processing",
-  "message": "Retry processing started from LLM step"
+  "job_id": 457,
+  "restart_from": "llm",
+  "message": "Retry processing started from llm step"
 }
 ```
 
 **Restart Points:**
 - `download`: Start from content extraction (Jina AI)
-- `llm_processing`: Start from summary/keywords generation (Gemini)
-- `vectorization`: Start from vector storage (Weaviate)
-- `already_completed`: Page is already successfully processed
+- `llm`: Start from summary/keywords generation
+- `vectorize`: Start from vector storage (Weaviate)
 
 **Status Codes:**
-- `200 OK`: Retry started successfully
-- `404 Not Found`: Page not found
-- `400 Bad Request`: Page is not in failed state
-- `500 Internal Server Error`: Retry initiation error
+- `202 Accepted`: Retry job queued successfully
+- `500 Internal Server Error`: Page lookup or job registration error
 
 **Example:**
 ```bash
 curl -X POST "http://localhost:8000/api/v1/retry/123"
 ```
+
+---
+
+#### `POST /api/v1/reprocess/{page_id}`
+
+Queue reprocessing for any existing page, including a successfully completed page.
+
+**Request Body (Optional):**
+```json
+{
+  "from_step": "auto"
+}
+```
+
+`from_step` accepts only `auto`, `download`, `llm`, or `vectorize`. `auto` selects
+the restart point from `last_success_step`. Any other value returns
+`422 Unprocessable Entity` and no job is created.
+
+**Response:**
+```json
+{
+  "status": "reprocess_started",
+  "page_id": 123,
+  "job_id": 458,
+  "restart_from": "vectorize",
+  "message": "Reprocessing started from vectorize step"
+}
+```
+
+**Status Codes:**
+- `202 Accepted`: Reprocessing job queued successfully
+- `422 Unprocessable Entity`: Unknown `from_step`
+- `500 Internal Server Error`: Page lookup or job registration error
 
 ---
 
@@ -388,7 +420,8 @@ Retry processing for all pages with failed status.
 
 **Parameters:**
 - `max_retries` (integer, optional, default=unlimited): Maximum number of pages to retry
-- `delay_seconds` (integer, optional, default=1): Delay between retry attempts
+- `delay_seconds` (integer, optional, deprecated): Accepted for compatibility;
+  persistent jobs are queued without an in-request delay
 
 **Response:**
 ```json
@@ -396,12 +429,13 @@ Retry processing for all pages with failed status.
   "status": "batch_retry_started",
   "total_failed_pages": 5,
   "retry_count": 5,
+  "job_ids": [460, 461, 462, 463, 464],
   "message": "Batch retry started for 5 failed pages"
 }
 ```
 
 **Status Codes:**
-- `200 OK`: Batch retry started successfully
+- `202 Accepted`: Retry jobs queued successfully
 - `400 Bad Request`: Invalid parameters
 - `500 Internal Server Error`: Batch retry initiation error
 
@@ -517,6 +551,12 @@ const failedPages = await failedPagesResponse.json();
 
 URL 処理がいずれかのステージで失敗した場合、システムは失敗を記録し、最後に成功したステップからインテリジェントなリトライを可能にします。
 
+`pages.status` がページの現在状態の正本です。`process_logs` は監査履歴として保持されますが、
+過去の失敗ログだけを理由に失敗一覧や一括リトライの対象にはなりません。ジョブは SQLite の
+`jobs` テーブルへ永続化され、API 起動時に `queued` ジョブを再開し、中断された `running`
+ジョブを `queued` に戻します。同一ページに `queued` または `running` のジョブを複数登録する
+ことはできません。
+
 ### 処理ステージ
 
 | ステージ | `last_success_step` 値 | 説明 |
@@ -535,7 +575,7 @@ URL 処理がいずれかのステージで失敗した場合、システムは�
 | `NULL` または空 | コンテンツ取得から |
 | `downloaded` | LLM 処理から (取得をスキップ) |
 | `llm_processed` | ベクトル化から (取得・LLM をスキップ) |
-| `vectorized` | 完了処理のみ |
+| `vectorized` | ベクトル化から再実行 |
 | `completed` | リトライ不要 |
 
 ### リトライ API

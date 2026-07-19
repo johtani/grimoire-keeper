@@ -11,6 +11,7 @@ from grimoire_api.config import settings
 from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
+from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.chunking_service import ChunkingService
@@ -43,6 +44,7 @@ async def batch_retry_from_status(
     file_repo = FileRepository()
     page_repo = PageRepository(db)
     log_repo = LogRepository(db)
+    job_repo = JobRepository(db)
 
     jina_client = JinaClient()
     llm_service = LLMService(file_repo)
@@ -63,6 +65,7 @@ async def batch_retry_from_status(
         page_repo=page_repo,
         log_repo=log_repo,
         file_repo=file_repo,
+        job_repo=job_repo,
     )
 
     try:

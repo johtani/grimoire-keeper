@@ -2,7 +2,9 @@
 
 from typing import Any
 
+from ..models.database import JobKind, PageStatus, PipelineStartStep
 from ..repositories.file_repository import FileRepository
+from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import GrimoireAPIError
@@ -23,6 +25,7 @@ class UrlProcessorService(BaseProcessorService):
         page_repo: PageRepository,
         log_repo: LogRepository,
         file_repo: FileRepository,
+        job_repo: JobRepository | None = None,
     ):
         """初期化."""
         super().__init__(
@@ -32,6 +35,7 @@ class UrlProcessorService(BaseProcessorService):
             page_repo=page_repo,
             log_repo=log_repo,
             file_repo=file_repo,
+            job_repo=job_repo,
         )
 
     async def prepare_url_processing(
@@ -63,11 +67,17 @@ class UrlProcessorService(BaseProcessorService):
 
             # 2. 処理開始ログ作成
             log_id = await self.log_repo.create_log(url, "started", page_id)
+            if self.job_repo is None:
+                raise GrimoireAPIError("Job repository is not configured")
+            job_id = await self.job_repo.enqueue(
+                page_id, JobKind.INITIAL, PipelineStartStep.DOWNLOAD
+            )
 
             return {
                 "status": "prepared",
                 "page_id": page_id,
                 "log_id": log_id,
+                "job_id": job_id,
                 "message": "Processing prepared",
             }
 
@@ -99,21 +109,13 @@ class UrlProcessorService(BaseProcessorService):
             if not page:
                 return {"status": "not_found", "message": "Page not found"}
 
-            logs = await self.log_repo.get_logs_by_status("completed")
-            logs.extend(await self.log_repo.get_logs_by_status("failed"))
-
-            page_log = None
-            for log in logs:
-                if log.page_id == page_id:
-                    page_log = log
-                    break
-
-            if not page_log:
-                return {"status": "processing", "message": "Processing in progress"}
-
             return {
-                "status": page_log.status,
-                "message": page_log.error_message or "Processing completed",
+                "status": (
+                    "completed"
+                    if page.status == PageStatus.SUCCEEDED
+                    else page.status.value
+                ),
+                "message": "Processing status retrieved",
                 "page": {
                     "id": page.id,
                     "url": page.url,

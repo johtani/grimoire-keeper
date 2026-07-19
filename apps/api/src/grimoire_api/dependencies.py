@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Request
 
 from .repositories.database import DatabaseConnection
 from .repositories.file_repository import FileRepository
+from .repositories.job_repository import JobRepository
 from .repositories.log_repository import LogRepository
 from .repositories.page_repository import PageRepository
 from .services.chunking_service import ChunkingService
@@ -64,6 +65,13 @@ def get_log_repository(
 ) -> LogRepository:
     """ログリポジトリ依存性注入."""
     return LogRepository(db)
+
+
+def get_job_repository(
+    db: DatabaseConnection = Depends(get_db_connection),
+) -> JobRepository:
+    """ジョブリポジトリ依存性注入."""
+    return JobRepository(db)
 
 
 def get_page_service(
@@ -125,6 +133,7 @@ def get_url_processor_service(
     page_repo: PageRepository = Depends(get_page_repository),
     log_repo: LogRepository = Depends(get_log_repository),
     file_repo: FileRepository = Depends(get_file_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
 ) -> UrlProcessorService:
     """URL 処理サービス依存性注入."""
     return UrlProcessorService(
@@ -134,6 +143,7 @@ def get_url_processor_service(
         page_repo=page_repo,
         log_repo=log_repo,
         file_repo=file_repo,
+        job_repo=job_repo,
     )
 
 
@@ -144,6 +154,7 @@ def get_retry_service(
     page_repo: PageRepository = Depends(get_page_repository),
     log_repo: LogRepository = Depends(get_log_repository),
     file_repo: FileRepository = Depends(get_file_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
 ) -> RetryService:
     """再処理サービス依存性注入."""
     return RetryService(
@@ -153,4 +164,5 @@ def get_retry_service(
         page_repo=page_repo,
         log_repo=log_repo,
         file_repo=file_repo,
+        job_repo=job_repo,
     )

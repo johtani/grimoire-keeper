@@ -1,8 +1,8 @@
 """Page service — ページ一覧・詳細取得のビジネスロジック."""
 
-import asyncio
 from datetime import datetime
 
+from ..models.database import PageStatus
 from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
@@ -76,15 +76,14 @@ class PageService:
             status_filter=status_filter,
         )
 
-        failed_page_ids, existing_json_ids = await asyncio.gather(
-            self.log_repo.get_failed_page_ids(),
-            self.file_repo.get_existing_page_ids(),
-        )
+        existing_json_ids = await self.file_repo.get_existing_page_ids()
 
         result = []
         for page in pages:
-            status = self.compute_page_status(
-                page.summary, page.weaviate_id, page.id in failed_page_ids
+            status = (
+                "completed"
+                if page.status == PageStatus.SUCCEEDED
+                else page.status.value
             )
             has_json_file = page.id in existing_json_ids
             result.append(
@@ -118,14 +117,13 @@ class PageService:
         if not page:
             return None
 
-        error_message, has_failed_log_row = await asyncio.gather(
-            self.log_repo.get_latest_error(page_id),
-            self.log_repo.get_failed_page_ids(),
+        error_message = (
+            await self.log_repo.get_latest_error(page_id)
+            if page.status == PageStatus.FAILED
+            else None
         )
-        has_failed_log = page_id in has_failed_log_row
-
-        status = self.compute_page_status(
-            page.summary, page.weaviate_id, has_failed_log
+        status = (
+            "completed" if page.status == PageStatus.SUCCEEDED else page.status.value
         )
 
         return {

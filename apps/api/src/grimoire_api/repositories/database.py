@@ -105,7 +105,8 @@ class DatabaseConnection:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             weaviate_id TEXT,
-            last_success_step TEXT DEFAULT NULL
+            last_success_step TEXT DEFAULT NULL,
+            status TEXT NOT NULL DEFAULT 'queued'
         )
         """
 
@@ -117,6 +118,23 @@ class DatabaseConnection:
             status TEXT NOT NULL,
             error_message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES pages(id)
+        )
+        """
+
+        jobs_table = """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            current_step TEXT,
+            start_step TEXT NOT NULL,
+            attempt INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            finished_at TIMESTAMP,
             FOREIGN KEY (page_id) REFERENCES pages(id)
         )
         """
@@ -135,6 +153,7 @@ class DatabaseConnection:
 
             await conn.execute(pages_table)
             await conn.execute(process_logs_table)
+            await conn.execute(jobs_table)
 
             # マイグレーション実行（カラムが既に存在する場合はエラーを無視）
             try:
@@ -142,6 +161,27 @@ class DatabaseConnection:
             except aiosqlite.OperationalError as e:
                 if "duplicate column" not in str(e).lower():
                     raise
+
+            try:
+                await conn.execute(
+                    "ALTER TABLE pages ADD COLUMN status TEXT NOT NULL DEFAULT 'queued'"
+                )
+            except aiosqlite.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+
+            # jobs がない旧行だけを一度バックフィルする。
+            await conn.execute(
+                """
+                UPDATE pages SET status = CASE
+                    WHEN last_success_step = 'completed'
+                         OR (summary IS NOT NULL AND weaviate_id IS NOT NULL)
+                    THEN 'succeeded' ELSE 'failed' END
+                WHERE status = 'queued' AND NOT EXISTS (
+                    SELECT 1 FROM jobs WHERE jobs.page_id = pages.id
+                )
+                """
+            )
 
             # インデックス作成
             await conn.execute(
@@ -155,6 +195,17 @@ class DatabaseConnection:
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pages_last_success_step"
                 " ON pages(last_success_step)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status)"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_status_created"
+                " ON jobs(status, created_at, id)"
+            )
+            await conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_page"
+                " ON jobs(page_id) WHERE status IN ('queued', 'running')"
             )
 
             await conn.commit()
