@@ -222,6 +222,22 @@ class TestLLMService:
             await llm_service.generate_summary_keywords(7)
 
     @pytest.mark.asyncio
+    async def test_all_empty_chunks_raise_clear_error(
+        self, mock_file_repo: Any
+    ) -> None:
+        """チャンカーが空白しか返さない場合はページID付きのエラーになる."""
+        chunker = MagicMock()
+        chunker.chunk_text_with_jina_data.return_value = [" ", "\n"]
+        service = LLMService(mock_file_repo, api_key="key", chunking_service=chunker)
+        service.input_token_limit = 100
+        service._count_tokens = MagicMock(return_value=101)
+
+        with pytest.raises(
+            LLMServiceError, match="No summary chunks generated: page_id=8"
+        ):
+            await service.generate_summary_keywords(8)
+
+    @pytest.mark.asyncio
     async def test_boundary_uses_single_summary(self, llm_service: LLMService) -> None:
         """入力上限ちょうどなら従来の単発要約を使う."""
         llm_service.input_token_limit = 100
