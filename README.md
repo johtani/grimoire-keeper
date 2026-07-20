@@ -16,7 +16,7 @@
 ## ✨ Features / 機能
 
 - 🔗 **URL Processing / URL処理**: Automatically fetch and process web page content / Webページコンテンツの自動取得・処理
-- 🤖 **AI Summarization / AI要約**: Generate summaries and extract keywords using Google Gemini / Google Geminiを使用した要約とキーワード抽出
+- 🤖 **AI Summarization / AI要約**: Generate summaries and keywords using a configurable LLM, with hierarchical summarization for long pages / 設定可能なLLMによる要約・キーワード抽出と、長文ページの階層的な分割要約
 - 🔍 **Vector Search / ベクトル検索**: Semantic search powered by Weaviate and OpenAI embeddings / WeaviateとOpenAI埋め込みによるセマンティック検索
 - 📊 **Flexible Filtering / 柔軟なフィルタリング**: Search by URL, keywords, date ranges / URL、キーワード、日付範囲での検索
 - 🔄 **Smart Retry Processing / スマート再処理**: Intelligent retry from last successful step for failed operations / 失敗した処理を最後の成功ステップから賢く再実行
@@ -58,6 +58,20 @@
    echo 'BWS_ACCESS_TOKEN=your-access-token' > ~/.config/bws.env
    chmod 600 ~/.config/bws.env
    ```
+
+   Long pages are split into partial summaries and combined hierarchically so
+   that every LLM request remains within the configured context window.
+   The input budget is `LLM_CONTEXT_WINDOW - LLM_MAX_OUTPUT_TOKENS`.
+
+   長文ページは部分要約に分割して階層的に統合し、各LLMリクエストが設定した
+   コンテキスト上限に収まるよう処理します。入力予算は
+   `LLM_CONTEXT_WINDOW - LLM_MAX_OUTPUT_TOKENS` です。
+
+   | Environment variable / 環境変数 | Default / デフォルト | Description / 説明 |
+   |---|---:|---|
+   | `LLM_CONTEXT_WINDOW` | `32768` | Model context-window size / モデルのコンテキスト上限 |
+   | `LLM_MAX_OUTPUT_TOKENS` | `1024` | Tokens reserved for each response / 各レスポンス用に確保する最大トークン数 |
+   | `LLM_SUMMARY_CONCURRENCY` | `3` | Maximum concurrent partial-summary requests / 部分要約の最大同時リクエスト数 |
 
    > **devcontainer を使う場合 / Using devcontainer:**
    > VS Code で `Ctrl+Shift+P` → "Dev Containers: Reopen in Container" を実行すると

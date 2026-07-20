@@ -5,6 +5,7 @@ from functools import lru_cache
 import weaviate
 from fastapi import Depends, HTTPException, Request
 
+from .config import settings
 from .repositories.database import DatabaseConnection
 from .repositories.file_repository import FileRepository
 from .repositories.job_repository import JobRepository
@@ -40,6 +41,13 @@ def get_file_repository() -> FileRepository:
 def get_chunking_service() -> ChunkingService:
     """チャンキングサービスシングルトン."""
     return ChunkingService()
+
+
+@lru_cache
+def get_summary_chunking_service() -> ChunkingService:
+    """要約専用設定のチャンキングサービスシングルトン."""
+    input_budget = settings.LLM_CONTEXT_WINDOW - settings.LLM_MAX_OUTPUT_TOKENS
+    return ChunkingService(chunk_size=max(1, input_budget // 2))
 
 
 @lru_cache
@@ -85,9 +93,10 @@ def get_page_service(
 
 def get_llm_service(
     file_repo: FileRepository = Depends(get_file_repository),
+    chunking_service: ChunkingService = Depends(get_summary_chunking_service),
 ) -> LLMService:
     """LLM サービス依存性注入."""
-    return LLMService(file_repo)
+    return LLMService(file_repo, chunking_service=chunking_service)
 
 
 # ---------------------------------------------------------------------------
