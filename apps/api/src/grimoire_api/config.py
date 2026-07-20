@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "openai/qwen3-35b"
     LLM_API_BASE: str = ""  # 空の場合はLiteLLMのデフォルトルーティングを使用 (Gemini等)
     LLM_API_KEY: str = "dummy"
+    LLM_CONTEXT_WINDOW: int = 32768
+    LLM_MAX_OUTPUT_TOKENS: int = 1024
+    LLM_SUMMARY_CONCURRENCY: int = 3
 
     # Database
     DATABASE_PATH: str = "./grimoire.db"
