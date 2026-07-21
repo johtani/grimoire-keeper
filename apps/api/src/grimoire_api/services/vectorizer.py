@@ -73,9 +73,15 @@ class VectorizerService:
                 raise VectorizerError(f"Page not found: {page_id}")
 
             raw_jina_data = await self.file_repo.load_json_file(page_id)
-            document = FetchedDocument.from_jina_response(
-                raw_jina_data, source_url=page_data.url
-            )
+            try:
+                document = FetchedDocument.from_jina_response(
+                    raw_jina_data, source_url=page_data.url
+                )
+            except (ValidationError, ValueError, TypeError):
+                raise VectorizerError(
+                    "Vectorization error: invalid stored Jina response "
+                    f"for page_id={page_id}"
+                ) from None
 
             # チャンキング（言語情報を使用）
             chunks = self.chunking_service.chunk_document(document)
@@ -90,11 +96,6 @@ class VectorizerService:
                 page_id, weaviate_id, ProcessingStep.VECTORIZED
             )
 
-        except (ValidationError, ValueError, TypeError) as e:
-            raise VectorizerError(
-                "Vectorization error: invalid stored Jina response "
-                f"for page_id={page_id}"
-            ) from e
         except Exception as e:
             raise VectorizerError(f"Vectorization error: {str(e)}")
 

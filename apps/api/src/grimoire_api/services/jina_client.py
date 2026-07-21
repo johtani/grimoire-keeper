@@ -68,9 +68,11 @@ class JinaClient:
             return FetchedDocument.from_jina_response(raw_response, source_url=url)
 
         except httpx.HTTPStatusError as e:
-            raise JinaClientError(f"Jina API HTTP error {e.response.status_code}")
+            raise JinaClientError(
+                f"Jina API HTTP error {e.response.status_code}"
+            ) from None
         except httpx.RequestError as e:
-            raise JinaClientError(f"Jina API request error: {str(e)}")
+            raise JinaClientError(f"Jina API request error: {str(e)}") from None
         except (ValidationError, ValueError, TypeError) as e:
             fields = (
                 sorted(
@@ -80,9 +82,9 @@ class JinaClient:
                 else []
             )
             detail = f"; invalid fields: {', '.join(fields)}" if fields else ""
-            raise JinaClientError(f"Invalid Jina response{detail}") from e
-        except Exception as e:
-            raise JinaClientError("Invalid Jina response") from e
+            raise JinaClientError(f"Invalid Jina response{detail}") from None
+        except Exception:
+            raise JinaClientError("Invalid Jina response") from None
 
     async def health_check(self) -> bool:
         """ヘルスチェック.

@@ -1,5 +1,6 @@
 """Test Jina AI Reader client."""
 
+import traceback
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -115,6 +116,9 @@ class TestJinaClient:
         assert "Invalid Jina response" in str(exc_info.value)
         assert "do-not-log" not in str(exc_info.value)
         assert "secret-content" not in str(exc_info.value)
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert "do-not-log" not in formatted
+        assert "secret-content" not in formatted
 
     @pytest.mark.asyncio
     async def test_fetch_content_invalid_json_does_not_expose_response(self) -> None:
@@ -130,6 +134,8 @@ class TestJinaClient:
 
         assert str(exc_info.value) == "Invalid Jina response"
         assert "secret" not in str(exc_info.value)
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert "secret malformed response" not in formatted
 
     @pytest.mark.asyncio
     async def test_fetch_content_no_api_key(self: Any) -> None:

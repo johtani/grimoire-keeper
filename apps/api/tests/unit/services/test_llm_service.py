@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import traceback
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -159,6 +160,24 @@ class TestLLMService:
         assert "Invalid LLM response format" in str(exc_info.value)
         assert "secret summary" not in str(exc_info.value)
         assert "do-not-log" not in str(exc_info.value)
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert "secret summary" not in formatted
+        assert "do-not-log" not in formatted
+
+    @pytest.mark.asyncio
+    async def test_request_error_does_not_expose_provider_response(
+        self, llm_service: Any
+    ) -> None:
+        with patch(
+            "grimoire_api.services.llm_service.acompletion",
+            side_effect=Exception("secret provider response"),
+        ):
+            with pytest.raises(LLMServiceError) as exc_info:
+                await llm_service.generate_summary_keywords(1)
+
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert str(exc_info.value) == "LLM request failed"
+        assert "secret provider response" not in formatted
 
     @pytest.mark.asyncio
     async def test_generate_summary_normalizes_keywords(self, llm_service: Any) -> None:

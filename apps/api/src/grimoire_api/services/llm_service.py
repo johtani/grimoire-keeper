@@ -53,10 +53,10 @@ class LLMService:
                 document = FetchedDocument.from_jina_response(
                     raw_jina_data, source_url=f"artifact://page/{page_id}"
                 )
-            except (ValidationError, ValueError, TypeError) as e:
+            except (ValidationError, ValueError, TypeError):
                 raise LLMServiceError(
                     f"Invalid stored Jina response: page_id={page_id}"
-                ) from e
+                ) from None
             title = document.title
             content = document.content
 
@@ -245,22 +245,22 @@ class LLMService:
         try:
             async with self.semaphore:
                 response = await acompletion(**kwargs)
-        except Exception as e:
-            raise LLMServiceError("LLM request failed") from e
+        except Exception:
+            raise LLMServiceError("LLM request failed") from None
         try:
             response_dict = response.model_dump()
             response_content = str(response_dict["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError, AttributeError) as e:
             raise LLMServiceError(
                 f"Failed to extract content from LLM response: {str(e)}"
-            ) from e
+            ) from None
         if not response_content.strip():
             raise LLMServiceError("Empty response from LLM")
 
         try:
             result = json.loads(response_content)
-        except json.JSONDecodeError as e:
-            raise LLMServiceError("Failed to parse LLM response as JSON") from e
+        except json.JSONDecodeError:
+            raise LLMServiceError("Failed to parse LLM response as JSON") from None
         try:
             model = SummaryResult if require_keywords else PartialSummaryResult
             return model.model_validate(result)
@@ -269,7 +269,7 @@ class LLMService:
                 {str(error["loc"][-1]) for error in e.errors() if error.get("loc")}
             )
             detail = f": {', '.join(fields)}" if fields else ""
-            raise LLMServiceError(f"Invalid LLM response format{detail}") from e
+            raise LLMServiceError(f"Invalid LLM response format{detail}") from None
 
     def _count_tokens(self, prompt: str) -> int:
         """モデルのトークナイザーを使い、失敗時はUTF-8バイト数で安全側に推定する."""
