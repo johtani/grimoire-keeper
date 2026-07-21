@@ -82,7 +82,10 @@ class TestVectorizerService:
 
         # モックJinaデータ
         mock_jina_data = {
-            "data": {"content": "This is test content for vectorization."}
+            "data": {
+                "title": "Test Title",
+                "content": "This is test content for vectorization.",
+            }
         }
 
         # モックチャンク
@@ -91,9 +94,7 @@ class TestVectorizerService:
         # モック設定
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
-        mock_dependencies[
-            "chunking_service"
-        ].chunk_text_with_jina_data.return_value = mock_chunks
+        mock_dependencies["chunking_service"].chunk_document.return_value = mock_chunks
         mock_dependencies[
             "mock_collection"
         ].data.insert.return_value = "weaviate-id-123"
@@ -104,11 +105,11 @@ class TestVectorizerService:
         # 各メソッドが呼ばれたことを確認
         mock_dependencies["page_repo"].get_page.assert_called_once_with(page_id)
         mock_dependencies["file_repo"].load_json_file.assert_called_once_with(page_id)
-        mock_dependencies[
-            "chunking_service"
-        ].chunk_text_with_jina_data.assert_called_once_with(
-            "This is test content for vectorization.", mock_jina_data
-        )
+        mock_dependencies["chunking_service"].chunk_document.assert_called_once()
+        document = mock_dependencies["chunking_service"].chunk_document.call_args.args[
+            0
+        ]
+        assert document.content == "This is test content for vectorization."
 
         # Weaviateへの保存が3回呼ばれたことを確認
         assert mock_dependencies["mock_collection"].data.insert.call_count == 3
@@ -157,15 +158,43 @@ class TestVectorizerService:
         # モック設定
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = {
-            "data": {"content": ""}
+            "data": {"title": "Test Title", "content": "Valid content"}
         }
-        mock_dependencies[
-            "chunking_service"
-        ].chunk_text_with_jina_data.return_value = []
+        mock_dependencies["chunking_service"].chunk_document.return_value = []
 
         # エラー確認
         with pytest.raises(VectorizerError, match="No chunks generated from content"):
             await vectorizer_service.vectorize_content(page_id)
+
+    @pytest.mark.asyncio
+    async def test_chunking_value_error_is_not_reported_as_invalid_jina(
+        self, vectorizer_service, mock_dependencies
+    ):
+        """後続処理のValueErrorをJina検証エラーとして誤分類しない."""
+        page_id = 1
+        mock_page = Page(
+            id=page_id,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            weaviate_id=None,
+        )
+        mock_dependencies["page_repo"].get_page.return_value = mock_page
+        mock_dependencies["file_repo"].load_json_file.return_value = {
+            "data": {"title": "Test Title", "content": "Valid content"}
+        }
+        mock_dependencies["chunking_service"].chunk_document.side_effect = ValueError(
+            "chunking failed"
+        )
+
+        with pytest.raises(VectorizerError, match="chunking failed") as exc_info:
+            await vectorizer_service.vectorize_content(page_id)
+
+        assert "invalid stored Jina response" not in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_save_chunks_to_weaviate(

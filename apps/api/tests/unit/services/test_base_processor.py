@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, call
 
 import pytest
 from grimoire_api.models.database import ProcessingStep
+from grimoire_api.models.external import FetchedDocument, SummaryResult
 from grimoire_api.services.base_processor import BaseProcessorService
 
 
@@ -46,13 +47,17 @@ class TestRunPipelineFrom:
         log_id = 10
         url = "https://example.com"
 
-        mock_services["jina_client"].fetch_content.return_value = {
-            "data": {"title": "Test Title", "content": "Test content"}
-        }
-        mock_services["llm_service"].generate_summary_keywords.return_value = {
-            "summary": "Test summary",
-            "keywords": ["test"],
-        }
+        raw_response = {"data": {"title": "Test Title", "content": "Test content"}}
+        mock_services[
+            "jina_client"
+        ].fetch_content.return_value = FetchedDocument.from_jina_response(
+            raw_response, source_url=url
+        )
+        mock_services[
+            "llm_service"
+        ].generate_summary_keywords.return_value = SummaryResult(
+            summary="Test summary", keywords=["test"]
+        )
 
         await base_processor._run_pipeline_from(page_id, log_id, url, "download")
 
@@ -71,10 +76,11 @@ class TestRunPipelineFrom:
         log_id = 10
         url = "https://example.com"
 
-        mock_services["llm_service"].generate_summary_keywords.return_value = {
-            "summary": "Test summary",
-            "keywords": ["test"],
-        }
+        mock_services[
+            "llm_service"
+        ].generate_summary_keywords.return_value = SummaryResult(
+            summary="Test summary", keywords=["test"]
+        )
 
         await base_processor._run_pipeline_from(page_id, log_id, url, "llm")
 

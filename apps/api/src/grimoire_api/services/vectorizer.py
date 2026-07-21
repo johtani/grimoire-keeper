@@ -5,12 +5,14 @@ import logging
 from typing import Any
 
 import weaviate
+from pydantic import ValidationError
 from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
 from ..config import settings
 from ..models.database import ProcessingStep
+from ..models.external import FetchedDocument
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import VectorizerError
@@ -70,11 +72,19 @@ class VectorizerService:
             if not page_data:
                 raise VectorizerError(f"Page not found: {page_id}")
 
-            jina_data = await self.file_repo.load_json_file(page_id)
-            content = jina_data["data"]["content"]
+            raw_jina_data = await self.file_repo.load_json_file(page_id)
+            try:
+                document = FetchedDocument.from_jina_response(
+                    raw_jina_data, source_url=page_data.url
+                )
+            except (ValidationError, ValueError, TypeError):
+                raise VectorizerError(
+                    "Vectorization error: invalid stored Jina response "
+                    f"for page_id={page_id}"
+                ) from None
 
             # チャンキング（言語情報を使用）
-            chunks = self.chunking_service.chunk_text_with_jina_data(content, jina_data)
+            chunks = self.chunking_service.chunk_document(document)
             if not chunks:
                 raise VectorizerError("No chunks generated from content")
 

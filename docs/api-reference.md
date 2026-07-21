@@ -264,9 +264,12 @@ Get detailed information about a specific page, including error details for fail
   "created_at": "2025-01-01T12:00:00Z",
   "updated_at": "2025-01-01T12:05:00Z",
   "weaviate_id": null,
-  "error_message": "Failed to extract content: HTTP 404 Not Found"
+  "error_message": "Jina API HTTP error 404"
 }
 ```
+
+External service response bodies are not included in error messages or logs because
+they may contain page content or other sensitive data.
 
 **Status Codes:**
 - `200 OK`: Page found and returned

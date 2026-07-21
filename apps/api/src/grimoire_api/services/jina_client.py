@@ -1,10 +1,10 @@
 """Jina AI Reader client."""
 
-from typing import Any
-
 import httpx
+from pydantic import ValidationError
 
 from ..config import settings
+from ..models.external import FetchedDocument
 from ..utils.exceptions import JinaClientError
 
 _TIMEOUT = 60.0
@@ -43,7 +43,7 @@ class JinaClient:
             await self._client.aclose()
             self._client = None
 
-    async def fetch_content(self, url: str) -> dict[str, Any]:
+    async def fetch_content(self, url: str) -> FetchedDocument:
         """URL内容取得.
 
         Args:
@@ -62,16 +62,29 @@ class JinaClient:
         try:
             response = await client.get(f"{self.base_url}/{url}", headers=self._headers)
             response.raise_for_status()
-            return response.json()  # type: ignore[no-any-return]
+            raw_response = response.json()
+            if not isinstance(raw_response, dict):
+                raise ValueError("response root must be an object")
+            return FetchedDocument.from_jina_response(raw_response, source_url=url)
 
         except httpx.HTTPStatusError as e:
             raise JinaClientError(
-                f"Jina API HTTP error {e.response.status_code}: {e.response.text}"
-            )
+                f"Jina API HTTP error {e.response.status_code}"
+            ) from None
         except httpx.RequestError as e:
-            raise JinaClientError(f"Jina API request error: {str(e)}")
-        except Exception as e:
-            raise JinaClientError(f"Jina API unexpected error: {str(e)}")
+            raise JinaClientError(f"Jina API request error: {str(e)}") from None
+        except (ValidationError, ValueError, TypeError) as e:
+            fields = (
+                sorted(
+                    {str(error["loc"][-1]) for error in e.errors() if error.get("loc")}
+                )
+                if isinstance(e, ValidationError)
+                else []
+            )
+            detail = f"; invalid fields: {', '.join(fields)}" if fields else ""
+            raise JinaClientError(f"Invalid Jina response{detail}") from None
+        except Exception:
+            raise JinaClientError("Invalid Jina response") from None
 
     async def health_check(self) -> bool:
         """ヘルスチェック.

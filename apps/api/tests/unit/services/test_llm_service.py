@@ -2,10 +2,12 @@
 
 import asyncio
 import json
+import traceback
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from grimoire_api.models.external import SummaryResult
 from grimoire_api.services.llm_service import LLMService
 from grimoire_api.utils.exceptions import LLMServiceError
 
@@ -74,7 +76,7 @@ class TestLLMService:
             mock_completion.return_value = mock_response
 
             result = await llm_service.generate_summary_keywords(page_id)
-            assert result == expected_result
+            assert result == SummaryResult.model_validate(expected_result)
 
             # ファイル読み込みが呼ばれたことを確認
             mock_file_repo.load_json_file.assert_called_once_with(page_id)
@@ -105,7 +107,7 @@ class TestLLMService:
             "grimoire_api.services.llm_service.acompletion",
             side_effect=Exception("authentication failed"),
         ):
-            with pytest.raises(LLMServiceError, match="LLM processing error"):
+            with pytest.raises(LLMServiceError, match="LLM request failed"):
                 await service.generate_summary_keywords(1)
 
     @pytest.mark.asyncio
@@ -145,6 +147,70 @@ class TestLLMService:
                 await llm_service.generate_summary_keywords(page_id)
 
     @pytest.mark.asyncio
+    async def test_invalid_response_does_not_expose_content(
+        self, llm_service: Any
+    ) -> None:
+        invalid_result = {"summary": "secret summary", "private": "do-not-log"}
+
+        with patch("grimoire_api.services.llm_service.acompletion") as completion:
+            completion.return_value = self._response(invalid_result)
+            with pytest.raises(LLMServiceError) as exc_info:
+                await llm_service.generate_summary_keywords(1)
+
+        assert "Invalid LLM response format" in str(exc_info.value)
+        assert "secret summary" not in str(exc_info.value)
+        assert "do-not-log" not in str(exc_info.value)
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert "secret summary" not in formatted
+        assert "do-not-log" not in formatted
+
+    @pytest.mark.asyncio
+    async def test_request_error_does_not_expose_provider_response(
+        self, llm_service: Any
+    ) -> None:
+        with patch(
+            "grimoire_api.services.llm_service.acompletion",
+            side_effect=Exception("secret provider response"),
+        ):
+            with pytest.raises(LLMServiceError) as exc_info:
+                await llm_service.generate_summary_keywords(1)
+
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert str(exc_info.value) == "LLM request failed"
+        assert "secret provider response" not in formatted
+
+    @pytest.mark.asyncio
+    async def test_extraction_error_does_not_expose_provider_response(
+        self, llm_service: Any
+    ) -> None:
+        response = MagicMock()
+        response.model_dump.side_effect = ValueError("secret provider response")
+
+        with patch(
+            "grimoire_api.services.llm_service.acompletion", return_value=response
+        ):
+            with pytest.raises(LLMServiceError) as exc_info:
+                await llm_service.generate_summary_keywords(1)
+
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert str(exc_info.value) == "Failed to extract content from LLM response"
+        assert "secret provider response" not in formatted
+
+    @pytest.mark.asyncio
+    async def test_generate_summary_normalizes_keywords(self, llm_service: Any) -> None:
+        response = {
+            "summary": " summary ",
+            "keywords": [" first ", "second", "first"],
+        }
+
+        with patch("grimoire_api.services.llm_service.acompletion") as completion:
+            completion.return_value = self._response(response)
+            result = await llm_service.generate_summary_keywords(1)
+
+        assert result.summary == "summary"
+        assert result.keywords == ["first", "second"]
+
+    @pytest.mark.asyncio
     async def test_generate_summary_keywords_keywords_not_list(
         self: Any, llm_service: Any
     ) -> None:
@@ -159,7 +225,9 @@ class TestLLMService:
             }
             mock_completion.return_value = mock_response
 
-            with pytest.raises(LLMServiceError, match="Keywords must be a list"):
+            with pytest.raises(
+                LLMServiceError, match="Invalid LLM response format: keywords"
+            ):
                 await llm_service.generate_summary_keywords(page_id)
 
     @pytest.mark.asyncio
@@ -172,7 +240,7 @@ class TestLLMService:
         with patch("grimoire_api.services.llm_service.acompletion") as mock_completion:
             mock_completion.side_effect = Exception("API error")
 
-            with pytest.raises(LLMServiceError, match="LLM processing error"):
+            with pytest.raises(LLMServiceError, match="LLM request failed"):
                 await llm_service.generate_summary_keywords(page_id)
 
     def test_build_prompt(self: Any, llm_service: Any) -> None:
@@ -218,7 +286,9 @@ class TestLLMService:
         """空本文はページID付きのエラーになる."""
         mock_file_repo.load_json_file.return_value["data"]["content"] = "  "
 
-        with pytest.raises(LLMServiceError, match="Empty page content: page_id=7"):
+        with pytest.raises(
+            LLMServiceError, match="Invalid stored Jina response: page_id=7"
+        ):
             await llm_service.generate_summary_keywords(7)
 
     @pytest.mark.asyncio
@@ -227,7 +297,7 @@ class TestLLMService:
     ) -> None:
         """チャンカーが空白しか返さない場合はページID付きのエラーになる."""
         chunker = MagicMock()
-        chunker.chunk_text_with_jina_data.return_value = [" ", "\n"]
+        chunker.chunk_document.return_value = [" ", "\n"]
         service = LLMService(mock_file_repo, api_key="key", chunking_service=chunker)
         service.input_token_limit = 100
         service._count_tokens = MagicMock(return_value=101)
@@ -248,7 +318,7 @@ class TestLLMService:
             completion.return_value = self._response(expected)
             result = await llm_service.generate_summary_keywords(1)
 
-        assert result == expected
+        assert result == SummaryResult.model_validate(expected)
         completion.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -257,7 +327,7 @@ class TestLLMService:
     ) -> None:
         """分割要約は完了順にかかわらず元のチャンク順で統合する."""
         chunker = MagicMock()
-        chunker.chunk_text_with_jina_data.return_value = ["first", "second"]
+        chunker.chunk_document.return_value = ["first", "second"]
         service = LLMService(mock_file_repo, api_key="key", chunking_service=chunker)
         service.input_token_limit = 100
         full_prompt = service._build_prompt(
@@ -282,14 +352,14 @@ class TestLLMService:
         ) as completion:
             result = await service.generate_summary_keywords(1)
 
-        assert result == {"summary": "final", "keywords": ["keyword"]}
+        assert result == SummaryResult(summary="final", keywords=["keyword"])
         assert completion.await_count == 3
 
     @pytest.mark.asyncio
     async def test_partial_failure_identifies_chunk(self, mock_file_repo: Any) -> None:
         """部分要約失敗は対象チャンクを特定できる."""
         chunker = MagicMock()
-        chunker.chunk_text_with_jina_data.return_value = ["first", "second"]
+        chunker.chunk_document.return_value = ["first", "second"]
         service = LLMService(mock_file_repo, api_key="key", chunking_service=chunker)
         service.input_token_limit = 100
         full_prompt = service._build_prompt(
@@ -303,7 +373,7 @@ class TestLLMService:
             "grimoire_api.services.llm_service.acompletion",
             side_effect=[self._response({"summary": "ok"}), Exception("timeout")],
         ):
-            with pytest.raises(LLMServiceError, match=r"chunk=2/2.*timeout"):
+            with pytest.raises(LLMServiceError, match=r"chunk=2/2.*LLM request failed"):
                 await service.generate_summary_keywords(9)
 
     @pytest.mark.asyncio
@@ -312,7 +382,7 @@ class TestLLMService:
     ) -> None:
         """部分要約の同時LLMリクエスト数は設定上限を超えない."""
         chunker = MagicMock()
-        chunker.chunk_text_with_jina_data.return_value = ["one", "two", "three"]
+        chunker.chunk_document.return_value = ["one", "two", "three"]
         service = LLMService(mock_file_repo, api_key="key", chunking_service=chunker)
         service.semaphore = asyncio.Semaphore(2)
         service.input_token_limit = 100
@@ -329,7 +399,7 @@ class TestLLMService:
             nonlocal active, maximum_active
             prompt = kwargs["messages"][0]["content"]
             if "最終要約" in prompt:
-                return self._response({"summary": "final", "keywords": []})
+                return self._response({"summary": "final", "keywords": ["keyword"]})
             active += 1
             maximum_active = max(maximum_active, active)
             await asyncio.sleep(0.01)
@@ -362,7 +432,7 @@ class TestLLMService:
     ) -> None:
         """部分要約の統合入力が大きい場合は縮約してから最終要約する."""
         chunker = MagicMock()
-        chunker.chunk_text_with_jina_data.return_value = ["first", "second"]
+        chunker.chunk_document.return_value = ["first", "second"]
         service = LLMService(mock_file_repo, api_key="key", chunking_service=chunker)
         service.input_token_limit = 100
         full_prompt = service._build_prompt(
@@ -388,7 +458,7 @@ class TestLLMService:
         ) as completion:
             result = await service.generate_summary_keywords(1)
 
-        assert result["summary"] == "final"
+        assert result.summary == "final"
         assert completion.await_count == 4
 
     @staticmethod
