@@ -180,6 +180,23 @@ class TestLLMService:
         assert "secret provider response" not in formatted
 
     @pytest.mark.asyncio
+    async def test_extraction_error_does_not_expose_provider_response(
+        self, llm_service: Any
+    ) -> None:
+        response = MagicMock()
+        response.model_dump.side_effect = AttributeError("secret provider response")
+
+        with patch(
+            "grimoire_api.services.llm_service.acompletion", return_value=response
+        ):
+            with pytest.raises(LLMServiceError) as exc_info:
+                await llm_service.generate_summary_keywords(1)
+
+        formatted = "".join(traceback.format_exception(exc_info.value))
+        assert str(exc_info.value) == "Failed to extract content from LLM response"
+        assert "secret provider response" not in formatted
+
+    @pytest.mark.asyncio
     async def test_generate_summary_normalizes_keywords(self, llm_service: Any) -> None:
         response = {
             "summary": " summary ",

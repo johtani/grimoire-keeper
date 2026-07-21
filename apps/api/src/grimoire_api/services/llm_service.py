@@ -250,9 +250,9 @@ class LLMService:
         try:
             response_dict = response.model_dump()
             response_content = str(response_dict["choices"][0]["message"]["content"])
-        except (KeyError, IndexError, TypeError, AttributeError) as e:
+        except (KeyError, IndexError, TypeError, AttributeError):
             raise LLMServiceError(
-                f"Failed to extract content from LLM response: {str(e)}"
+                "Failed to extract content from LLM response"
             ) from None
         if not response_content.strip():
             raise LLMServiceError("Empty response from LLM")
