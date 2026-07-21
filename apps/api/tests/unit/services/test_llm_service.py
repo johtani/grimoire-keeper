@@ -184,7 +184,7 @@ class TestLLMService:
         self, llm_service: Any
     ) -> None:
         response = MagicMock()
-        response.model_dump.side_effect = AttributeError("secret provider response")
+        response.model_dump.side_effect = ValueError("secret provider response")
 
         with patch(
             "grimoire_api.services.llm_service.acompletion", return_value=response
