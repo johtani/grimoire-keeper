@@ -92,7 +92,44 @@ class TestJinaClient:
         client._client = mock_http_client
 
         result = await client.fetch_content(test_url)
-        assert result == expected_response
+        assert result.title == "Test Title"
+        assert result.content == "Test content"
+        assert result.source_url == test_url
+        assert result.raw_response == expected_response
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("data", [{}, {"title": "", "content": "secret-content"}])
+    async def test_fetch_content_validation_error_does_not_expose_response(
+        self, data: dict[str, Any]
+    ) -> None:
+        client = JinaClient(api_key="test_key")
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": data, "secret": "do-not-log"}
+        mock_response.raise_for_status.return_value = None
+        client._client = AsyncMock()
+        client._client.get.return_value = mock_response
+
+        with pytest.raises(JinaClientError) as exc_info:
+            await client.fetch_content("https://example.com")
+
+        assert "Invalid Jina response" in str(exc_info.value)
+        assert "do-not-log" not in str(exc_info.value)
+        assert "secret-content" not in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_fetch_content_invalid_json_does_not_expose_response(self) -> None:
+        client = JinaClient(api_key="test_key")
+        mock_response = MagicMock()
+        mock_response.json.side_effect = ValueError("secret malformed response")
+        mock_response.raise_for_status.return_value = None
+        client._client = AsyncMock()
+        client._client.get.return_value = mock_response
+
+        with pytest.raises(JinaClientError) as exc_info:
+            await client.fetch_content("https://example.com")
+
+        assert str(exc_info.value) == "Invalid Jina response"
+        assert "secret" not in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_fetch_content_no_api_key(self: Any) -> None:
@@ -220,7 +257,9 @@ class TestJinaClient:
         test_url = "https://example.com"
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {"data": {}}
+        mock_response.json.return_value = {
+            "data": {"title": "Title", "content": "Content"}
+        }
         mock_response.raise_for_status = MagicMock(return_value=None)
 
         mock_get = AsyncMock(return_value=mock_response)

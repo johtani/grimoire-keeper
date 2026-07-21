@@ -1,10 +1,11 @@
 """Text chunking service using Chonkie."""
 
 from pathlib import Path
-from typing import Any
 
 from chonkie import MarkdownChef, RecursiveChunker
 from langdetect import LangDetectException, detect
+
+from ..models.external import FetchedDocument
 
 # CJK句読点: chonkie_coreのsplit_offsets (Rust) がシングルバイト扱いするため
 # 改行を付加してデリミタを回避する
@@ -114,32 +115,16 @@ class ChunkingService:
         chunked_doc = chunker.chunk_document(doc)
         return [chunk.text for chunk in chunked_doc.chunks]
 
-    def chunk_text_with_jina_data(
-        self, text: str, jina_data: dict[str, Any]
-    ) -> list[str]:
+    def chunk_document(self, document: FetchedDocument) -> list[str]:
         """ジナデータから言語情報を抽出してチャンキング.
 
         Args:
-            text: 分割するテキスト
-            jina_data: Jina AI Readerのレスポンスデータ
+            document: 検証済みの取得ドキュメント
 
         Returns:
             チャンクのリスト
         """
-        # Jina AI Readerのレスポンスから言語情報を抽出
-        language = None
-        if "data" in jina_data:
-            data = jina_data["data"]
-            # 一般的な言語フィールドをチェック
-            language = (
-                data.get("language")
-                or data.get("lang")
-                or data.get("detected_language")
-                or data.get("content_language")
-            )
-
         # Jinaが言語を返さない場合はlangdetectで判定
-        if not language:
-            language = self._detect_language(text)
+        language = document.language or self._detect_language(document.content)
 
-        return self.chunk_text(text, language)
+        return self.chunk_text(document.content, language)

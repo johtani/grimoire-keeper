@@ -7,8 +7,10 @@ from collections.abc import Callable
 from typing import Any
 
 from litellm import acompletion, token_counter
+from pydantic import ValidationError
 
 from ..config import settings
+from ..models.external import FetchedDocument, PartialSummaryResult, SummaryResult
 from ..repositories.file_repository import FileRepository
 from ..utils.exceptions import LLMServiceError
 from .chunking_service import ChunkingService
@@ -40,17 +42,23 @@ class LLMService:
         self.chunking_service = chunking_service
         self.semaphore = asyncio.Semaphore(settings.LLM_SUMMARY_CONCURRENCY)
 
-    async def generate_summary_keywords(self, page_id: int) -> dict[str, Any]:
+    async def generate_summary_keywords(self, page_id: int) -> SummaryResult:
         """ページの長さに応じて単発または分割で要約とキーワードを生成する."""
         if not self.api_key or not self.api_key.strip():
             raise LLMServiceError("LLM API key is not configured")
 
         try:
-            jina_data = await self.file_repo.load_json_file(page_id)
-            title = str(jina_data["data"]["title"])
-            content = str(jina_data["data"]["content"])
-            if not content.strip():
-                raise LLMServiceError(f"Empty page content: page_id={page_id}")
+            raw_jina_data = await self.file_repo.load_json_file(page_id)
+            try:
+                document = FetchedDocument.from_jina_response(
+                    raw_jina_data, source_url=f"artifact://page/{page_id}"
+                )
+            except (ValidationError, ValueError, TypeError) as e:
+                raise LLMServiceError(
+                    f"Invalid stored Jina response: page_id={page_id}"
+                ) from e
+            title = document.title
+            content = document.content
 
             prompt = self._build_prompt(title, content)
             prompt_tokens = self._count_tokens(prompt)
@@ -60,22 +68,25 @@ class LLMService:
                     page_id,
                     prompt_tokens,
                 )
-                return await self._complete_json(prompt, require_keywords=True)
+                result = await self._complete_json(prompt, require_keywords=True)
+                if not isinstance(result, SummaryResult):
+                    raise LLMServiceError("Invalid final LLM response type")
+                return result
 
-            return await self._generate_chunked(page_id, title, content, jina_data)
+            return await self._generate_chunked(page_id, title, document)
         except LLMServiceError:
             raise
         except Exception as e:
             raise LLMServiceError(f"LLM processing error: {str(e)}") from e
 
     async def _generate_chunked(
-        self, page_id: int, title: str, content: str, jina_data: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, page_id: int, title: str, document: FetchedDocument
+    ) -> SummaryResult:
         """本文を部分要約し、必要なら階層的に縮約して最終結果を生成する."""
         chunking_service = self.chunking_service or ChunkingService(
             chunk_size=max(1, self.input_token_limit // 2)
         )
-        raw_chunks = chunking_service.chunk_text_with_jina_data(content, jina_data)
+        raw_chunks = chunking_service.chunk_document(document)
         chunks: list[str] = []
         for chunk in raw_chunks:
             if chunk.strip():
@@ -111,9 +122,12 @@ class LLMService:
                 len(summaries),
             )
 
-        return await self._complete_json(
+        result = await self._complete_json(
             self._build_final_prompt(title, summaries), require_keywords=True
         )
+        if not isinstance(result, SummaryResult):
+            raise LLMServiceError("Invalid final LLM response type")
+        return result
 
     async def _summarize_chunks(
         self, page_id: int, title: str, chunks: list[str]
@@ -123,7 +137,7 @@ class LLMService:
                 result = await self._complete_json(
                     self._build_partial_prompt(title, chunk), require_keywords=False
                 )
-                return str(result["summary"])
+                return result.summary
             except Exception as e:
                 raise LLMServiceError(
                     "Partial summary failed: "
@@ -157,7 +171,7 @@ class LLMService:
                     self._build_reduction_prompt(title, group),
                     require_keywords=False,
                 )
-                return str(result["summary"])
+                return result.summary
             except Exception as e:
                 raise LLMServiceError(
                     "Summary reduction failed: "
@@ -208,7 +222,7 @@ class LLMService:
 
     async def _complete_json(
         self, prompt: str, *, require_keywords: bool
-    ) -> dict[str, Any]:
+    ) -> PartialSummaryResult | SummaryResult:
         """上限を検証してLLMを呼び、JSON応答を検証する."""
         input_tokens = self._count_tokens(prompt)
         if input_tokens > self.input_token_limit:
@@ -228,8 +242,11 @@ class LLMService:
         if settings.LLM_API_BASE:
             kwargs["api_base"] = settings.LLM_API_BASE
 
-        async with self.semaphore:
-            response = await acompletion(**kwargs)
+        try:
+            async with self.semaphore:
+                response = await acompletion(**kwargs)
+        except Exception as e:
+            raise LLMServiceError("LLM request failed") from e
         try:
             response_dict = response.model_dump()
             response_content = str(response_dict["choices"][0]["message"]["content"])
@@ -243,18 +260,16 @@ class LLMService:
         try:
             result = json.loads(response_content)
         except json.JSONDecodeError as e:
-            raise LLMServiceError(
-                f"Failed to parse LLM response as JSON: {str(e)}. "
-                f"Raw content: '{response_content[:200]}...'"
-            ) from e
-        if not isinstance(result, dict) or "summary" not in result:
-            raise LLMServiceError(f"Invalid LLM response format: {result}")
-        if require_keywords:
-            if "keywords" not in result:
-                raise LLMServiceError(f"Invalid LLM response format: {result}")
-            if not isinstance(result["keywords"], list):
-                raise LLMServiceError(f"Keywords must be a list: {result['keywords']}")
-        return result
+            raise LLMServiceError("Failed to parse LLM response as JSON") from e
+        try:
+            model = SummaryResult if require_keywords else PartialSummaryResult
+            return model.model_validate(result)
+        except ValidationError as e:
+            fields = sorted(
+                {str(error["loc"][-1]) for error in e.errors() if error.get("loc")}
+            )
+            detail = f": {', '.join(fields)}" if fields else ""
+            raise LLMServiceError(f"Invalid LLM response format{detail}") from e
 
     def _count_tokens(self, prompt: str) -> int:
         """モデルのトークナイザーを使い、失敗時はUTF-8バイト数で安全側に推定する."""

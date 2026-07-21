@@ -6,10 +6,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from grimoire_api.models.database import PageStatus, ProcessingStep
+from grimoire_api.models.external import FetchedDocument, SummaryResult
 from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
+
+
+def _fetched_document(url: str = "https://example.com") -> FetchedDocument:
+    raw_response = {"data": {"title": "Test Title", "content": "Test content"}}
+    return FetchedDocument.from_jina_response(raw_response, source_url=url)
+
+
+def _summary_result() -> SummaryResult:
+    return SummaryResult(summary="Test summary", keywords=["test", "keyword"])
 
 
 class TestUrlProcessorService:
@@ -89,13 +99,10 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["jina_client"].fetch_content.return_value = {
-            "data": {"title": "Test Title", "content": "Test content"}
-        }
-        mock_services["llm_service"].generate_summary_keywords.return_value = {
-            "summary": "Test summary",
-            "keywords": ["test", "keyword"],
-        }
+        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
+        mock_services[
+            "llm_service"
+        ].generate_summary_keywords.return_value = _summary_result()
 
         # 処理実行
         await url_processor.process_url_background(page_id, log_id, url)
@@ -121,13 +128,10 @@ class TestUrlProcessorService:
         mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
         mock_services["page_repo"].create_page.return_value = page_id
         mock_services["log_repo"].create_log.return_value = log_id
-        mock_services["jina_client"].fetch_content.return_value = {
-            "data": {"title": "Test Title", "content": "Test content"}
-        }
-        mock_services["llm_service"].generate_summary_keywords.return_value = {
-            "summary": "Test summary",
-            "keywords": ["test", "keyword"],
-        }
+        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
+        mock_services[
+            "llm_service"
+        ].generate_summary_keywords.return_value = _summary_result()
 
         # 処理実行
         prepare_result = await url_processor.prepare_url_processing(url, memo)
@@ -180,9 +184,7 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["jina_client"].fetch_content.return_value = {
-            "data": {"title": "Test Title", "content": "Test content"}
-        }
+        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
         mock_services["llm_service"].generate_summary_keywords.side_effect = Exception(
             "LLM error"
         )
@@ -205,13 +207,10 @@ class TestUrlProcessorService:
         page_id = 2
 
         # モック設定
-        mock_services["jina_client"].fetch_content.return_value = {
-            "data": {"title": "Test Title", "content": "Test content"}
-        }
-        mock_services["llm_service"].generate_summary_keywords.return_value = {
-            "summary": "Test summary",
-            "keywords": ["test", "keyword"],
-        }
+        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
+        mock_services[
+            "llm_service"
+        ].generate_summary_keywords.return_value = _summary_result()
         mock_services["vectorizer"].vectorize_content.side_effect = Exception(
             "Weaviate error"
         )
@@ -233,14 +232,14 @@ class TestUrlProcessorService:
         """ダウンロード結果保存テスト."""
         log_id = 1
         page_id = 2
-        jina_result = {"data": {"title": "Test Title", "content": "Test content"}}
+        jina_result = _fetched_document()
 
         # 処理実行
         await url_processor._save_download_result(log_id, page_id, jina_result)
 
         # 各メソッドが呼ばれたことを確認
         mock_services["file_repo"].save_json_file.assert_called_once_with(
-            page_id, jina_result
+            page_id, jina_result.raw_response
         )
         mock_services["page_repo"].update_title_and_step.assert_called_once_with(
             page_id, "Test Title", ProcessingStep.DOWNLOADED
@@ -254,7 +253,7 @@ class TestUrlProcessorService:
         """LLM結果保存テスト."""
         log_id = 1
         page_id = 2
-        llm_result = {"summary": "Test summary", "keywords": ["test", "keyword"]}
+        llm_result = _summary_result()
 
         # 処理実行
         await url_processor._save_llm_result(log_id, page_id, llm_result)
