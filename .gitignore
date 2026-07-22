@@ -42,6 +42,7 @@ htmlcov/
 # IDE
 .vscode/settings.json
 .vscode/launch.json
+.claude/settings.local.json
 .idea/
 *.swp
 *.swo

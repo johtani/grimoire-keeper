@@ -1,6 +1,8 @@
 services:
   workspace:
     image: mcr.microsoft.com/devcontainers/python:3.13
+    security_opt:
+      - seccomp=unconfined
     volumes:
       - ..:/workspace:cached
       - bash_history:/root
