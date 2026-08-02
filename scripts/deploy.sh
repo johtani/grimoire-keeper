@@ -2,6 +2,14 @@
 
 set -e
 
+DATA_ROOT="/opt/grimoire-keeper-data"
+OLD_WEAVIATE_DATA="${DATA_ROOT}/weaviate"
+NEW_WEAVIATE_DATA="${DATA_ROOT}/weaviate-1.38.8"
+MIGRATION_MARKER="${NEW_WEAVIATE_DATA}/.grimoire-migration-ready"
+
+export WEAVIATE_IMAGE="${WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.38.8}"
+export WEAVIATE_DATA_PATH="${WEAVIATE_DATA_PATH:-${NEW_WEAVIATE_DATA}}"
+
 echo "Grimoire Keeper デプロイ開始"
 
 # .envファイル確認（非秘密の設定値用）
@@ -33,8 +41,20 @@ fi
 
 # データディレクトリ作成
 echo "データディレクトリ作成中..."
-sudo mkdir -p /opt/grimoire-keeper-data/{database,json,weaviate}
-sudo chown -R $USER:$USER /opt/grimoire-keeper-data
+sudo mkdir -p "${DATA_ROOT}/database" "${DATA_ROOT}/json" \
+    "${NEW_WEAVIATE_DATA}" "${DATA_ROOT}/backups"
+sudo chown -R "${USER}:${USER}" "${DATA_ROOT}/database" "${DATA_ROOT}/json" \
+    "${NEW_WEAVIATE_DATA}" "${DATA_ROOT}/backups"
+
+# 旧データがある環境では、検証済みの新環境なしに空のWeaviateへ切り替えない。
+if [ "${WEAVIATE_DATA_PATH}" = "${NEW_WEAVIATE_DATA}" ] && \
+   [ -d "${OLD_WEAVIATE_DATA}" ] && \
+   [ -n "$(find "${OLD_WEAVIATE_DATA}" -mindepth 1 -print -quit)" ] && \
+   [ ! -f "${MIGRATION_MARKER}" ]; then
+    echo "ERROR: Weaviate 1.38.8 の再インデックスが未検証です"
+    echo "先に bash scripts/migrate_weaviate_1_38.sh を実行してください"
+    exit 1
+fi
 
 # 既存コンテナ停止・削除
 echo "既存サービス停止中..."
@@ -58,7 +78,7 @@ echo "サービス起動確認中..."
 sleep 10
 
 # Weaviate確認
-if curl -f http://localhost:8089/v1/meta >/dev/null 2>&1; then
+if curl -f http://localhost:8089/v1/.well-known/ready >/dev/null 2>&1; then
     echo "OK: Weaviate起動完了"
 else
     echo "ERROR: Weaviate起動失敗"

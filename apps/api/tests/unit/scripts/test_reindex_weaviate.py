@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from scripts.check_weaviate_migration import verify_migration
 from scripts.reindex_weaviate import _positive_int, reindex
 
 
@@ -45,3 +46,62 @@ def test_positive_int_rejects_zero() -> None:
     """--max-pages は1以上に限定する."""
     with pytest.raises(argparse.ArgumentTypeError):
         _positive_int("0")
+
+
+@pytest.mark.asyncio
+async def test_verify_migration_accepts_matching_counts() -> None:
+    """SQLiteページ数と新コレクション件数が整合すれば成功する."""
+    page_repo = MagicMock()
+    page_repo.count_pages = AsyncMock(return_value=2)
+    client = MagicMock()
+    client.is_ready.return_value = True
+    client.collections.exists.return_value = True
+    page_collection = MagicMock()
+    page_collection.aggregate.over_all.return_value.total_count = 2
+    chunk_collection = MagicMock()
+    chunk_collection.aggregate.over_all.return_value.total_count = 5
+    client.collections.get.side_effect = [page_collection, chunk_collection]
+
+    with (
+        patch(
+            "scripts.check_weaviate_migration.PageRepository",
+            return_value=page_repo,
+        ),
+        patch(
+            "scripts.check_weaviate_migration.weaviate.connect_to_local",
+            return_value=client,
+        ),
+    ):
+        result = await verify_migration()
+
+    assert result == 0
+    client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verify_migration_rejects_page_count_mismatch() -> None:
+    """SQLiteとページコレクションの件数不一致を失敗にする."""
+    page_repo = MagicMock()
+    page_repo.count_pages = AsyncMock(return_value=2)
+    client = MagicMock()
+    client.is_ready.return_value = True
+    client.collections.exists.return_value = True
+    page_collection = MagicMock()
+    page_collection.aggregate.over_all.return_value.total_count = 1
+    chunk_collection = MagicMock()
+    chunk_collection.aggregate.over_all.return_value.total_count = 3
+    client.collections.get.side_effect = [page_collection, chunk_collection]
+
+    with (
+        patch(
+            "scripts.check_weaviate_migration.PageRepository",
+            return_value=page_repo,
+        ),
+        patch(
+            "scripts.check_weaviate_migration.weaviate.connect_to_local",
+            return_value=client,
+        ),
+    ):
+        result = await verify_migration()
+
+    assert result == 1

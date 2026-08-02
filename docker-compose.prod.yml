@@ -64,9 +64,10 @@ services:
       - grimoire-network
 
   weaviate:
-    image: cr.weaviate.io/semitechnologies/weaviate:1.33.1
+    image: ${WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.38.8}
     ports:
       - "8089:8080"
+      - "50051:50051"
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
@@ -75,7 +76,7 @@ services:
       ENABLE_MODULES: 'text2vec-openai'
       CLUSTER_HOSTNAME: 'node1'
     volumes:
-      - /opt/grimoire-keeper-data/weaviate:/var/lib/weaviate
+      - ${WEAVIATE_DATA_PATH:-/opt/grimoire-keeper-data/weaviate-1.38.8}:/var/lib/weaviate
     restart: unless-stopped
     networks:
       - grimoire-network
