@@ -1,9 +1,11 @@
 """Tests for SearchService."""
 
+from datetime import datetime
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from grimoire_api.models.database import Page, PageStatus
 from grimoire_api.services.search_service import SearchService
 from grimoire_api.utils.exceptions import VectorizerError
 from pydantic import ValidationError
@@ -23,7 +25,30 @@ class TestSearchService:
     @pytest.fixture
     def search_service(self, mock_weaviate_client: MagicMock) -> SearchService:
         """SearchServiceフィクスチャ."""
-        return SearchService(weaviate_client=mock_weaviate_client)
+        page_repo = MagicMock()
+        page_repo.get_searchable_page_ids = AsyncMock(return_value=[1, 2, 3, 4, 5])
+        page_repo.get_pages_by_ids = AsyncMock(
+            return_value={
+                page_id: Page(
+                    id=page_id,
+                    url=(
+                        "https://example.com"
+                        if page_id == 1
+                        else "https://filtered.com"
+                    ),
+                    title="Test Title" if page_id == 1 else "Filtered Title",
+                    memo=None,
+                    summary=("Test summary" if page_id == 1 else "Filtered summary"),
+                    keywords=["test", "example"],
+                    created_at=datetime(2023, 1, 1),
+                    updated_at=datetime(2023, 1, 1),
+                    weaviate_id="uuid",
+                    status=PageStatus.SUCCEEDED,
+                )
+                for page_id in range(1, 6)
+            }
+        )
+        return SearchService(weaviate_client=mock_weaviate_client, page_repo=page_repo)
 
     def test_init(self: Any) -> None:
         """初期化テスト."""
@@ -69,7 +94,7 @@ class TestSearchService:
         assert call_args[1]["query"] == "test query"
         assert call_args[1]["target_vector"] == "content_vector"
         assert call_args[1]["limit"] == 5
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None  # 成功済みpageIdに限定される
 
     @pytest.mark.asyncio
     async def test_vector_search_with_filters(
@@ -171,7 +196,7 @@ class TestSearchService:
         assert call_args[1]["query"] == "memo query"
         assert call_args[1]["target_vector"] == "memo_vector"
         assert call_args[1]["limit"] == 3
-        assert call_args[1]["filters"] is not None  # isSummaryフィルターが追加される
+        assert call_args[1]["filters"] is None
 
     @pytest.mark.asyncio
     async def test_keyword_search(
@@ -212,7 +237,7 @@ class TestSearchService:
 
         from unittest.mock import patch
 
-        with patch("weaviate.classes.query.Filter") as mock_filter:
+        with patch("grimoire_api.services.search_service.Filter") as mock_filter:
             mock_filter.by_property.return_value.like.return_value = "url_filter"
 
             result = search_service._build_weaviate_filter(filters)
@@ -229,7 +254,7 @@ class TestSearchService:
 
         from unittest.mock import patch
 
-        with patch("weaviate.classes.query.Filter") as mock_filter:
+        with patch("grimoire_api.services.search_service.Filter") as mock_filter:
             mock_filter.by_property.return_value.contains_any.return_value = (
                 "keywords_filter"
             )
@@ -250,7 +275,7 @@ class TestSearchService:
 
         from unittest.mock import patch
 
-        with patch("weaviate.classes.query.Filter") as mock_filter:
+        with patch("grimoire_api.services.search_service.Filter") as mock_filter:
             mock_from_filter = MagicMock()
             mock_to_filter = MagicMock()
             mock_filter.by_property.return_value.greater_or_equal.return_value = (
@@ -300,12 +325,11 @@ class TestSearchService:
         from unittest.mock import patch
 
         filters: dict[str, Any] = {"url": None}
-        with patch("weaviate.classes.query.Filter") as mock_filter:
+        with patch("grimoire_api.services.search_service.Filter") as mock_filter:
             mock_filter.by_property.return_value.like.return_value = "url_filter"
             result = search_service._build_weaviate_filter(filters)
-            # None は文字列化され "*None*" でフィルター構築される（現状挙動）
-            mock_filter.by_property.return_value.like.assert_called_with("*None*")
-            assert result == "url_filter"
+            mock_filter.by_property.assert_not_called()
+            assert result is None
 
     def test_build_weaviate_filter_invalid_date_format(
         self, search_service: SearchService
@@ -314,7 +338,7 @@ class TestSearchService:
         from unittest.mock import patch
 
         filters = {"date_from": "not-a-date"}
-        with patch("weaviate.classes.query.Filter") as mock_filter:
+        with patch("grimoire_api.services.search_service.Filter") as mock_filter:
             mock_from_filter = MagicMock()
             mock_filter.by_property.return_value.greater_or_equal.return_value = (
                 mock_from_filter
@@ -337,7 +361,7 @@ class TestSearchService:
             "Unknown target vector: invalid_vector"
         )
 
-        with pytest.raises(VectorizerError, match="Vector search error"):
+        with pytest.raises(VectorizerError, match="Unsupported vector name"):
             await search_service.vector_search(
                 "test query", vector_name="invalid_vector"
             )
@@ -475,4 +499,4 @@ class TestSearchService:
         assert call_args[1]["query"] == "title query"
         assert call_args[1]["target_vector"] == "title_vector"
         assert call_args[1]["limit"] == 5
-        assert call_args[1]["filters"] is not None  # isSummaryフィルターが追加される
+        assert call_args[1]["filters"] is None

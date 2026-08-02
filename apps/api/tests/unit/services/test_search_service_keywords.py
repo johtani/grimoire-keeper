@@ -12,7 +12,7 @@ class TestSearchServiceKeywords:
     @pytest.fixture
     def search_service(self) -> SearchService:
         """SearchServiceフィクスチャ."""
-        return SearchService(weaviate_client=MagicMock())
+        return SearchService(weaviate_client=MagicMock(), page_repo=MagicMock())
 
     def test_build_weaviate_filter_keywords_string(
         self, search_service: SearchService
@@ -20,7 +20,7 @@ class TestSearchServiceKeywords:
         """文字列キーワードフィルター構築テスト."""
         filters = {"keywords": "single_keyword"}
 
-        with patch("weaviate.classes.query.Filter") as mock_filter:
+        with patch("grimoire_api.services.search_service.Filter") as mock_filter:
             mock_filter.by_property.return_value.contains_any.return_value = (
                 "keywords_filter"
             )

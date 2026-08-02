@@ -11,7 +11,7 @@ from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
 from ..config import settings
-from ..models.database import ProcessingStep
+from ..models.database import Page, ProcessingStep
 from ..models.external import FetchedDocument
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
@@ -21,21 +21,16 @@ from .chunking_service import ChunkingService
 logger = logging.getLogger(__name__)
 
 
-def _insert_chunks_sync(
-    collection: Any, objects_to_insert: list[tuple[dict, Any]]
+def _insert_objects_sync(
+    collection: Any, objects_to_insert: list[tuple[dict[str, Any], Any]]
 ) -> None:
-    """チャンクを同期的にWeaviateに挿入する (asyncio.to_thread から呼び出す).
-
-    Args:
-        collection: Weaviateコレクション
-        objects_to_insert: (weaviate_object, chunk_uuid) のリスト
-    """
-    for weaviate_object, chunk_uuid in objects_to_insert:
-        collection.data.insert(properties=weaviate_object, uuid=chunk_uuid)
+    """Weaviateオブジェクトを同期的に挿入する."""
+    for properties, object_uuid in objects_to_insert:
+        collection.data.insert(properties=properties, uuid=object_uuid)
 
 
 class VectorizerService:
-    """ベクトル化サービス."""
+    """ページ代表データと本文チャンクを分離して保存する."""
 
     def __init__(
         self,
@@ -44,146 +39,129 @@ class VectorizerService:
         chunking_service: ChunkingService,
         weaviate_client: weaviate.WeaviateClient,
     ):
-        """初期化.
-
-        Args:
-            page_repo: ページリポジトリ
-            file_repo: ファイルリポジトリ
-            chunking_service: チャンキングサービス
-            weaviate_client: Weaviateクライアント (共有インスタンス)
-        """
         self.page_repo = page_repo
         self.file_repo = file_repo
         self.chunking_service = chunking_service
         self.weaviate_client = weaviate_client
 
     async def vectorize_content(self, page_id: int) -> None:
-        """コンテンツのベクトル化とWeaviate保存.
-
-        Args:
-            page_id: ページID
-
-        Raises:
-            VectorizerError: ベクトル化エラー
-        """
+        """ページを索引化し、SQLiteのWeaviate IDと処理ステップを更新する."""
         try:
-            # データ読み込み
-            page_data = await self.page_repo.get_page(page_id)
-            if not page_data:
-                raise VectorizerError(f"Page not found: {page_id}")
-
-            raw_jina_data = await self.file_repo.load_json_file(page_id)
-            try:
-                document = FetchedDocument.from_jina_response(
-                    raw_jina_data, source_url=page_data.url
-                )
-            except (ValidationError, ValueError, TypeError):
-                raise VectorizerError(
-                    "Vectorization error: invalid stored Jina response "
-                    f"for page_id={page_id}"
-                ) from None
-
-            # チャンキング（言語情報を使用）
-            chunks = self.chunking_service.chunk_document(document)
-            if not chunks:
-                raise VectorizerError("No chunks generated from content")
-
-            # Weaviate保存
-            weaviate_id = await self._save_chunks_to_weaviate(page_data, chunks)
-
-            # ページにWeaviate IDと成功ステップをアトミックに保存
+            page_data, chunks = await self._load_page_and_chunks(page_id)
+            weaviate_id = await self._save_page_to_weaviate(page_data, chunks)
             await self.page_repo.update_weaviate_id_and_step(
                 page_id, weaviate_id, ProcessingStep.VECTORIZED
             )
-
         except Exception as e:
             raise VectorizerError(f"Vectorization error: {str(e)}")
 
-    async def _save_chunks_to_weaviate(self, page_data: Any, chunks: list[str]) -> str:
-        """チャンクをWeaviateに保存.
+    async def reindex_content(self, page_id: int) -> str:
+        """処理状態を変更せず、保存済みデータからページを再索引化する."""
+        try:
+            page_data, chunks = await self._load_page_and_chunks(page_id)
+            return await self._save_page_to_weaviate(page_data, chunks)
+        except Exception as e:
+            raise VectorizerError(f"Reindex error: {str(e)}")
 
-        Args:
-            page_data: ページデータ
-            chunks: チャンクリスト
+    async def _load_page_and_chunks(self, page_id: int) -> tuple[Page, list[str]]:
+        page_data = await self.page_repo.get_page(page_id)
+        if not page_data:
+            raise VectorizerError(f"Page not found: {page_id}")
 
-        Returns:
-            最初のチャンクのWeaviate ID
-        """
-        first_chunk_id = None
+        raw_jina_data = await self.file_repo.load_json_file(page_id)
+        try:
+            document = FetchedDocument.from_jina_response(
+                raw_jina_data, source_url=page_data.url
+            )
+        except (ValidationError, ValueError, TypeError):
+            raise VectorizerError(
+                f"invalid stored Jina response for page_id={page_id}"
+            ) from None
+
+        chunks = self.chunking_service.chunk_document(document)
+        if not chunks:
+            raise VectorizerError("No chunks generated from content")
+        return page_data, chunks
+
+    async def _save_page_to_weaviate(self, page_data: Page, chunks: list[str]) -> str:
+        """ページ代表オブジェクト1件と本文チャンクを別コレクションへ保存する."""
+        if page_data.id is None:
+            raise VectorizerError("Page ID is required")
 
         try:
-            collection = self.weaviate_client.collections.get(
-                settings.WEAVIATE_COLLECTION_NAME
+            page_collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_PAGE_COLLECTION_NAME
+            )
+            chunk_collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_CHUNK_COLLECTION_NAME
             )
 
-            # 既存データを削除
-            await self._delete_existing_chunks(collection, page_data.id)
+            await self._delete_existing_objects(page_collection, page_data.id)
+            await self._delete_existing_objects(chunk_collection, page_data.id)
 
-            # 挿入オブジェクトリストを構築
-            objects_to_insert: list[tuple[dict, Any]] = []
-            for i, chunk in enumerate(chunks):
-                weaviate_object = {
-                    "pageId": page_data.id,
-                    "chunkId": i,
-                    "url": page_data.url,
-                    "title": page_data.title,
-                    "memo": page_data.memo or "",
-                    "content": chunk,
-                    "summary": page_data.summary or "",
-                    "keywords": page_data.keywords,
-                    "createdAt": (
-                        page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
-                        if page_data.created_at.tzinfo is None
-                        else page_data.created_at.isoformat()
-                    ),
-                    "isSummary": i == 0,
-                }
-                # UUID生成: pageId-chunkIdの文字列からUUID5を生成
-                uuid_source = f"{page_data.id}-{i}"
-                chunk_uuid = generate_uuid5(uuid_source)
-                objects_to_insert.append((weaviate_object, chunk_uuid))
-                if i == 0:
-                    first_chunk_id = str(chunk_uuid)
+            page_uuid = generate_uuid5(f"page-{page_data.id}")
+            created_at = self._format_created_at(page_data)
+            page_properties = {
+                "pageId": page_data.id,
+                "url": page_data.url,
+                "title": page_data.title,
+                "memo": page_data.memo or "",
+                "summary": page_data.summary or "",
+                "keywords": page_data.keywords or [],
+                "createdAt": created_at,
+            }
+            await asyncio.to_thread(
+                _insert_objects_sync,
+                page_collection,
+                [(page_properties, page_uuid)],
+            )
 
-            # 同期 insert をスレッドプールで実行してイベントループをブロックしない
-            await asyncio.to_thread(_insert_chunks_sync, collection, objects_to_insert)
-
-            return first_chunk_id or ""
-
+            chunk_objects = [
+                (
+                    {
+                        "pageId": page_data.id,
+                        "chunkId": chunk_id,
+                        "content": content,
+                    },
+                    generate_uuid5(f"chunk-{page_data.id}-{chunk_id}"),
+                )
+                for chunk_id, content in enumerate(chunks)
+            ]
+            await asyncio.to_thread(
+                _insert_objects_sync, chunk_collection, chunk_objects
+            )
+            return str(page_uuid)
         except Exception as e:
-            raise VectorizerError(f"Failed to save chunks to Weaviate: {str(e)}")
+            raise VectorizerError(f"Failed to save page to Weaviate: {str(e)}")
 
-    async def _delete_existing_chunks(self, collection: Any, page_id: int) -> None:
-        """既存チャンクを削除し、削除完了を確認する.
+    async def _save_chunks_to_weaviate(self, page_data: Page, chunks: list[str]) -> str:
+        """後方互換用の内部エイリアス."""
+        return await self._save_page_to_weaviate(page_data, chunks)
 
-        Args:
-            collection: Weaviateコレクション
-            page_id: ページID
+    @staticmethod
+    def _format_created_at(page_data: Page) -> str:
+        if page_data.created_at.tzinfo is None:
+            return page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
+        return page_data.created_at.isoformat()
 
-        Raises:
-            VectorizerError: 削除がタイムアウトした場合
-        """
+    async def _delete_existing_objects(self, collection: Any, page_id: int) -> None:
+        """対象ページの既存オブジェクトを削除し、削除完了を確認する."""
         try:
             result = await asyncio.to_thread(
                 collection.data.delete_many,
                 where=Filter.by_property("pageId").equal(page_id),
             )
             if hasattr(result, "matches"):
-                logger.info("Deleted %d chunks for page %d", result.matches, page_id)
+                logger.info("Deleted %d objects for page %d", result.matches, page_id)
             if hasattr(result, "failed") and result.failed > 0:
                 logger.warning(
-                    "Failed to delete %d chunks for page %d", result.failed, page_id
+                    "Failed to delete %d objects for page %d", result.failed, page_id
                 )
-
-            # 削除対象がなければ確認不要
             if not hasattr(result, "matches") or result.matches == 0:
                 return
 
-            # 削除完了をポーリングで確認 (sleep → check の順で一貫性を保つ)
-            max_retries = 10
-            wait_sec = 0.1
-            for attempt in range(max_retries):
-                await asyncio.sleep(wait_sec)
+            for attempt in range(10):
+                await asyncio.sleep(0.1)
                 remaining = await asyncio.to_thread(
                     collection.query.fetch_objects,
                     filters=Filter.by_property("pageId").equal(page_id),
@@ -192,27 +170,25 @@ class VectorizerService:
                 if not remaining.objects:
                     return
                 logger.debug(
-                    "Waiting for deletion of chunks for page %d (attempt %d/%d)",
+                    "Waiting for deletion for page %d (attempt %d/10)",
                     page_id,
                     attempt + 1,
-                    max_retries,
                 )
-
             raise VectorizerError(
-                f"Deletion of chunks for page {page_id} did not complete within timeout"
+                f"Deletion of objects for page {page_id} "
+                "did not complete within timeout"
             )
         except VectorizerError:
             raise
         except Exception as e:
-            logger.error("Failed to delete existing chunks for page %d: %s", page_id, e)
+            logger.error("Failed to delete objects for page %d: %s", page_id, e)
             raise
 
-    async def health_check(self) -> bool:
-        """Weaviateヘルスチェック.
+    async def _delete_existing_chunks(self, collection: Any, page_id: int) -> None:
+        """後方互換用の内部エイリアス."""
+        await self._delete_existing_objects(collection, page_id)
 
-        Returns:
-            Weaviateが利用可能かどうか
-        """
+    async def health_check(self) -> bool:
         try:
             self.weaviate_client.is_ready()
             return True
@@ -220,36 +196,24 @@ class VectorizerService:
             return False
 
     async def ensure_schema(self) -> None:
-        """Weaviateスキーマ確保.
-
-        Raises:
-            VectorizerError: スキーマ作成エラー
-        """
+        """ページ用・本文チャンク用のWeaviateスキーマを作成する."""
         try:
-            # 既存コレクション確認
             if not self.weaviate_client.collections.exists(
-                settings.WEAVIATE_COLLECTION_NAME
+                settings.WEAVIATE_PAGE_COLLECTION_NAME
             ):
-                # コレクション作成
                 self.weaviate_client.collections.create(
-                    name=settings.WEAVIATE_COLLECTION_NAME,
-                    description="Grimoire Keeperで管理するWebページのチャンク",
+                    name=settings.WEAVIATE_PAGE_COLLECTION_NAME,
+                    description="Grimoire Keeperのページ代表検索データ",
                     properties=[
                         Property(name="pageId", data_type=DataType.INT),
-                        Property(name="chunkId", data_type=DataType.INT),
                         Property(name="url", data_type=DataType.TEXT),
                         Property(name="title", data_type=DataType.TEXT),
                         Property(name="memo", data_type=DataType.TEXT),
-                        Property(name="content", data_type=DataType.TEXT),
                         Property(name="summary", data_type=DataType.TEXT),
                         Property(name="keywords", data_type=DataType.TEXT_ARRAY),
                         Property(name="createdAt", data_type=DataType.DATE),
-                        Property(name="isSummary", data_type=DataType.BOOL),
                     ],
                     vector_config=[
-                        Configure.Vectors.text2vec_openai(
-                            name="content_vector", source_properties=["content"]
-                        ),
                         Configure.Vectors.text2vec_openai(
                             name="title_vector",
                             source_properties=["title", "summary"],
@@ -260,5 +224,22 @@ class VectorizerService:
                     ],
                 )
 
+            if not self.weaviate_client.collections.exists(
+                settings.WEAVIATE_CHUNK_COLLECTION_NAME
+            ):
+                self.weaviate_client.collections.create(
+                    name=settings.WEAVIATE_CHUNK_COLLECTION_NAME,
+                    description="Grimoire Keeperの本文チャンク",
+                    properties=[
+                        Property(name="pageId", data_type=DataType.INT),
+                        Property(name="chunkId", data_type=DataType.INT),
+                        Property(name="content", data_type=DataType.TEXT),
+                    ],
+                    vector_config=[
+                        Configure.Vectors.text2vec_openai(
+                            name="content_vector", source_properties=["content"]
+                        )
+                    ],
+                )
         except Exception as e:
             raise VectorizerError(f"Failed to ensure schema: {str(e)}")
