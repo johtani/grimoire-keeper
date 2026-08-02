@@ -1,30 +1,130 @@
 # Development
 
-## Weaviateデータモデルの移行
+## Weaviate 1.38.8への移行
 
-ページ代表データは `GrimoirePage`、本文は `GrimoireContentChunk` に保存します。
-旧 `GrimoireChunk` は再インデックス中も削除されません。
+本番のWeaviateを `1.33.1` から `1.38.8` へ更新します。既存ボリュームの
+インプレースアップグレードは行いません。SQLiteと保存済みJina JSONから、空の
+`1.38.8` 環境に `GrimoirePage` と `GrimoireContentChunk` を再構築します。
 
-このIssueでは再インデックス機能の実装までを行います。本番での新しいWeaviate
-環境の準備、再インデックス、APIの切り替えは #154 の手順に従ってください。
+### 互換性
 
-まず対象を確認します。
+- Weaviate `1.38.8` のリリースノートにbreaking changeはありません。
+- `1.34.0` から `1.38.0` までの各minor初回リリースにもbreaking changeは
+  ありません。`1.34.0` で既定フィルター戦略がACORNへ変わっているため、移行前後の
+  代表検索結果は確認します。
+- Weaviate公式対応表に従い、Python clientは `4.22.x` を使用します。
+- `1.38.8` では古い形式のバックアップ復元サポートが削除されていますが、本移行は
+  バックアップ復元APIを使わず、SQLiteとJina JSONから再インデックスします。
+- 旧 `1.33.1` の `/opt/grimoire-keeper-data/weaviate` は変更・削除しません。
+
+参考:
+
+- [Weaviate 1.38.8 release](https://github.com/weaviate/weaviate/releases/tag/v1.38.8)
+- [Database and client compatibility](https://docs.weaviate.io/weaviate/release-notes#weaviate-database-and-client-releases)
+
+### 移行前の確認
+
+1. 現在のAPIコミットとサービス状態を記録します。
+2. タイトル、メモ、キーワード、本文検索から代表クエリと結果を保存します。
+3. `/opt/grimoire-keeper-data` に、SQLite・Jina JSON・新しいWeaviate索引を保持
+   できる空き容量があることを確認します。
+4. `~/.config/bws.env` の `BWS_ACCESS_TOKEN` と `.env` を確認します。
+
+再インデックス対象だけを確認する場合は次を実行します。このコマンドはWeaviateを
+変更しません。
 
 ```bash
 uv run python scripts/reindex_weaviate.py --dry-run
 ```
 
-#154 で用意した空のWeaviate環境を接続先に指定し、新しいコレクションを作成して
-再インデックスします。
+### 新環境の構築と再インデックス
+
+リポジトリルートで次を実行します。
 
 ```bash
-uv run python scripts/reindex_weaviate.py
+bash scripts/migrate_weaviate_1_38.sh
 ```
 
-コマンドはSQLiteの成功済みページと保存済みJina JSONだけを使用し、Jina APIや
-LLMを再実行しません。ページの `status` と `last_success_step` も変更しません。
-個別ページに失敗しても残りを続行し、最後に成功・失敗件数を表示します。
+このスクリプトは次の順序で処理します。
 
-新コレクションの件数と検索結果を確認してから、#154 の手順でAPIを切り替えて
-ください。問題がなければ、旧 `GrimoireChunk` はWeaviateの管理手段から手動で
-削除できます。自動削除は行いません。
+1. 稼働中APIのコミットをロールバック情報として記録する。
+2. 旧サービスを停止する。
+3. SQLiteとJina JSONを `/opt/grimoire-keeper-data/backups` へ保存する。
+4. `/opt/grimoire-keeper-data/weaviate-1.38.8` を新規データパスとして
+   Weaviate `1.38.8` だけを起動する。
+5. SQLiteとJina JSONから新しい2コレクションへ再インデックスする。
+6. 成功済みSQLiteページ数と `GrimoirePage` 件数が一致し、本文チャンクが作成
+   されていることを検証する。
+7. 検証済みマーカー `.grimoire-migration-ready` を作成する。
+
+Jina APIやLLMは再実行しません。ページの `status` と `last_success_step` も変更
+しません。個別ページの失敗または件数不一致があれば、スクリプトは非0で終了し、
+APIへの切り替えは行いません。
+
+### 検証
+
+readinessとコレクション件数を再確認できます。
+
+```bash
+curl -fsS http://localhost:8089/v1/.well-known/ready
+bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+  uv run python ../../scripts/check_weaviate_migration.py
+```
+
+移行前に保存した代表クエリを使い、以下を確認します。
+
+- `title_vector` によるタイトル・要約検索
+- `memo_vector` によるメモ検索
+- キーワード検索
+- `content_vector` による本文チャンク検索
+- URL、日付、包含・除外キーワードのフィルター
+
+### APIの切り替え
+
+件数と代表検索が正常な場合だけ、全サービスを起動します。
+
+```bash
+bash scripts/deploy.sh
+```
+
+切り替え後にAPI readiness、検索、新規URL処理を確認します。
+
+```bash
+curl -fsS http://localhost:8000/api/v1/health
+curl -fsS -X POST http://localhost:8000/api/v1/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"確認用クエリ","vector_name":"content_vector","limit":5}'
+```
+
+旧Weaviateボリュームは動作確認直後に削除せず、ロールバック期間が終わるまで保持
+します。
+
+### ロールバック
+
+移行スクリプトが出力した `.txt` に、旧APIコミット、旧Weaviate image/data path、
+SQLite・JSONバックアップの場所が記録されています。ロールバックでは必ず次の3点を
+セットで戻します。
+
+1. APIを記録済みの旧コミットへ戻す。
+2. SQLiteとJina JSONを移行前バックアップから復元する。
+3. Weaviate `1.33.1` を旧 `/opt/grimoire-keeper-data/weaviate` で起動する。
+
+最初に現行サービスを停止し、失敗時のデータを退避します。以下の
+`<timestamp>`、`<backup-file>`、`<old-api-commit>` はロールバック情報の値に
+置き換えます。
+
+```bash
+docker compose -f docker-compose.prod.yml down
+sudo mv /opt/grimoire-keeper-data/database \
+  /opt/grimoire-keeper-data/database.failed-<timestamp>
+sudo mv /opt/grimoire-keeper-data/json \
+  /opt/grimoire-keeper-data/json.failed-<timestamp>
+sudo tar -xzf <backup-file> -C /opt/grimoire-keeper-data
+git checkout <old-api-commit>
+export WEAVIATE_IMAGE=cr.weaviate.io/semitechnologies/weaviate:1.33.1
+export WEAVIATE_DATA_PATH=/opt/grimoire-keeper-data/weaviate
+bash scripts/deploy.sh
+```
+
+ロールバック確認後、#154 のブランチへ戻します。旧・新どちらのWeaviateデータも、
+削除は別途確認してから行います。
