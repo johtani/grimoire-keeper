@@ -18,14 +18,20 @@ class TestVectorizerService:
     def mock_dependencies(self: Any) -> Any:
         """依存関係のモック."""
         mock_collection = MagicMock()
+        mock_page_collection = MagicMock()
         # delete_many のデフォルトは削除対象なし (matches=0, failed=0) とする
         mock_delete_result = MagicMock()
         mock_delete_result.matches = 0
         mock_delete_result.failed = 0
         mock_collection.data.delete_many.return_value = mock_delete_result
+        mock_page_collection.data.delete_many.return_value = mock_delete_result
 
         mock_collections = MagicMock()
-        mock_collections.get.return_value = mock_collection
+        mock_collections.get.side_effect = lambda name: (
+            mock_page_collection
+            if name == settings.WEAVIATE_PAGE_COLLECTION_NAME
+            else mock_collection
+        )
         mock_collections.exists.return_value = False
 
         mock_client = MagicMock()
@@ -47,6 +53,7 @@ class TestVectorizerService:
             "chunking_service": MagicMock(),
             "weaviate_client": mock_client,
             "mock_collection": mock_collection,
+            "mock_page_collection": mock_page_collection,
         }
 
     @pytest.fixture
@@ -111,8 +118,9 @@ class TestVectorizerService:
         ]
         assert document.content == "This is test content for vectorization."
 
-        # Weaviateへの保存が3回呼ばれたことを確認
+        # 本文チャンクコレクションへの保存が3回呼ばれたことを確認
         assert mock_dependencies["mock_collection"].data.insert.call_count == 3
+        assert mock_dependencies["mock_page_collection"].data.insert.call_count == 1
 
         # Weaviate IDと成功ステップのアトミック更新が呼ばれたことを確認
         mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_called_once()
@@ -134,6 +142,33 @@ class TestVectorizerService:
         # エラー確認
         with pytest.raises(VectorizerError, match="Page not found"):
             await vectorizer_service.vectorize_content(page_id)
+
+    @pytest.mark.asyncio
+    async def test_reindex_content_does_not_update_processing_state(
+        self, vectorizer_service, mock_dependencies
+    ):
+        """再インデックスはSQLiteの処理ステップを変更しない."""
+        page_id = 1
+        mock_dependencies["page_repo"].get_page.return_value = Page(
+            id=page_id,
+            url="https://example.com",
+            title="Title",
+            memo=None,
+            summary="Summary",
+            keywords=["test"],
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            weaviate_id="old-id",
+        )
+        mock_dependencies["file_repo"].load_json_file.return_value = {
+            "data": {"title": "Title", "content": "Content"}
+        }
+        mock_dependencies["chunking_service"].chunk_document.return_value = ["chunk"]
+
+        result = await vectorizer_service.reindex_content(page_id)
+
+        assert len(result) == 36
+        mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_vectorize_content_no_chunks(
@@ -229,7 +264,7 @@ class TestVectorizerService:
         # Weaviateへの保存が2回呼ばれたことを確認
         assert mock_dependencies["mock_collection"].data.insert.call_count == 2
 
-        # 保存データの確認
+        # チャンク側にはページ情報を複製しない
         call_args_list = mock_dependencies["mock_collection"].data.insert.call_args_list
 
         # 最初のチャンク
@@ -238,8 +273,7 @@ class TestVectorizerService:
         assert first_data["pageId"] == 1
         assert first_data["chunkId"] == 0
         assert first_data["content"] == "chunk1"
-        assert first_data["url"] == "https://example.com"
-        assert first_data["title"] == "Test Title"
+        assert set(first_data) == {"pageId", "chunkId", "content"}
 
         # 2番目のチャンク
         second_call = call_args_list[1]
@@ -389,17 +423,17 @@ class TestVectorizerService:
         ) as mock_to_thread:
             await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
 
-        # asyncio.to_thread が _insert_chunks_sync で呼ばれたことを確認
-        from grimoire_api.services.vectorizer import _insert_chunks_sync
+        # asyncio.to_thread が _insert_objects_sync で呼ばれたことを確認
+        from grimoire_api.services.vectorizer import _insert_objects_sync
 
         insert_calls = [
             call
             for call in mock_to_thread.call_args_list
-            if call[0][0] is _insert_chunks_sync
+            if call[0][0] is _insert_objects_sync and len(call[0][2]) == 2
         ]
         assert len(insert_calls) == 1
 
-        # _insert_chunks_sync に渡されたオブジェクトリストが正しいことを確認
+        # _insert_objects_sync に渡されたチャンクが正しいことを確認
         _, objects_to_insert = insert_calls[0][0][1], insert_calls[0][0][2]
         assert len(objects_to_insert) == 2
         assert objects_to_insert[0][0]["content"] == "chunk1"
@@ -426,7 +460,7 @@ class TestVectorizerService:
             "Weaviate delete error"
         )
 
-        with pytest.raises(VectorizerError, match="Failed to save chunks to Weaviate"):
+        with pytest.raises(VectorizerError, match="Failed to save page to Weaviate"):
             await vectorizer_service._save_chunks_to_weaviate(mock_page, ["chunk1"])
 
     @pytest.mark.asyncio
@@ -466,11 +500,18 @@ class TestVectorizerService:
         await vectorizer_service.ensure_schema()
 
         # コレクション作成が呼ばれたことを確認
-        mock_dependencies["weaviate_client"].collections.create.assert_called_once()
+        assert mock_dependencies["weaviate_client"].collections.create.call_count == 2
 
-        # 作成されたコレクションの確認
-        call_args = mock_dependencies["weaviate_client"].collections.create.call_args
-        assert call_args[1]["name"] == settings.WEAVIATE_COLLECTION_NAME
+        names = {
+            call.kwargs["name"]
+            for call in mock_dependencies[
+                "weaviate_client"
+            ].collections.create.call_args_list
+        }
+        assert names == {
+            settings.WEAVIATE_PAGE_COLLECTION_NAME,
+            settings.WEAVIATE_CHUNK_COLLECTION_NAME,
+        }
 
     @pytest.mark.asyncio
     async def test_ensure_schema_already_exists(
@@ -498,11 +539,10 @@ class TestVectorizerService:
         await vectorizer_service.ensure_schema()
 
         # コレクション作成が呼ばれたことを確認
-        mock_dependencies["weaviate_client"].collections.create.assert_called_once()
-
-        # vector_configに3つのnamed vectorsが含まれることを確認
-        call_args = mock_dependencies["weaviate_client"].collections.create.call_args
-        vector_config = call_args[1]["vector_config"]
-
-        assert isinstance(vector_config, list)
-        assert len(vector_config) == 3
+        calls = mock_dependencies["weaviate_client"].collections.create.call_args_list
+        assert len(calls) == 2
+        vectors_by_name = {
+            call.kwargs["name"]: call.kwargs["vector_config"] for call in calls
+        }
+        assert len(vectors_by_name[settings.WEAVIATE_PAGE_COLLECTION_NAME]) == 2
+        assert len(vectors_by_name[settings.WEAVIATE_CHUNK_COLLECTION_NAME]) == 1

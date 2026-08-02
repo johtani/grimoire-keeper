@@ -129,10 +129,11 @@ def get_vectorizer_service(
 
 
 def get_search_service(
+    page_repo: PageRepository = Depends(get_page_repository),
     weaviate_client: weaviate.WeaviateClient = Depends(get_weaviate_client),
 ) -> SearchService:
     """検索サービス依存性注入."""
-    return SearchService(weaviate_client=weaviate_client)
+    return SearchService(weaviate_client=weaviate_client, page_repo=page_repo)
 
 
 def get_url_processor_service(

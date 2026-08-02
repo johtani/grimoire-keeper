@@ -1,241 +1,245 @@
-"""Search service for Weaviate."""
+"""Search service for the separated Weaviate page and chunk models."""
 
 from typing import Any
 
 import weaviate
-from weaviate.classes.query import MetadataQuery
+from weaviate.classes.query import Filter, MetadataQuery
 
 from ..config import settings
+from ..models.database import Page
 from ..models.response import SearchResult
+from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import VectorizerError
+
+_PAGE_VECTORS = frozenset({"title_vector", "memo_vector"})
+_CONTENT_VECTOR = "content_vector"
 
 
 class SearchService:
-    """検索サービス."""
+    """ページ代表検索と本文チャンク検索を振り分ける."""
 
-    def __init__(self, weaviate_client: weaviate.WeaviateClient):
-        """初期化.
-
-        Args:
-            weaviate_client: Weaviateクライアント (共有インスタンス)
-        """
+    def __init__(
+        self,
+        weaviate_client: weaviate.WeaviateClient,
+        page_repo: PageRepository | None = None,
+    ):
         self.weaviate_client = weaviate_client
+        self.page_repo = page_repo or PageRepository()
 
     async def vector_search(
         self,
         query: str,
         limit: int = 5,
         filters: dict | None = None,
-        vector_name: str = "content_vector",
+        vector_name: str = _CONTENT_VECTOR,
         exclude_keywords: list[str] | None = None,
     ) -> list[SearchResult]:
-        """ベクトル検索.
+        """指定ベクトルに対応するコレクションを検索する."""
+        if vector_name not in {*_PAGE_VECTORS, _CONTENT_VECTOR}:
+            raise VectorizerError(f"Unsupported vector name: {vector_name}")
 
-        Args:
-            query: 検索クエリ
-            limit: 結果件数制限
-            filters: フィルタ条件
-            vector_name: 使用するベクトル名
-            exclude_keywords: 除外キーワード
-
-        Returns:
-            検索結果のリスト
-
-        Raises:
-            VectorizerError: 検索エラー
-        """
         try:
-            collection = self.weaviate_client.collections.get(
-                settings.WEAVIATE_COLLECTION_NAME
+            if vector_name == _CONTENT_VECTOR:
+                return await self._content_vector_search(
+                    query, limit, filters, exclude_keywords
+                )
+            return self._page_vector_search(
+                query, limit, filters, vector_name, exclude_keywords
             )
-
-            # フィルター条件構築
-            where_filter = self._build_weaviate_filter(filters) if filters else None
-            exclude_filter = (
-                self._build_exclude_filter(exclude_keywords)
-                if exclude_keywords
-                else None
-            )
-
-            # ベクトル別フィルター追加
-            summary_filter = None
-            if vector_name != "content_vector":
-                from weaviate.classes.query import Filter
-
-                summary_filter = Filter.by_property("isSummary").equal(True)
-
-            # フィルター結合
-            filters_list = []
-            if where_filter:
-                filters_list.append(where_filter)
-            if summary_filter:
-                filters_list.append(summary_filter)
-            if exclude_filter:
-                filters_list.append(exclude_filter)
-
-            final_filter = None
-            if len(filters_list) == 1:
-                final_filter = filters_list[0]
-            elif len(filters_list) > 1:
-                from weaviate.classes.query import Filter
-
-                final_filter = Filter.all_of(filters_list)
-
-            # クエリ実行
-            response = collection.query.near_text(
-                query=query,
-                target_vector=vector_name,
-                limit=limit,
-                filters=final_filter,
-                return_metadata=MetadataQuery(certainty=True),
-            )
-
-            # 結果変換
-            return self._convert_search_results_v4(response)
-
+        except VectorizerError:
+            raise
         except Exception as e:
             raise VectorizerError(f"Vector search error: {str(e)}")
+
+    async def _content_vector_search(
+        self,
+        query: str,
+        limit: int,
+        filters: dict | None,
+        exclude_keywords: list[str] | None,
+    ) -> list[SearchResult]:
+        eligible_page_ids = await self.page_repo.get_searchable_page_ids(
+            filters, exclude_keywords
+        )
+        if not eligible_page_ids:
+            return []
+
+        collection = self.weaviate_client.collections.get(
+            settings.WEAVIATE_CHUNK_COLLECTION_NAME
+        )
+        page_filter = self._build_page_id_filter(eligible_page_ids)
+        response = collection.query.near_text(
+            query=query,
+            target_vector=_CONTENT_VECTOR,
+            limit=limit,
+            filters=page_filter,
+            return_metadata=MetadataQuery(certainty=True),
+        )
+        return await self._convert_chunk_results(response)
+
+    def _page_vector_search(
+        self,
+        query: str,
+        limit: int,
+        filters: dict | None,
+        vector_name: str,
+        exclude_keywords: list[str] | None,
+    ) -> list[SearchResult]:
+        collection = self.weaviate_client.collections.get(
+            settings.WEAVIATE_PAGE_COLLECTION_NAME
+        )
+        final_filter = self._combine_filters(
+            self._build_weaviate_filter(filters) if filters else None,
+            self._build_exclude_filter(exclude_keywords) if exclude_keywords else None,
+        )
+        response = collection.query.near_text(
+            query=query,
+            target_vector=vector_name,
+            limit=limit,
+            filters=final_filter,
+            return_metadata=MetadataQuery(certainty=True),
+        )
+        return self._convert_page_results(response)
 
     async def keyword_search(
         self, keywords: list[str], limit: int = 5
     ) -> list[SearchResult]:
-        """キーワード検索.
-
-        Args:
-            keywords: キーワードリスト
-            limit: 結果件数制限
-
-        Returns:
-            検索結果のリスト
-
-        Raises:
-            VectorizerError: 検索エラー
-        """
+        """ページ代表コレクションをキーワードで検索する."""
         try:
-            from weaviate.classes.query import Filter
-
             collection = self.weaviate_client.collections.get(
-                settings.WEAVIATE_COLLECTION_NAME
+                settings.WEAVIATE_PAGE_COLLECTION_NAME
             )
-
-            # キーワードフィルタで検索
             response = collection.query.fetch_objects(  # type: ignore[call-overload]
                 filters=Filter.by_property("keywords").contains_any(keywords),
                 limit=limit,
             )
-
-            return self._convert_search_results_v4(response)
-
+            return self._convert_page_results(response)
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")
 
+    @staticmethod
+    def _build_page_id_filter(page_ids: list[int]) -> Any:
+        conditions = [
+            Filter.by_property("pageId").equal(page_id) for page_id in page_ids
+        ]
+        return conditions[0] if len(conditions) == 1 else Filter.any_of(conditions)
+
     def _build_weaviate_filter(self, filters: dict) -> Any:
-        """フィルタ条件構築 (Weaviate v4).
-
-        Args:
-            filters: フィルタ条件
-
-        Returns:
-            Weaviate v4 Filterオブジェクト
-        """
-        from weaviate.classes.query import Filter
-
         conditions = []
-
-        if "url" in filters:
+        if filters.get("url"):
             conditions.append(Filter.by_property("url").like(f"*{filters['url']}*"))
 
-        if "keywords" in filters:
-            # keywordsを配列として確実に処理
-            keywords_value = filters["keywords"]
-            if isinstance(keywords_value, str):
-                keywords_value = [keywords_value] if keywords_value.strip() else []
-            elif not isinstance(keywords_value, list):
-                keywords_value = list(keywords_value) if keywords_value else []
+        keywords = filters.get("keywords")
+        if isinstance(keywords, str):
+            keywords = [keywords] if keywords.strip() else []
+        elif keywords is not None and not isinstance(keywords, list):
+            keywords = list(keywords)
+        valid_keywords = [k for k in (keywords or []) if k and k.strip()]
+        if valid_keywords:
+            conditions.append(
+                Filter.by_property("keywords").contains_any(valid_keywords)
+            )
 
-            # 空の配列や空文字列のみの配列を除外
-            keywords_value = [k for k in keywords_value if k and k.strip()]
-
-            if keywords_value:  # 有効なキーワードがある場合のみフィルターを追加
-                conditions.append(
-                    Filter.by_property("keywords").contains_any(keywords_value)
-                )
-
-        if "date_from" in filters:
+        if filters.get("date_from"):
             conditions.append(
                 Filter.by_property("createdAt").greater_or_equal(filters["date_from"])
             )
-
-        if "date_to" in filters:
+        if filters.get("date_to"):
             conditions.append(
                 Filter.by_property("createdAt").less_or_equal(filters["date_to"])
             )
+        return self._combine_filters(*conditions)
 
-        if len(conditions) == 1:
-            return conditions[0]
-        elif len(conditions) > 1:
-            return Filter.all_of(conditions)
-        else:
-            return None
-
-    def _build_exclude_filter(self, exclude_keywords: list[str]) -> Any:
-        """除外キーワードフィルター構築.
-
-        Args:
-            exclude_keywords: 除外キーワードリスト
-
-        Returns:
-            Weaviate v4 Filterオブジェクト
-        """
-        from weaviate.classes.query import Filter
-
-        if not exclude_keywords:
-            return None
-
-        # 空文字列を除外
-        valid_keywords = [k.strip() for k in exclude_keywords if k and k.strip()]
+    @staticmethod
+    def _build_exclude_filter(exclude_keywords: list[str]) -> Any:
+        valid_keywords = [
+            keyword.strip()
+            for keyword in exclude_keywords
+            if keyword and keyword.strip()
+        ]
         if not valid_keywords:
             return None
-
-        # keywordsフィールドに除外キーワードが含まれないものを選択
         return Filter.by_property("keywords").contains_none(valid_keywords)
 
-    def _convert_search_results_v4(self, response: Any) -> list[SearchResult]:
-        """検索結果変換 (Weaviate v4).
+    @staticmethod
+    def _combine_filters(*filters: Any) -> Any:
+        present = [condition for condition in filters if condition is not None]
+        if not present:
+            return None
+        if len(present) == 1:
+            return present[0]
+        return Filter.all_of(present)
 
-        Args:
-            response: Weaviate v4検索結果
-
-        Returns:
-            SearchResultのリスト
-        """
-        search_results = []
-
+    async def _convert_chunk_results(self, response: Any) -> list[SearchResult]:
+        page_ids = list(
+            {
+                int(obj.properties.get("pageId", 0))
+                for obj in response.objects
+                if obj.properties.get("pageId")
+            }
+        )
+        pages = await self.page_repo.get_pages_by_ids(page_ids)
+        results = []
         for obj in response.objects:
-            # スコア取得
-            score = 0.0
-            if (
-                hasattr(obj.metadata, "certainty")
-                and obj.metadata.certainty is not None
-            ):
-                score = obj.metadata.certainty
-            elif (
-                hasattr(obj.metadata, "distance") and obj.metadata.distance is not None
-            ):
-                score = 1.0 - obj.metadata.distance
+            page_id = int(obj.properties.get("pageId", 0))
+            page = pages.get(page_id)
+            if page is None:
+                continue
+            results.append(
+                self._result_from_page(
+                    page=page,
+                    score=self._score(obj),
+                    chunk_id=int(obj.properties.get("chunkId", 0)),
+                    content=obj.properties.get("content", ""),
+                )
+            )
+        return results
 
-            search_result = SearchResult(
+    def _convert_page_results(self, response: Any) -> list[SearchResult]:
+        return [
+            SearchResult(
                 page_id=obj.properties.get("pageId", 0),
-                chunk_id=obj.properties.get("chunkId", 0),
+                chunk_id=0,
                 url=obj.properties.get("url", ""),
                 title=obj.properties.get("title", ""),
-                memo=obj.properties.get("memo"),
-                content=obj.properties.get("content", ""),
+                memo=obj.properties.get("memo") or None,
+                content="",
                 summary=obj.properties.get("summary", ""),
                 keywords=obj.properties.get("keywords", []),
                 created_at=obj.properties.get("createdAt", ""),
-                score=score,
+                score=self._score(obj),
             )
-            search_results.append(search_result)
+            for obj in response.objects
+        ]
 
-        return search_results
+    def _convert_search_results_v4(self, response: Any) -> list[SearchResult]:
+        """旧内部APIとの互換用にページ代表結果として変換する."""
+        return self._convert_page_results(response)
+
+    @staticmethod
+    def _result_from_page(
+        page: Page, score: float, chunk_id: int, content: str
+    ) -> SearchResult:
+        if page.id is None:
+            raise VectorizerError("Page ID is required")
+        return SearchResult(
+            page_id=page.id,
+            chunk_id=chunk_id,
+            url=page.url,
+            title=page.title,
+            memo=page.memo,
+            content=content,
+            summary=page.summary or "",
+            keywords=page.keywords,
+            created_at=page.created_at,
+            score=score,
+        )
+
+    @staticmethod
+    def _score(obj: Any) -> float:
+        metadata = obj.metadata
+        if getattr(metadata, "certainty", None) is not None:
+            return float(metadata.certainty)
+        if getattr(metadata, "distance", None) is not None:
+            return 1.0 - float(metadata.distance)
+        return 0.0

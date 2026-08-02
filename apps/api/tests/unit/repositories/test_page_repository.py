@@ -1,6 +1,7 @@
 """Test page repository."""
 
 import asyncio
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
@@ -106,6 +107,69 @@ class TestPageRepository:
         assert page.url == url
         assert page.title == title
         assert page.memo == memo
+
+    @pytest.mark.asyncio
+    async def test_get_pages_by_ids(self, page_repo: Any) -> None:
+        """複数ページを一括取得し、IDをキーに返す."""
+        first_id = await page_repo.create_page("https://one.example", "One")
+        second_id = await page_repo.create_page("https://two.example", "Two")
+
+        pages = await page_repo.get_pages_by_ids([second_id, first_id, 999])
+
+        assert set(pages) == {first_id, second_id}
+        assert pages[first_id].title == "One"
+
+    @pytest.mark.asyncio
+    async def test_get_searchable_page_ids_applies_filters(
+        self, page_repo: Any
+    ) -> None:
+        """本文検索用のページ属性・除外キーワードをSQLiteで絞り込む."""
+        target_id = await page_repo.create_page(
+            "https://docs.example/python", "Python", "memo"
+        )
+        await page_repo.update_summary_keywords(
+            target_id, "summary", ["python", "asyncio"]
+        )
+        await page_repo.update_status(target_id, PageStatus.SUCCEEDED)
+
+        excluded_id = await page_repo.create_page(
+            "https://docs.example/old-python", "Old Python"
+        )
+        await page_repo.update_summary_keywords(
+            excluded_id, "summary", ["python", "legacy"]
+        )
+        await page_repo.update_status(excluded_id, PageStatus.SUCCEEDED)
+
+        result = await page_repo.get_searchable_page_ids(
+            filters={"url": "docs.example", "keywords": ["python"]},
+            exclude_keywords=["legacy"],
+        )
+
+        assert result == [target_id]
+
+    @pytest.mark.asyncio
+    async def test_get_searchable_page_ids_applies_date_range(
+        self, page_repo: Any
+    ) -> None:
+        """本文検索用の日付範囲で対象ページを絞り込む."""
+        page_id = await page_repo.create_page("https://docs.example", "Docs")
+        await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+
+        page = await page_repo.get_page(page_id)
+        assert page is not None
+
+        result = await page_repo.get_searchable_page_ids(
+            filters={
+                "date_from": page.created_at - timedelta(seconds=1),
+                "date_to": page.created_at + timedelta(seconds=1),
+            }
+        )
+        outside = await page_repo.get_searchable_page_ids(
+            filters={"date_from": datetime.now() + timedelta(days=1)}
+        )
+
+        assert result == [page_id]
+        assert outside == []
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_page(self, page_repo: Any) -> None:

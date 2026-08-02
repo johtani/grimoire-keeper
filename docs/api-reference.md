@@ -146,7 +146,10 @@ Search processed content using vector similarity search.
 - `query` (string, required): Search query text
 - `limit` (integer, optional, default=5): Maximum number of results
 - `filters` (object, optional): Weaviate filter object for narrowing results
-- `vector_name` (string, optional, default="content_vector"): Named vector to search against (`content_vector`, `title_vector`, or `memo_vector`)
+- `vector_name` (string, optional, default="content_vector"): Named vector to
+  search against. `content_vector` searches body chunks in
+  `GrimoireContentChunk`; `title_vector` and `memo_vector` search one
+  representative object per page in `GrimoirePage`.
 - `exclude_keywords` (array of strings, optional): Keywords to exclude from results
 
 **Response:**
@@ -170,6 +173,11 @@ Search processed content using vector similarity search.
   "query": "machine learning"
 }
 ```
+
+For page-level searches (`title_vector` and `memo_vector`), `chunk_id` is `0`
+and `content` is an empty string. Body searches continue to return the matching
+chunk ID and content. Page-level metadata in body results is loaded from SQLite,
+which is the source of truth.
 
 **Status Codes:**
 - `200 OK`: Search completed successfully

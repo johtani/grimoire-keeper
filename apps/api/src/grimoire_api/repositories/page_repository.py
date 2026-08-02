@@ -66,6 +66,85 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get page: {str(e)}")
 
+    async def get_pages_by_ids(self, page_ids: list[int]) -> dict[int, Page]:
+        """複数ページをIDで一括取得する."""
+        if not page_ids:
+            return {}
+        try:
+            placeholders = ", ".join("?" for _ in page_ids)
+            query = f"""
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, status, created_at, updated_at
+            FROM pages WHERE id IN ({placeholders})
+            """
+            results = await self.db.fetch_all(query, tuple(page_ids))
+            pages = [self._row_to_page(row) for row in results]
+            return {page.id: page for page in pages if page.id is not None}
+        except Exception as e:
+            raise DatabaseError(f"Failed to get pages by IDs: {str(e)}")
+
+    async def get_searchable_page_ids(
+        self,
+        filters: dict | None = None,
+        exclude_keywords: list[str] | None = None,
+    ) -> list[int]:
+        """本文検索のページ属性フィルターに合う成功済みページIDを取得する."""
+        conditions = ["status = ?"]
+        params: list[object] = [PageStatus.SUCCEEDED.value]
+        filters = filters or {}
+
+        url = filters.get("url")
+        if url:
+            conditions.append("url LIKE ?")
+            params.append(f"%{url}%")
+
+        keywords = filters.get("keywords")
+        if isinstance(keywords, str):
+            keywords = [keywords] if keywords.strip() else []
+        elif keywords is None:
+            keywords = []
+        else:
+            keywords = list(keywords)
+
+        valid_keywords = [str(keyword).strip() for keyword in keywords if keyword]
+        if valid_keywords:
+            keyword_conditions = []
+            for keyword in valid_keywords:
+                keyword_conditions.append(
+                    "EXISTS (SELECT 1 FROM json_each(pages.keywords) "
+                    "WHERE json_each.value = ?)"
+                )
+                params.append(keyword)
+            conditions.append(f"({' OR '.join(keyword_conditions)})")
+
+        date_from = filters.get("date_from")
+        if date_from:
+            conditions.append("created_at >= ?")
+            params.append(date_from)
+        date_to = filters.get("date_to")
+        if date_to:
+            conditions.append("created_at <= ?")
+            params.append(date_to)
+
+        valid_excludes = [
+            keyword.strip()
+            for keyword in (exclude_keywords or [])
+            if keyword and keyword.strip()
+        ]
+        for keyword in valid_excludes:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM json_each(pages.keywords) "
+                "WHERE json_each.value = ?)"
+            )
+            params.append(keyword)
+
+        try:
+            query = f"SELECT id FROM pages WHERE {' AND '.join(conditions)}"
+            rows = await self.db.fetch_all(query, tuple(params))
+            return [int(row["id"]) for row in rows]
+        except Exception as e:
+            raise DatabaseError(f"Failed to filter searchable pages: {str(e)}")
+
     async def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]
     ) -> None:
