@@ -30,15 +30,15 @@
    できる空き容量があることを確認します。
 4. `~/.config/bws.env` の `BWS_ACCESS_TOKEN` と `.env` を確認します。
 
-代表クエリは `tools/weaviate_1_38_migration/queries.example.json` をコピーして、実データに
+代表クエリは `tools/search_regression/queries.example.json` をコピーして、実データに
 合うタイトル、メモ、キーワード、本文の検索語へ変更します。移行前のAPIが稼働して
 いる間に検索結果を保存します。
 
 ```bash
 mkdir -p data/migration
-cp tools/weaviate_1_38_migration/queries.example.json \
+cp tools/search_regression/queries.example.json \
   data/migration/search_queries.json
-uv run python -m tools.weaviate_1_38_migration.search_snapshot capture \
+uv run python -m tools.search_regression.snapshot capture \
   --queries data/migration/search_queries.json \
   --label before-1.33.1 \
   --output data/migration/search-before-1.33.1.json
@@ -119,12 +119,12 @@ bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
 ```bash
 bws run -- docker compose -f docker-compose.prod.yml up -d api
 
-uv run python -m tools.weaviate_1_38_migration.search_snapshot capture \
+uv run python -m tools.search_regression.snapshot capture \
   --queries data/migration/search_queries.json \
   --label after-1.38.8 \
   --output data/migration/search-after-1.38.8.json
 
-uv run python -m tools.weaviate_1_38_migration.search_snapshot compare \
+uv run python -m tools.search_regression.snapshot compare \
   --before data/migration/search-before-1.33.1.json \
   --after data/migration/search-after-1.38.8.json \
   --output data/migration/search-comparison.json \

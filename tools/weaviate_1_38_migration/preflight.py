@@ -17,7 +17,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from tools.weaviate_1_38_migration.search_snapshot import load_queries
+from tools.search_regression.snapshot import load_queries
 
 GIB = 1024**3
 

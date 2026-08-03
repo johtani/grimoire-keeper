@@ -5,25 +5,19 @@ Weaviate `1.33.1` から `1.38.8` への本番移行を補助する一時ツー�
 
 ## ツール
 
-- `search_snapshot.py`: 代表検索の採取と移行前後比較
 - `preflight.py`: 停止作業前の環境、データ、容量、baseline、readiness確認
 - `migrate.sh`: バックアップ、新環境起動、再インデックスの実行
 - `check_counts.py`: SQLiteと新Weaviateコレクションの件数確認
 - `rollback_check.py`: ロールバック情報、旧ボリューム、バックアップ内容とSHA-256の確認
-- `queries.example.json`: 代表検索クエリの設定例
+
+代表検索の採取と比較には、汎用の `tools/search_regression/` を使用します。
 
 具体的な実行順とコマンドは `docs/development.md` を参照してください。
 
 ## 保持期間
 
-`preflight.py`、`migrate.sh`、`check_counts.py`、`rollback_check.py` は今回のパス、
-バージョン、移行方式に依存するため、ロールバック保持期間の終了後は不要です。
-`search_snapshot.py` はWeaviate更新、埋め込みモデル変更、検索設定変更の回帰確認にも
-利用できます。
-
-今回は削除しやすさを優先して同じディレクトリにまとめています。移行完了後に検索比較
-を継続利用する場合だけ汎用ツールとして別の場所へ移し、それ以外は次を1つのPRで削除
-します。
+このディレクトリ内のツールは今回のパス、バージョン、移行方式に依存するため、
+ロールバック保持期間の終了後は不要です。次を1つのPRで削除します。
 
 1. `tools/weaviate_1_38_migration/`
 2. `apps/api/tests/unit/tools/test_weaviate_1_38_migration.py`

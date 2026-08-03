@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture and compare representative search results during a migration."""
+"""Capture and compare representative API search results."""
 
 from __future__ import annotations
 
