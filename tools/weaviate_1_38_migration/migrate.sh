@@ -98,7 +98,7 @@ bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
 
 echo "再構築したコレクション件数を検証します。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
-    uv run python ../../scripts/check_weaviate_migration.py
+    uv run python -m tools.weaviate_1_38_migration.check_counts
 
 touch "${MIGRATION_MARKER}"
 echo "検証済みマーカーを作成しました: ${MIGRATION_MARKER}"

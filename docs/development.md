@@ -76,7 +76,7 @@ uv run python -m tools.weaviate_1_38_migration.preflight \
 リポジトリルートで次を実行します。
 
 ```bash
-bash scripts/migrate_weaviate_1_38.sh
+bash tools/weaviate_1_38_migration/migrate.sh
 ```
 
 このスクリプトは次の順序で処理します。
@@ -102,7 +102,7 @@ readinessとコレクション件数を再確認できます。
 ```bash
 curl -fsS http://localhost:8089/v1/.well-known/ready
 bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
-  uv run python ../../scripts/check_weaviate_migration.py
+  uv run python -m tools.weaviate_1_38_migration.check_counts
 ```
 
 移行前に保存した代表クエリを使い、以下を確認します。

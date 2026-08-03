@@ -18,6 +18,7 @@ COPY ./shared/ ./shared/
 COPY ./apps/api/pyproject.toml ./apps/api/
 COPY ./apps/api/src/ ./apps/api/src/
 COPY ./scripts/ ./scripts/
+COPY ./tools/ ./tools/
 
 WORKDIR /app/apps/api
 

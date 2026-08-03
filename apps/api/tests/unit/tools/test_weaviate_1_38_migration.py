@@ -6,10 +6,12 @@ import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from tools.weaviate_1_38_migration import preflight, rollback_check
+from tools.weaviate_1_38_migration.check_counts import verify_migration
 from tools.weaviate_1_38_migration.preflight import run_preflight
 from tools.weaviate_1_38_migration.rollback_check import run_rollback_check
 from tools.weaviate_1_38_migration.search_snapshot import (
@@ -18,6 +20,63 @@ from tools.weaviate_1_38_migration.search_snapshot import (
     load_queries,
     main,
 )
+
+
+@pytest.mark.asyncio
+async def test_verify_migration_accepts_matching_counts() -> None:
+    page_repo = MagicMock()
+    page_repo.count_pages = AsyncMock(return_value=2)
+    client = MagicMock()
+    client.is_ready.return_value = True
+    client.collections.exists.return_value = True
+    page_collection = MagicMock()
+    page_collection.aggregate.over_all.return_value.total_count = 2
+    chunk_collection = MagicMock()
+    chunk_collection.aggregate.over_all.return_value.total_count = 5
+    client.collections.get.side_effect = [page_collection, chunk_collection]
+
+    with (
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.PageRepository",
+            return_value=page_repo,
+        ),
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.weaviate.connect_to_local",
+            return_value=client,
+        ),
+    ):
+        result = await verify_migration()
+
+    assert result == 0
+    client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verify_migration_rejects_page_count_mismatch() -> None:
+    page_repo = MagicMock()
+    page_repo.count_pages = AsyncMock(return_value=2)
+    client = MagicMock()
+    client.is_ready.return_value = True
+    client.collections.exists.return_value = True
+    page_collection = MagicMock()
+    page_collection.aggregate.over_all.return_value.total_count = 1
+    chunk_collection = MagicMock()
+    chunk_collection.aggregate.over_all.return_value.total_count = 3
+    client.collections.get.side_effect = [page_collection, chunk_collection]
+
+    with (
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.PageRepository",
+            return_value=page_repo,
+        ),
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.weaviate.connect_to_local",
+            return_value=client,
+        ),
+    ):
+        result = await verify_migration()
+
+    assert result == 1
 
 
 def test_load_queries_accepts_all_search_types(tmp_path: Path) -> None:
