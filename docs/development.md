@@ -30,15 +30,15 @@
    できる空き容量があることを確認します。
 4. `~/.config/bws.env` の `BWS_ACCESS_TOKEN` と `.env` を確認します。
 
-代表クエリは `scripts/search_migration_queries.example.json` をコピーして、実データに
+代表クエリは `tools/weaviate_1_38_migration/queries.example.json` をコピーして、実データに
 合うタイトル、メモ、キーワード、本文の検索語へ変更します。移行前のAPIが稼働して
 いる間に検索結果を保存します。
 
 ```bash
 mkdir -p data/migration
-cp scripts/search_migration_queries.example.json \
+cp tools/weaviate_1_38_migration/queries.example.json \
   data/migration/search_queries.json
-uv run python scripts/search_migration_snapshot.py capture \
+uv run python -m tools.weaviate_1_38_migration.search_snapshot capture \
   --queries data/migration/search_queries.json \
   --label before-1.33.1 \
   --output data/migration/search-before-1.33.1.json
@@ -47,7 +47,8 @@ uv run python scripts/search_migration_snapshot.py capture \
 クエリファイルには `title_vector`、`memo_vector`、`content_vector` のベクトル検索と、
 キーワード検索を複数指定できます。必要に応じてベクトル検索へ `filters` や
 `exclude_keywords` も指定できます。スナップショットにはAPIレスポンスをそのまま
-保存するため、URL、順位、スコア、タイトルなどを後から確認できます。
+保存するため、URL、順位、スコア、タイトルなどを後から確認できます。プリフライトは
+全クエリに1件以上の結果があることも確認するため、空になる検索語は調整してください。
 
 再インデックス対象だけを確認する場合は次を実行します。このコマンドはWeaviateを
 変更しません。
@@ -55,6 +56,20 @@ uv run python scripts/search_migration_snapshot.py capture \
 ```bash
 uv run python scripts/reindex_weaviate.py --dry-run
 ```
+
+baseline採取後、サービスを停止する前に読み取り専用のプリフライトチェックを実行
+します。環境、旧・新データパス、空き容量、クエリとbaselineの一致、現行サービスの
+readinessをまとめて確認します。
+
+```bash
+uv run python -m tools.weaviate_1_38_migration.preflight \
+  --queries data/migration/search_queries.json \
+  --baseline data/migration/search-before-1.33.1.json \
+  --output data/migration/preflight.json
+```
+
+1項目でも失敗した場合は非0で終了します。問題を解消して全項目が `PASS` になるまで、
+移行スクリプトは実行しません。チェックはサービスやデータを変更しません。
 
 ### 新環境の構築と再インデックス
 
@@ -104,12 +119,12 @@ bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
 ```bash
 bws run -- docker compose -f docker-compose.prod.yml up -d api
 
-uv run python scripts/search_migration_snapshot.py capture \
+uv run python -m tools.weaviate_1_38_migration.search_snapshot capture \
   --queries data/migration/search_queries.json \
   --label after-1.38.8 \
   --output data/migration/search-after-1.38.8.json
 
-uv run python scripts/search_migration_snapshot.py compare \
+uv run python -m tools.weaviate_1_38_migration.search_snapshot compare \
   --before data/migration/search-before-1.33.1.json \
   --after data/migration/search-after-1.38.8.json \
   --output data/migration/search-comparison.json \
@@ -152,6 +167,19 @@ curl -fsS -X POST http://localhost:8000/api/v1/search \
 SQLite・JSONバックアップの場所が記録されています。ロールバックでは必ず次の3点を
 セットで戻します。
 
+復元作業に入る前に、移行スクリプトが表示したロールバック情報ファイルを指定して、
+旧APIコミット、旧ボリューム、バックアップアーカイブの内容とSHA-256を読み取り専用で確認
+します。
+
+```bash
+uv run python -m tools.weaviate_1_38_migration.rollback_check \
+  --rollback-info /opt/grimoire-keeper-data/backups/<rollback-info>.txt \
+  --output data/migration/rollback-readiness.json
+```
+
+全項目が `PASS` になるまで復元作業へ進みません。このコマンドはコンテナの停止、
+データ復元、Gitのcheckoutを行いません。
+
 1. APIを記録済みの旧コミットへ戻す。
 2. SQLiteとJina JSONを移行前バックアップから復元する。
 3. Weaviate `1.33.1` を旧 `/opt/grimoire-keeper-data/weaviate` で起動する。
@@ -175,3 +203,14 @@ bash scripts/deploy.sh
 
 ロールバック確認後、#154 のブランチへ戻します。旧・新どちらのWeaviateデータも、
 削除は別途確認してから行います。
+
+### 移行ツールの保持と削除
+
+移行補助ツールは `tools/weaviate_1_38_migration/` にまとめています。プリフライトと
+ロールバック確認は今回の移行専用です。検索スナップショットは将来のWeaviate更新、
+埋め込みモデル変更、検索設定変更にも再利用できます。
+
+旧ボリュームのロールバック保持期間が終わるまではツールと `data/migration/` の結果を
+保持します。その後、検索比較を継続利用するか判断し、不要なら専用ディレクトリ、対応
+テスト、このドキュメントの移行専用コマンドを同じPRで削除します。詳細は
+`tools/weaviate_1_38_migration/README.md` を参照してください。
