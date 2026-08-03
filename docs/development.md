@@ -30,6 +30,25 @@
    できる空き容量があることを確認します。
 4. `~/.config/bws.env` の `BWS_ACCESS_TOKEN` と `.env` を確認します。
 
+代表クエリは `scripts/search_migration_queries.example.json` をコピーして、実データに
+合うタイトル、メモ、キーワード、本文の検索語へ変更します。移行前のAPIが稼働して
+いる間に検索結果を保存します。
+
+```bash
+mkdir -p data/migration
+cp scripts/search_migration_queries.example.json \
+  data/migration/search_queries.json
+uv run python scripts/search_migration_snapshot.py capture \
+  --queries data/migration/search_queries.json \
+  --label before-1.33.1 \
+  --output data/migration/search-before-1.33.1.json
+```
+
+クエリファイルには `title_vector`、`memo_vector`、`content_vector` のベクトル検索と、
+キーワード検索を複数指定できます。必要に応じてベクトル検索へ `filters` や
+`exclude_keywords` も指定できます。スナップショットにはAPIレスポンスをそのまま
+保存するため、URL、順位、スコア、タイトルなどを後から確認できます。
+
 再インデックス対象だけを確認する場合は次を実行します。このコマンドはWeaviateを
 変更しません。
 
@@ -78,6 +97,34 @@ bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
 - キーワード検索
 - `content_vector` による本文チャンク検索
 - URL、日付、包含・除外キーワードのフィルター
+
+再インデックス後は新しいWeaviateへ接続するAPIだけを検証用に起動し、同じクエリを
+保存して移行前後を比較します。Webとbotはまだ起動しません。
+
+```bash
+bws run -- docker compose -f docker-compose.prod.yml up -d api
+
+uv run python scripts/search_migration_snapshot.py capture \
+  --queries data/migration/search_queries.json \
+  --label after-1.38.8 \
+  --output data/migration/search-after-1.38.8.json
+
+uv run python scripts/search_migration_snapshot.py compare \
+  --before data/migration/search-before-1.33.1.json \
+  --after data/migration/search-after-1.38.8.json \
+  --output data/migration/search-comparison.json \
+  --fail-below-overlap 0.8
+```
+
+比較結果にはクエリごとの欠落・追加、順位変動、上位結果の重複率を出力します。
+`--fail-below-overlap` を指定すると、いずれかのクエリが指定した重複率を下回った場合
+に非0で終了します。閾値は移行前の結果を確認して決め、機械判定だけでなく結果内容も
+確認してください。比較が不合格の場合は検証用APIを停止し、`scripts/deploy.sh` は
+実行しません。
+
+```bash
+docker compose -f docker-compose.prod.yml stop api
+```
 
 ### APIの切り替え
 
