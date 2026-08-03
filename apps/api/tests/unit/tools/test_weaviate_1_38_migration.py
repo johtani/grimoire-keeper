@@ -1,0 +1,207 @@
+"""Tests for the temporary Weaviate 1.38 migration tools."""
+
+import hashlib
+import json
+import tarfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from tools.weaviate_1_38_migration import preflight, rollback_check
+from tools.weaviate_1_38_migration.check_counts import verify_migration
+from tools.weaviate_1_38_migration.preflight import run_preflight
+from tools.weaviate_1_38_migration.rollback_check import run_rollback_check
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("page_count, expected", [(2, 0), (1, 1)])
+async def test_verify_migration_page_counts(page_count: int, expected: int) -> None:
+    page_repo = MagicMock()
+    page_repo.count_pages = AsyncMock(return_value=2)
+    client = MagicMock()
+    client.is_ready.return_value = True
+    client.collections.exists.return_value = True
+    page_collection = MagicMock()
+    page_collection.aggregate.over_all.return_value.total_count = page_count
+    chunk_collection = MagicMock()
+    chunk_collection.aggregate.over_all.return_value.total_count = 5
+    client.collections.get.side_effect = [page_collection, chunk_collection]
+
+    with (
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.PageRepository",
+            return_value=page_repo,
+        ),
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.weaviate.connect_to_local",
+            return_value=client,
+        ),
+    ):
+        result = await verify_migration()
+
+    assert result == expected
+    client.close.assert_called_once()
+
+
+def _write_queries_and_baseline(
+    tmp_path: Path, *, with_results: bool = True
+) -> tuple[Path, Path]:
+    request = {
+        "name": "content",
+        "type": "vector",
+        "query": "example",
+        "vector_name": "content_vector",
+        "limit": 3,
+    }
+    queries_path = tmp_path / "queries.json"
+    queries_path.write_text(json.dumps({"queries": [request]}), encoding="utf-8")
+    baseline_path = tmp_path / "baseline.json"
+    results = [{"page_id": 1, "chunk_id": 0}] if with_results else []
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "queries": [
+                    {
+                        "name": "content",
+                        "request": request,
+                        "response": {"total": len(results), "results": results},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return queries_path, baseline_path
+
+
+def _prepare_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, populate_new: bool = False
+) -> tuple[Path, Path]:
+    repo_root = tmp_path / "repo"
+    data_root = tmp_path / "data"
+    repo_root.mkdir()
+    (repo_root / ".env").touch()
+    directories = ["weaviate", "database", "json"]
+    if populate_new:
+        directories.append("weaviate-1.38.8")
+    for directory in directories:
+        path = data_root / directory
+        path.mkdir(parents=True)
+        (path / "data").write_text("ready", encoding="utf-8")
+    monkeypatch.setattr(preflight.shutil, "which", lambda _: "/usr/bin/tool")
+    monkeypatch.setattr(preflight, "_has_bws_token", lambda: True)
+    monkeypatch.setattr(
+        preflight.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=""),
+    )
+    monkeypatch.setattr(
+        preflight.shutil,
+        "disk_usage",
+        lambda _: SimpleNamespace(free=10 * preflight.GIB),
+    )
+    return repo_root, data_root
+
+
+def test_preflight_accepts_ready_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root, data_root = _prepare_preflight(tmp_path, monkeypatch)
+    queries_path, baseline_path = _write_queries_and_baseline(tmp_path)
+
+    checks = run_preflight(
+        repo_root,
+        data_root,
+        queries_path,
+        baseline_path,
+        1.0,
+        "http://api/health",
+        "http://weaviate/ready",
+        url_checker=lambda _: (True, "HTTP 200"),
+    )
+
+    assert checks
+    assert all(check.status == "PASS" for check in checks)
+
+
+def test_preflight_rejects_populated_new_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root, data_root = _prepare_preflight(tmp_path, monkeypatch, populate_new=True)
+    queries_path, baseline_path = _write_queries_and_baseline(tmp_path)
+
+    checks = run_preflight(
+        repo_root,
+        data_root,
+        queries_path,
+        baseline_path,
+        1.0,
+        "http://api/health",
+        "http://weaviate/ready",
+        url_checker=lambda _: (True, "HTTP 200"),
+    )
+
+    check = next(item for item in checks if item.name == "empty new Weaviate data")
+    assert check.status == "FAIL"
+
+
+def test_rollback_check_accepts_recorded_assets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / ".env").touch()
+    old_data = tmp_path / "weaviate"
+    old_data.mkdir()
+    (old_data / "data").write_text("old", encoding="utf-8")
+    source = tmp_path / "source"
+    (source / "database").mkdir(parents=True)
+    (source / "json").mkdir()
+    backup = tmp_path / "backup.tar.gz"
+    with tarfile.open(backup, "w:gz") as archive:
+        archive.add(source / "database", arcname="database")
+        archive.add(source / "json", arcname="json")
+    info = tmp_path / "rollback.txt"
+    info.write_text(
+        "\n".join(
+            [
+                "api_commit=abc123",
+                "weaviate_image=weaviate:1.33.1",
+                f"weaviate_data={old_data}",
+                f"sqlite_json_backup={backup}",
+                f"sqlite_json_backup_sha256={hashlib.sha256(backup.read_bytes()).hexdigest()}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        rollback_check.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(rollback_check.shutil, "which", lambda _: "/usr/bin/tool")
+    monkeypatch.setattr(rollback_check, "_has_bws_token", lambda: True)
+
+    checks = run_rollback_check(info, repo_root)
+
+    assert checks
+    assert all(check.status == "PASS" for check in checks)
+
+
+def test_rollback_check_rejects_incomplete_record(tmp_path: Path) -> None:
+    info = tmp_path / "rollback.txt"
+    info.write_text("api_commit=abc123\n", encoding="utf-8")
+
+    checks = run_rollback_check(info, tmp_path)
+
+    assert checks == [
+        rollback_check.Check(
+            "rollback info",
+            "FAIL",
+            "rollback info is missing keys: sqlite_json_backup, "
+            "sqlite_json_backup_sha256, weaviate_data, weaviate_image",
+        )
+    ]

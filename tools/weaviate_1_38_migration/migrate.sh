@@ -50,6 +50,11 @@ sudo chown -R "${USER}:${USER}" "${NEW_WEAVIATE_DATA}" "${BACKUP_ROOT}"
 
 OLD_API_COMMIT="$(docker compose -f "${COMPOSE_FILE}" exec -T api \
     printenv GIT_COMMIT 2>/dev/null || echo unknown)"
+if [ -z "${OLD_API_COMMIT}" ] || [ "${OLD_API_COMMIT}" = "unknown" ]; then
+    echo "ERROR: 稼働中APIのコミットを記録できません"
+    echo "ロールバック対象コミットを確認してから再実行してください"
+    exit 1
+fi
 {
     echo "api_commit=${OLD_API_COMMIT}"
     echo "weaviate_image=cr.weaviate.io/semitechnologies/weaviate:1.33.1"
@@ -62,6 +67,9 @@ docker compose -f "${COMPOSE_FILE}" down
 
 echo "SQLiteとJina JSONをバックアップします: ${BACKUP_FILE}"
 tar -C "${DATA_ROOT}" -czf "${BACKUP_FILE}" database json
+BACKUP_SHA256="$(sha256sum "${BACKUP_FILE}")"
+BACKUP_SHA256="${BACKUP_SHA256%% *}"
+echo "sqlite_json_backup_sha256=${BACKUP_SHA256}" >> "${ROLLBACK_INFO}"
 
 echo "Weaviate 1.38.8 と再インデックス用APIイメージを準備します。"
 bws run -- docker compose -f "${COMPOSE_FILE}" pull weaviate
@@ -90,7 +98,7 @@ bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
 
 echo "再構築したコレクション件数を検証します。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
-    uv run python ../../scripts/check_weaviate_migration.py
+    uv run python -m tools.weaviate_1_38_migration.check_counts
 
 touch "${MIGRATION_MARKER}"
 echo "検証済みマーカーを作成しました: ${MIGRATION_MARKER}"

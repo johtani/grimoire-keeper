@@ -1,0 +1,34 @@
+{
+  "queries": [
+    {
+      "name": "title-example",
+      "type": "vector",
+      "query": "AIによる検索システム",
+      "vector_name": "title_vector",
+      "limit": 5
+    },
+    {
+      "name": "memo-example",
+      "type": "vector",
+      "query": "あとで実装の参考にする",
+      "vector_name": "memo_vector",
+      "limit": 5
+    },
+    {
+      "name": "content-example",
+      "type": "vector",
+      "query": "ベクトルデータベースの移行方法",
+      "vector_name": "content_vector",
+      "limit": 5
+    },
+    {
+      "name": "keyword-example",
+      "type": "keywords",
+      "keywords": [
+        "Weaviate",
+        "migration"
+      ],
+      "limit": 5
+    }
+  ]
+}

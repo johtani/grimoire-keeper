@@ -52,7 +52,7 @@ if [ "${WEAVIATE_DATA_PATH}" = "${NEW_WEAVIATE_DATA}" ] && \
    [ -n "$(find "${OLD_WEAVIATE_DATA}" -mindepth 1 -print -quit)" ] && \
    [ ! -f "${MIGRATION_MARKER}" ]; then
     echo "ERROR: Weaviate 1.38.8 の再インデックスが未検証です"
-    echo "先に bash scripts/migrate_weaviate_1_38.sh を実行してください"
+    echo "先に bash tools/weaviate_1_38_migration/migrate.sh を実行してください"
     exit 1
 fi
 

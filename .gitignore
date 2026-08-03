@@ -55,6 +55,7 @@ grimoire.db
 
 # データファイル
 data/json/
+data/migration/
 
 # ログファイル
 *.log
