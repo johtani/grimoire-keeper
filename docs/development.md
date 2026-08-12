@@ -24,6 +24,17 @@
 
 ### 移行前の確認
 
+移行用Pythonコマンドはすべて専用Dockerコンテナ内で実行します。本番サーバーへ
+`uv`、Pythonパッケージ、`weaviate-client`をインストールする必要はありません。
+ホストにはDocker Compose、`bws`、Git、`.env`、`BWS_ACCESS_TOKEN`が必要です。
+
+最初にツールイメージとクエリファイルを準備します。この操作は稼働中サービスを
+停止しません。
+
+```bash
+bash tools/weaviate_1_38_migration/run.sh prepare
+```
+
 1. 現在のAPIコミットとサービス状態を記録します。
 2. タイトル、メモ、キーワード、本文検索から代表クエリと結果を保存します。
 3. `/opt/grimoire-keeper-data` に、SQLite・Jina JSON・新しいWeaviate索引を保持
@@ -34,14 +45,11 @@
 合うタイトル、メモ、キーワード、本文の検索語へ変更します。移行前のAPIが稼働して
 いる間に検索結果を保存します。
 
+`prepare` が作成した `data/migration/search_queries.json` を編集し、移行前の結果を
+保存します。
+
 ```bash
-mkdir -p data/migration
-cp tools/search_regression/queries.example.json \
-  data/migration/search_queries.json
-uv run python -m tools.search_regression.snapshot capture \
-  --queries data/migration/search_queries.json \
-  --label before-1.33.1 \
-  --output data/migration/search-before-1.33.1.json
+bash tools/weaviate_1_38_migration/run.sh capture-before
 ```
 
 クエリファイルには `title_vector`、`memo_vector`、`content_vector` のベクトル検索と、
@@ -54,7 +62,7 @@ uv run python -m tools.search_regression.snapshot capture \
 変更しません。
 
 ```bash
-uv run python scripts/reindex_weaviate.py --dry-run
+bash tools/weaviate_1_38_migration/run.sh dry-run
 ```
 
 baseline採取後、サービスを停止する前に読み取り専用のプリフライトチェックを実行
@@ -62,10 +70,7 @@ baseline採取後、サービスを停止する前に読み取り専用のプリ
 readinessをまとめて確認します。
 
 ```bash
-uv run python -m tools.weaviate_1_38_migration.preflight \
-  --queries data/migration/search_queries.json \
-  --baseline data/migration/search-before-1.33.1.json \
-  --output data/migration/preflight.json
+bash tools/weaviate_1_38_migration/run.sh preflight
 ```
 
 1項目でも失敗した場合は非0で終了します。問題を解消して全項目が `PASS` になるまで、
@@ -101,8 +106,7 @@ readinessとコレクション件数を再確認できます。
 
 ```bash
 curl -fsS http://localhost:8089/v1/.well-known/ready
-bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
-  uv run python -m tools.weaviate_1_38_migration.check_counts
+bash tools/weaviate_1_38_migration/run.sh check-counts
 ```
 
 移行前に保存した代表クエリを使い、以下を確認します。
@@ -119,23 +123,15 @@ bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
 ```bash
 bws run -- docker compose -f docker-compose.prod.yml up -d api
 
-uv run python -m tools.search_regression.snapshot capture \
-  --queries data/migration/search_queries.json \
-  --label after-1.38.8 \
-  --output data/migration/search-after-1.38.8.json
-
-uv run python -m tools.search_regression.snapshot compare \
-  --before data/migration/search-before-1.33.1.json \
-  --after data/migration/search-after-1.38.8.json \
-  --output data/migration/search-comparison.json \
-  --fail-below-overlap 0.8
+bash tools/weaviate_1_38_migration/run.sh capture-after
+bash tools/weaviate_1_38_migration/run.sh compare
 ```
 
 比較結果にはクエリごとの欠落・追加、順位変動、上位結果の重複率を出力します。
-`--fail-below-overlap` を指定すると、いずれかのクエリが指定した重複率を下回った場合
-に非0で終了します。閾値は移行前の結果を確認して決め、機械判定だけでなく結果内容も
-確認してください。比較が不合格の場合は検証用APIを停止し、`scripts/deploy.sh` は
-実行しません。
+既定では、いずれかのクエリの重複率が `0.8` を下回ると非0で終了します。閾値を変更
+する場合は、例えば `SEARCH_OVERLAP_THRESHOLD=0.9 bash .../run.sh compare` のように
+指定します。機械判定だけでなく結果内容も確認してください。比較が不合格の場合は
+検証用APIを停止し、`scripts/deploy.sh` は実行しません。
 
 ```bash
 docker compose -f docker-compose.prod.yml stop api
@@ -172,9 +168,8 @@ SQLite・JSONバックアップの場所が記録されています。ロール�
 します。
 
 ```bash
-uv run python -m tools.weaviate_1_38_migration.rollback_check \
-  --rollback-info /opt/grimoire-keeper-data/backups/<rollback-info>.txt \
-  --output data/migration/rollback-readiness.json
+bash tools/weaviate_1_38_migration/run.sh rollback-check \
+  /opt/grimoire-keeper-data/backups/<rollback-info>.txt
 ```
 
 全項目が `PASS` になるまで復元作業へ進みません。このコマンドはコンテナの停止、
@@ -206,9 +201,10 @@ bash scripts/deploy.sh
 
 ### 移行ツールの保持と削除
 
-移行補助ツールは `tools/weaviate_1_38_migration/` にまとめています。プリフライトと
-ロールバック確認は今回の移行専用です。検索スナップショットは将来のWeaviate更新、
-埋め込みモデル変更、検索設定変更にも再利用できます。
+移行補助ツールとDocker実行定義は `tools/weaviate_1_38_migration/` にまとめています。
+プリフライトとロールバック確認は今回の移行専用です。検索スナップショットは
+`tools/search_regression/` にあり、将来のWeaviate更新、埋め込みモデル変更、検索設定
+変更にも再利用できます。
 
 旧ボリュームのロールバック保持期間が終わるまではツールと `data/migration/` の結果を
 保持します。その後、検索比較を継続利用するか判断し、不要なら専用ディレクトリ、対応
