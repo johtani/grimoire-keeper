@@ -1,0 +1,30 @@
+services:
+  migration-tools:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.prod
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    working_dir: /app/apps/api
+    user: "${MIGRATION_UID:-1000}:${MIGRATION_GID:-1000}"
+    environment:
+      PYTHONPATH: /app
+      WEAVIATE_HOST: host.docker.internal
+      WEAVIATE_PORT: 8089
+      DATABASE_PATH: /data/grimoire.db
+      JSON_STORAGE_PATH: /app/apps/api/data/json
+      OPENAI_API_KEY: ${GRIMOIRE_KEEPER_OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GRIMOIRE_KEEPER_GOOGLE_API_KEY:-}
+      JINA_API_KEY: ${GRIMOIRE_KEEPER_JINA_API_KEY:-}
+      HOME: /tmp
+      UV_CACHE_DIR: /tmp/uv-cache
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /opt/grimoire-keeper-data:/opt/grimoire-keeper-data:ro
+      - /opt/grimoire-keeper-data/database:/data:ro
+      - /opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro
+      - ./data/migration:/migration

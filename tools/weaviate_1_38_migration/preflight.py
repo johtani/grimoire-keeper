@@ -123,6 +123,7 @@ def run_preflight(
     api_health_url: str,
     weaviate_ready_url: str,
     url_checker: Callable[[str], tuple[bool, str]] = _url_is_ready,
+    check_host_environment: bool = True,
 ) -> list[Check]:
     """Run checks without changing services or migration data."""
     checks: list[Check] = []
@@ -130,37 +131,42 @@ def run_preflight(
     def add(name: str, passed: bool, detail: str) -> None:
         checks.append(Check(name, "PASS" if passed else "FAIL", detail))
 
-    add("repository .env", (repo_root / ".env").is_file(), str(repo_root / ".env"))
-    add("bws command", shutil.which("bws") is not None, "bws must be on PATH")
-    add("BWS access token", _has_bws_token(), "environment or ~/.config/bws.env")
-    add("docker command", shutil.which("docker") is not None, "docker must be on PATH")
-
-    try:
-        compose = subprocess.run(
-            ["docker", "compose", "version"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        add("docker compose", compose.returncode == 0, "docker compose version")
-    except OSError as exc:
-        add("docker compose", False, str(exc))
-
-    try:
-        status = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    if check_host_environment:
+        add("repository .env", (repo_root / ".env").is_file(), str(repo_root / ".env"))
+        add("bws command", shutil.which("bws") is not None, "bws must be on PATH")
+        add("BWS access token", _has_bws_token(), "environment or ~/.config/bws.env")
         add(
-            "clean worktree",
-            status.returncode == 0 and not status.stdout.strip(),
-            "git status",
+            "docker command",
+            shutil.which("docker") is not None,
+            "docker must be on PATH",
         )
-    except OSError as exc:
-        add("clean worktree", False, str(exc))
+
+        try:
+            compose = subprocess.run(
+                ["docker", "compose", "version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            add("docker compose", compose.returncode == 0, "docker compose version")
+        except OSError as exc:
+            add("docker compose", False, str(exc))
+
+        try:
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            add(
+                "clean worktree",
+                status.returncode == 0 and not status.stdout.strip(),
+                "git status",
+            )
+        except OSError as exc:
+            add("clean worktree", False, str(exc))
 
     old_data = data_root / "weaviate"
     new_data = data_root / "weaviate-1.38.8"
@@ -251,6 +257,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--weaviate-ready-url", default="http://localhost:8089/v1/.well-known/ready"
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--containerized",
+        action="store_true",
+        help="skip host checks already performed by the Docker wrapper",
+    )
     return parser
 
 
@@ -264,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         args.minimum_free_gb,
         args.api_health_url,
         args.weaviate_ready_url,
+        check_host_environment=not args.containerized,
     )
     for check in checks:
         print(f"[{check.status}] {check.name}: {check.detail}")

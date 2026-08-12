@@ -148,6 +148,33 @@ def test_preflight_rejects_populated_new_data(
     assert check.status == "FAIL"
 
 
+def test_containerized_preflight_skips_host_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root, data_root = _prepare_preflight(tmp_path, monkeypatch)
+    queries_path, baseline_path = _write_queries_and_baseline(tmp_path)
+    (repo_root / ".env").unlink()
+    monkeypatch.setattr(preflight.shutil, "which", lambda _: None)
+    monkeypatch.setattr(preflight, "_has_bws_token", lambda: False)
+
+    checks = run_preflight(
+        repo_root,
+        data_root,
+        queries_path,
+        baseline_path,
+        1.0,
+        "http://api/health",
+        "http://weaviate/ready",
+        url_checker=lambda _: (True, "HTTP 200"),
+        check_host_environment=False,
+    )
+
+    names = {check.name for check in checks}
+    assert "repository .env" not in names
+    assert "docker command" not in names
+    assert all(check.status == "PASS" for check in checks)
+
+
 def test_rollback_check_accepts_recorded_assets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -205,3 +232,47 @@ def test_rollback_check_rejects_incomplete_record(tmp_path: Path) -> None:
             "sqlite_json_backup_sha256, weaviate_data, weaviate_image",
         )
     ]
+
+
+def test_containerized_rollback_uses_host_verified_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_data = tmp_path / "weaviate"
+    old_data.mkdir()
+    (old_data / "data").touch()
+    source = tmp_path / "source"
+    (source / "database").mkdir(parents=True)
+    (source / "json").mkdir()
+    backup = tmp_path / "backup.tar.gz"
+    with tarfile.open(backup, "w:gz") as archive:
+        archive.add(source / "database", arcname="database")
+        archive.add(source / "json", arcname="json")
+    info = tmp_path / "rollback.txt"
+    info.write_text(
+        "\n".join(
+            [
+                "api_commit=abc123",
+                "weaviate_image=weaviate:1.33.1",
+                f"weaviate_data={old_data}",
+                f"sqlite_json_backup={backup}",
+                f"sqlite_json_backup_sha256={hashlib.sha256(backup.read_bytes()).hexdigest()}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        rollback_check.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("git must be checked by the host wrapper"),
+    )
+
+    checks = run_rollback_check(
+        info,
+        tmp_path,
+        check_host_environment=False,
+        verified_api_commit="abc123",
+    )
+
+    assert checks
+    assert all(check.status == "PASS" for check in checks)
+    assert "docker command" not in {check.name for check in checks}

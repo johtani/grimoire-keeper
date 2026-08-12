@@ -9,10 +9,27 @@ Weaviate `1.33.1` から `1.38.8` への本番移行を補助する一時ツー�
 - `migrate.sh`: バックアップ、新環境起動、再インデックスの実行
 - `check_counts.py`: SQLiteと新Weaviateコレクションの件数確認
 - `rollback_check.py`: ロールバック情報、旧ボリューム、バックアップ内容とSHA-256の確認
+- `docker-compose.yml`: Python依存を含む一時ツールコンテナ
+- `run.sh`: ホストの前提確認とコンテナ実行をまとめたエントリーポイント
 
 代表検索の採取と比較には、汎用の `tools/search_regression/` を使用します。
 
 具体的な実行順とコマンドは `docs/development.md` を参照してください。
+
+## 実行方法
+
+本番サーバーへPython依存関係をインストールせず、すべて `run.sh` 経由で実行します。
+
+```bash
+bash tools/weaviate_1_38_migration/run.sh prepare
+bash tools/weaviate_1_38_migration/run.sh capture-before
+bash tools/weaviate_1_38_migration/run.sh dry-run
+bash tools/weaviate_1_38_migration/run.sh preflight
+```
+
+ホスト側ではDocker Compose、`bws`、Git、認証設定、クリーンな作業ツリーを確認します。
+Python処理はツールコンテナ内で行います。本番データルートは読み取り専用、生成する
+検索スナップショットとレポートだけは `data/migration/` へ書き込みます。
 
 ## 保持期間
 

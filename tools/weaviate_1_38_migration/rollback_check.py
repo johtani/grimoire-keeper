@@ -77,7 +77,12 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run_rollback_check(info_path: Path, repo_root: Path) -> list[Check]:
+def run_rollback_check(
+    info_path: Path,
+    repo_root: Path,
+    check_host_environment: bool = True,
+    verified_api_commit: str | None = None,
+) -> list[Check]:
     """Verify rollback inputs without stopping services or restoring data."""
     checks: list[Check] = []
 
@@ -94,6 +99,12 @@ def run_rollback_check(info_path: Path, repo_root: Path) -> list[Check]:
     commit = info["api_commit"]
     if commit == "unknown" or not commit:
         add("old API commit", False, "commit was not recorded")
+    elif verified_api_commit is not None:
+        add(
+            "old API commit",
+            commit == verified_api_commit,
+            f"{commit} (verified by Docker wrapper)",
+        )
     else:
         result = subprocess.run(
             ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
@@ -123,19 +134,24 @@ def run_rollback_check(info_path: Path, repo_root: Path) -> list[Check]:
     except OSError as exc:
         add("backup checksum", False, str(exc))
 
-    add("docker command", shutil.which("docker") is not None, "docker must be on PATH")
-    try:
-        compose = subprocess.run(
-            ["docker", "compose", "version"],
-            capture_output=True,
-            check=False,
+    if check_host_environment:
+        add(
+            "docker command",
+            shutil.which("docker") is not None,
+            "docker must be on PATH",
         )
-        add("docker compose", compose.returncode == 0, "docker compose version")
-    except OSError as exc:
-        add("docker compose", False, str(exc))
-    add("bws command", shutil.which("bws") is not None, "bws must be on PATH")
-    add("BWS access token", _has_bws_token(), "environment or ~/.config/bws.env")
-    add("repository .env", (repo_root / ".env").is_file(), str(repo_root / ".env"))
+        try:
+            compose = subprocess.run(
+                ["docker", "compose", "version"],
+                capture_output=True,
+                check=False,
+            )
+            add("docker compose", compose.returncode == 0, "docker compose version")
+        except OSError as exc:
+            add("docker compose", False, str(exc))
+        add("bws command", shutil.which("bws") is not None, "bws must be on PATH")
+        add("BWS access token", _has_bws_token(), "environment or ~/.config/bws.env")
+        add("repository .env", (repo_root / ".env").is_file(), str(repo_root / ".env"))
     return checks
 
 
@@ -163,13 +179,24 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rollback-info", required=True, type=Path)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--containerized",
+        action="store_true",
+        help="skip host checks already performed by the Docker wrapper",
+    )
+    parser.add_argument("--verified-api-commit")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
-        checks = run_rollback_check(args.rollback_info, args.repo_root)
+        checks = run_rollback_check(
+            args.rollback_info,
+            args.repo_root,
+            check_host_environment=not args.containerized,
+            verified_api_commit=args.verified_api_commit,
+        )
     except OSError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
