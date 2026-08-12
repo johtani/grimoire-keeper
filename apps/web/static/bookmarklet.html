@@ -196,6 +196,10 @@
                 + "var memo=prompt('メモ (任意):')||'';"
                 + "var cmd='<@" + botId + "> '+url+(memo?' '+memo:'');"
                 + "navigator.clipboard.writeText(cmd).then(function(){"
+                + "alert('メッセージをコピーしました。Slack が開いたら入力欄に貼り付けて送信してください。');"
+                + "location.href='slack://channel?id=" + channelId + "&team=" + teamId + "';"
+                + "}).catch(function(){"
+                + "prompt('自動コピーできませんでした。下のメッセージをコピーしてください:',cmd);"
                 + "location.href='slack://channel?id=" + channelId + "&team=" + teamId + "';"
                 + "});"
                 + "})();";
@@ -208,6 +212,10 @@
                 + "  var memo = prompt('メモ (任意):') || '';\n"
                 + "  var cmd = '<@" + botId + "> ' + url + (memo ? ' ' + memo : '');\n"
                 + "  navigator.clipboard.writeText(cmd).then(function(){\n"
+                + "    alert('メッセージをコピーしました。Slack が開いたら入力欄に貼り付けて送信してください。');\n"
+                + "    location.href = 'slack://channel?id=" + channelId + "&team=" + teamId + "';\n"
+                + "  }).catch(function(){\n"
+                + "    prompt('自動コピーできませんでした。下のメッセージをコピーしてください:', cmd);\n"
                 + "    location.href = 'slack://channel?id=" + channelId + "&team=" + teamId + "';\n"
                 + "  });\n"
                 + "})();";
