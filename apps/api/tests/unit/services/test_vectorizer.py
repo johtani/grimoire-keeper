@@ -171,6 +171,16 @@ class TestVectorizerService:
         mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_delete_page_from_index_removes_page_and_chunks(
+        self, vectorizer_service, mock_dependencies
+    ):
+        """修復待ちページを再構築先の両コレクションから削除する."""
+        await vectorizer_service.delete_page_from_index(56)
+
+        mock_dependencies["mock_page_collection"].data.delete_many.assert_called_once()
+        mock_dependencies["mock_collection"].data.delete_many.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_vectorize_content_no_chunks(
         self, vectorizer_service, mock_dependencies
     ):

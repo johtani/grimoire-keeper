@@ -3,6 +3,10 @@
 set -e
 
 COMPOSE_FILE="docker-compose.prod.yml"
+PROJECT_ROOT="$(pwd)"
+MIGRATION_DIR="${PROJECT_ROOT}/data/migration"
+REPAIR_PENDING_REPORT="${MIGRATION_DIR}/repair-pending.json"
+CONTAINER_REPAIR_PENDING_REPORT="/migration/repair-pending.json"
 DATA_ROOT="/opt/grimoire-keeper-data"
 OLD_WEAVIATE_DATA="${DATA_ROOT}/weaviate"
 NEW_WEAVIATE_DATA="${DATA_ROOT}/weaviate-1.38.8"
@@ -46,6 +50,7 @@ if [ -f "${MIGRATION_MARKER}" ]; then
     exit 1
 fi
 
+mkdir -p "${MIGRATION_DIR}"
 sudo mkdir -p "${NEW_WEAVIATE_DATA}" "${BACKUP_ROOT}"
 sudo chown -R "${USER}:${USER}" "${NEW_WEAVIATE_DATA}" "${BACKUP_ROOT}"
 
@@ -92,19 +97,26 @@ for attempt in $(seq 1 60); do
 done
 
 echo "再インデックス対象を確認します。"
-bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
-    uv run python ../../scripts/reindex_weaviate.py --dry-run
+bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
+    --volume "${MIGRATION_DIR}:/migration" api \
+    uv run python ../../scripts/reindex_weaviate.py --dry-run \
+    --repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 echo "空のWeaviate 1.38.8へ再インデックスします。"
-bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
-    uv run python ../../scripts/reindex_weaviate.py
+bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
+    --volume "${MIGRATION_DIR}:/migration" api \
+    uv run python ../../scripts/reindex_weaviate.py \
+    --repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 echo "再構築したコレクション件数を検証します。"
-bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps api \
-    uv run python -m tools.weaviate_1_38_migration.check_counts
+bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
+    --volume "${MIGRATION_DIR}:/migration" api \
+    uv run python -m tools.weaviate_1_38_migration.check_counts \
+    --repair-pending-report "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 touch "${MIGRATION_MARKER}"
 echo "検証済みマーカーを作成しました: ${MIGRATION_MARKER}"
 echo "バックアップ: ${BACKUP_FILE}"
 echo "ロールバック情報: ${ROLLBACK_INFO}"
+echo "修復待ちレポート: ${REPAIR_PENDING_REPORT}"
 echo "代表検索を確認後、bash scripts/deploy.sh でAPIを切り替えてください。"

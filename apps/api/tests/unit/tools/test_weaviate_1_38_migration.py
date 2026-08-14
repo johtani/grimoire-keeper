@@ -5,12 +5,14 @@ import json
 import sqlite3
 import tarfile
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
 import pytest
+from grimoire_api.models.database import Page
 from grimoire_api.repositories.database import DatabaseConnection
 
 from tools.weaviate_1_38_migration import preflight, rollback_check
@@ -18,6 +20,7 @@ from tools.weaviate_1_38_migration.check_counts import verify_migration
 from tools.weaviate_1_38_migration.page_repository import MigrationPageRepository
 from tools.weaviate_1_38_migration.preflight import run_preflight
 from tools.weaviate_1_38_migration.rollback_check import run_rollback_check
+from tools.weaviate_1_38_migration.source_validation import classify_stored_source
 
 
 def test_migration_compose_allows_sqlite_wal_locking() -> None:
@@ -60,6 +63,24 @@ def test_migration_backup_handles_root_owned_json_atomically() -> None:
     assert migrate_script.index(chown) < migrate_script.index(publish)
 
 
+def test_migration_uses_repair_pending_report_for_reindex_and_counts() -> None:
+    """再索引と件数検証が同じ修復待ちレポートを共有する."""
+    migrate_script = (
+        Path(__file__).parents[5] / "tools" / "weaviate_1_38_migration" / "migrate.sh"
+    ).read_text(encoding="utf-8")
+
+    assert migrate_script.count('"${MIGRATION_DIR}:/migration"') == 3
+    assert (
+        migrate_script.count(
+            '--repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"'
+        )
+        == 2
+    )
+    assert (
+        '--repair-pending-report "${CONTAINER_REPAIR_PENDING_REPORT}"' in migrate_script
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("page_count, expected", [(2, 0), (1, 1)])
 async def test_verify_migration_page_counts(page_count: int, expected: int) -> None:
@@ -88,6 +109,89 @@ async def test_verify_migration_page_counts(page_count: int, expected: int) -> N
 
     assert result == expected
     client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verify_migration_uses_repair_pending_target_count(
+    tmp_path: Path,
+) -> None:
+    """修復待ちを除いた移行対象件数でWeaviateを検証する."""
+    report = tmp_path / "repair-pending.json"
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "completed_pages": 2,
+                "scanned_pages": 2,
+                "migration_targets": 1,
+                "repair_pending_count": 1,
+                "repair_pending": [{"page_id": 56, "reasons": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    page_repo = MagicMock()
+    page_repo.count_completed_pages = AsyncMock(return_value=2)
+    client = MagicMock()
+    client.is_ready.return_value = True
+    client.collections.exists.return_value = True
+    page_collection = MagicMock()
+    page_collection.aggregate.over_all.return_value.total_count = 1
+    chunk_collection = MagicMock()
+    chunk_collection.aggregate.over_all.return_value.total_count = 3
+    client.collections.get.side_effect = [page_collection, chunk_collection]
+
+    with (
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.MigrationPageRepository",
+            return_value=page_repo,
+        ),
+        patch(
+            "tools.weaviate_1_38_migration.check_counts.weaviate.connect_to_local",
+            return_value=client,
+        ),
+    ):
+        result = await verify_migration(report)
+
+    assert result == 0
+    client.close.assert_called_once()
+
+
+def test_classify_stored_source_reports_malformed_404(tmp_path: Path) -> None:
+    """%3E URLとJina 404を複数理由として保持する."""
+    page = Page(
+        id=56,
+        url="https://example.com/page%3E",
+        title="broken",
+        memo=None,
+        summary="summary",
+        keywords=[],
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        weaviate_id="old-id",
+    )
+    (tmp_path / "56.json").write_text(
+        json.dumps(
+            {
+                "code": 200,
+                "data": {
+                    "title": "",
+                    "content": "404 body",
+                    "httpStatus": 404,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pending = classify_stored_source(page, tmp_path)
+
+    assert pending is not None
+    assert {reason.code for reason in pending.reasons} == {
+        "malformed_url_suffix",
+        "jina_http_error",
+        "missing_title",
+    }
 
 
 @pytest.mark.asyncio
@@ -285,7 +389,7 @@ def test_preflight_rejects_missing_completed_page_json(
     coverage = next(
         check for check in checks if check.name == "completed page JSON coverage"
     )
-    assert coverage.status == "FAIL"
+    assert coverage.status == "WARN"
     assert "page IDs: 1" in coverage.detail
 
 
@@ -314,7 +418,7 @@ def test_preflight_rejects_completed_page_json_without_content(
     validity = next(
         check for check in checks if check.name == "completed page JSON validity"
     )
-    assert validity.status == "FAIL"
+    assert validity.status == "WARN"
     assert "page IDs: 1" in validity.detail
 
 
@@ -352,7 +456,7 @@ def test_preflight_rejects_jina_http_error_response(
     validity = next(
         check for check in checks if check.name == "completed page JSON validity"
     )
-    assert validity.status == "FAIL"
+    assert validity.status == "WARN"
     assert "page IDs: 1" in validity.detail
 
 

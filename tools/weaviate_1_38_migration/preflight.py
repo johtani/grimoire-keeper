@@ -197,6 +197,8 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
         else f"missing {len(missing_json)} JSON files; page IDs: {preview}"
     )
     add("completed page JSON coverage", not missing_json, detail)
+    if missing_json:
+        checks[-1] = Check(checks[-1].name, "WARN", checks[-1].detail)
 
     invalid_json: list[int] = []
     for page_id in completed_pages:
@@ -209,10 +211,16 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
             content = data.get("content") if isinstance(data, dict) else None
             jina_title = data.get("title") if isinstance(data, dict) else None
             http_status = data.get("httpStatus") if isinstance(data, dict) else None
-            source_failed = (
-                isinstance(http_status, int)
-                and not isinstance(http_status, bool)
-                and http_status >= 400
+            source_statuses = (
+                source.get("code") if isinstance(source, dict) else None,
+                source.get("status") if isinstance(source, dict) else None,
+                http_status,
+            )
+            source_failed = any(
+                isinstance(status_value, int)
+                and not isinstance(status_value, bool)
+                and status_value >= 400
+                for status_value in source_statuses
             )
             if (
                 source_failed
@@ -231,7 +239,13 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
         else f"invalid {len(invalid_json)} JSON files; page IDs: {preview}"
     )
     add("completed page JSON validity", not invalid_json, detail)
+    if invalid_json:
+        checks[-1] = Check(checks[-1].name, "WARN", checks[-1].detail)
     return checks
+
+
+def _checks_pass(checks: list[Check]) -> bool:
+    return all(check.status != "FAIL" for check in checks)
 
 
 def run_preflight(
@@ -356,7 +370,7 @@ def _write_report(path: Path, checks: list[Check]) -> None:
         json.dumps(
             {
                 "checked_at": datetime.now(UTC).isoformat(),
-                "passed": all(check.status == "PASS" for check in checks),
+                "passed": _checks_pass(checks),
                 "checks": [asdict(check) for check in checks],
             },
             ensure_ascii=False,
@@ -414,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         _write_report(args.output, checks)
         print(f"Report: {args.output}")
-    return 0 if all(check.status == "PASS" for check in checks) else 1
+    return 0 if _checks_pass(checks) else 1
 
 
 if __name__ == "__main__":

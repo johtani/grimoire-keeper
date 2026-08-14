@@ -8,6 +8,7 @@ Weaviate `1.33.1` から `1.38.8` への本番移行を補助する一時ツー�
 - `preflight.py`: 停止作業前の環境、データ、容量、baseline、readiness確認
 - `migrate.sh`: バックアップ、新環境起動、再インデックスの実行
 - `check_counts.py`: SQLiteと新Weaviateコレクションの件数確認
+- `source_validation.py`: 修復待ちデータの分類とJSONレポート生成
 - `rollback_check.py`: ロールバック情報、旧ボリューム、バックアップ内容とSHA-256の確認
 - `docker-compose.yml`: Python依存を含む一時ツールコンテナ
 - `run.sh`: ホストの前提確認とコンテナ実行をまとめたエントリーポイント
@@ -40,7 +41,14 @@ SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロッ
 
 `preflight`はさらにSQLiteを`mode=ro`で実際に開き、`pages`の必須列、旧・新
 スキーマの互換性、成功済みページの抽出、および各ページに対応するJina JSONの存在を
-確認します。不足があればサービス停止前に失敗します。
+確認します。スキーマ・接続の問題は`FAIL`、再取得で修復可能な保存データの問題は
+`WARN`として報告します。
+
+再インデックスは、URL末尾の`%3E`、Jina HTTP 4xx/5xx、欠損・破損JSON、空の
+タイトル・本文、チャンク生成不能を修復待ちとして除外します。SQLiteとJSONは変更せず、
+`data/migration/repair-pending.json`へページID、URL、理由を保存します。件数検証では
+`SQLite完了ページ数 = 移行対象数 + 修復待ち数`と、Weaviateページ数が移行対象数に
+一致することを確認します。
 
 専用Composeからは本番サービスがorphanに見えるため、ラッパーは警告だけを抑止します。
 稼働中のAPI、Weaviate、Web、botを削除し得る `--remove-orphans` は使用しません。
