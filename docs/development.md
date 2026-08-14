@@ -29,7 +29,8 @@
 ホストにはDocker Compose、`bws`、Git、`.env`、`BWS_ACCESS_TOKEN`が必要です。
 
 最初にツールイメージとクエリファイルを準備します。この操作は稼働中サービスを
-停止しません。
+停止しません。ビルド後にコンテナ内のPythonと `weaviate-client`をimportできることも
+確認します。
 
 ```bash
 bash tools/weaviate_1_38_migration/run.sh prepare

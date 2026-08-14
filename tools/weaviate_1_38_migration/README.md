@@ -19,6 +19,8 @@ Weaviate `1.33.1` から `1.38.8` への本番移行を補助する一時ツー�
 ## 実行方法
 
 本番サーバーへPython依存関係をインストールせず、すべて `run.sh` 経由で実行します。
+`prepare` はイメージをビルドした後、ワークスペース仮想環境 `/app/.venv` のPythonで
+`weaviate-client`と検索ツールをimportできることを確認します。
 
 ```bash
 bash tools/weaviate_1_38_migration/run.sh prepare
@@ -30,6 +32,9 @@ bash tools/weaviate_1_38_migration/run.sh preflight
 ホスト側ではDocker Compose、`bws`、Git、認証設定、クリーンな作業ツリーを確認します。
 Python処理はツールコンテナ内で行います。本番データルートは読み取り専用、生成する
 検索スナップショットとレポートだけは `data/migration/` へ書き込みます。
+
+専用Composeからは本番サービスがorphanに見えるため、ラッパーは警告だけを抑止します。
+稼働中のAPI、Weaviate、Web、botを削除し得る `--remove-orphans` は使用しません。
 
 ## 保持期間
 
