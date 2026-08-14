@@ -39,6 +39,13 @@ class FetchedDocument(BaseModel):
         data = response.get("data")
         if not isinstance(data, dict):
             raise ValueError("data must be an object")
+        http_status = data.get("httpStatus")
+        if (
+            isinstance(http_status, int)
+            and not isinstance(http_status, bool)
+            and http_status >= 400
+        ):
+            raise ValueError(f"Jina source returned HTTP {http_status}")
 
         language = next(
             (

@@ -171,38 +171,6 @@ class TestVectorizerService:
         mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_reindex_content_uses_sqlite_title_when_jina_title_is_empty(
-        self, vectorizer_service, mock_dependencies
-    ):
-        """再索引では空のJinaタイトルをSQLiteタイトルで補完する."""
-        page_id = 56
-        mock_dependencies["page_repo"].get_page.return_value = Page(
-            id=page_id,
-            url="https://example.com/page-56",
-            title="Stored SQLite title",
-            memo=None,
-            summary="Summary",
-            keywords=["test"],
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            weaviate_id="old-id",
-        )
-        mock_dependencies["file_repo"].load_json_file.return_value = {
-            "code": 200,
-            "data": {"title": "", "content": "Valid stored content"},
-        }
-        mock_dependencies["chunking_service"].chunk_document.return_value = ["chunk"]
-
-        await vectorizer_service.reindex_content(page_id)
-
-        document = mock_dependencies["chunking_service"].chunk_document.call_args.args[
-            0
-        ]
-        assert document.title == "Stored SQLite title"
-        assert document.content == "Valid stored content"
-        assert mock_dependencies["file_repo"].save_json_file.call_count == 0
-
-    @pytest.mark.asyncio
     async def test_vectorize_content_no_chunks(
         self, vectorizer_service, mock_dependencies
     ):

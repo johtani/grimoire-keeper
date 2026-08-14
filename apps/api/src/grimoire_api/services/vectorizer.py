@@ -58,32 +58,17 @@ class VectorizerService:
     async def reindex_content(self, page_id: int) -> str:
         """処理状態を変更せず、保存済みデータからページを再索引化する."""
         try:
-            page_data, chunks = await self._load_page_and_chunks(
-                page_id, use_page_title_fallback=True
-            )
+            page_data, chunks = await self._load_page_and_chunks(page_id)
             return await self._save_page_to_weaviate(page_data, chunks)
         except Exception as e:
             raise VectorizerError(f"Reindex error: {str(e)}")
 
-    async def _load_page_and_chunks(
-        self, page_id: int, *, use_page_title_fallback: bool = False
-    ) -> tuple[Page, list[str]]:
+    async def _load_page_and_chunks(self, page_id: int) -> tuple[Page, list[str]]:
         page_data = await self.page_repo.get_page(page_id)
         if not page_data:
             raise VectorizerError(f"Page not found: {page_id}")
 
         raw_jina_data = await self.file_repo.load_json_file(page_id)
-        if use_page_title_fallback:
-            data = raw_jina_data.get("data")
-            if isinstance(data, dict):
-                jina_title = data.get("title")
-                if jina_title is None or (
-                    isinstance(jina_title, str) and not jina_title.strip()
-                ):
-                    raw_jina_data = {
-                        **raw_jina_data,
-                        "data": {**data, "title": page_data.title},
-                    }
         try:
             document = FetchedDocument.from_jina_response(
                 raw_jina_data, source_url=page_data.url

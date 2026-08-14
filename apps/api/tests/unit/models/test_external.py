@@ -53,6 +53,18 @@ def test_fetched_document_normalizes_language_candidates(
     assert document.raw_response == response
 
 
+def test_fetched_document_rejects_jina_http_error_response() -> None:
+    """本文文字列があっても取得元HTTPエラーを拒否する."""
+    response = _jina_response(
+        title="", content="404 error page content", httpStatus=404
+    )
+
+    with pytest.raises(ValueError, match="HTTP 404"):
+        FetchedDocument.from_jina_response(
+            response, source_url="https://missing.example"
+        )
+
+
 def test_summary_result_normalizes_keywords_in_order() -> None:
     result = SummaryResult(
         summary="  Summary  ", keywords=[" first ", "second", "first"]

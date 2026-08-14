@@ -199,7 +199,7 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
     add("completed page JSON coverage", not missing_json, detail)
 
     invalid_json: list[int] = []
-    for page_id, page_title in completed_pages.items():
+    for page_id in completed_pages:
         source_path = json_path / f"{page_id}.json"
         if not source_path.is_file():
             continue
@@ -208,12 +208,19 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
             data = source.get("data") if isinstance(source, dict) else None
             content = data.get("content") if isinstance(data, dict) else None
             jina_title = data.get("title") if isinstance(data, dict) else None
-            title = (
-                jina_title
-                if isinstance(jina_title, str) and jina_title.strip()
-                else page_title
+            http_status = data.get("httpStatus") if isinstance(data, dict) else None
+            source_failed = (
+                isinstance(http_status, int)
+                and not isinstance(http_status, bool)
+                and http_status >= 400
             )
-            if not isinstance(content, str) or not content.strip() or not title.strip():
+            if (
+                source_failed
+                or not isinstance(content, str)
+                or not content.strip()
+                or not isinstance(jina_title, str)
+                or not jina_title.strip()
+            ):
                 invalid_json.append(page_id)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             invalid_json.append(page_id)
