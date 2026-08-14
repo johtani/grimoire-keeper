@@ -20,7 +20,7 @@ from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
 
 async def reindex(max_pages: int | None, dry_run: bool) -> int:
     """成功済みページを新しいWeaviateコレクションへ再構築する."""
-    page_repo = PageRepository(DatabaseConnection())
+    page_repo = PageRepository(DatabaseConnection(read_only=dry_run))
     total_pages = await page_repo.count_pages(status_filter="completed")
     target_count = min(total_pages, max_pages) if max_pages is not None else total_pages
     pages = await page_repo.get_pages(

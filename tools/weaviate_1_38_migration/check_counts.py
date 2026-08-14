@@ -22,9 +22,9 @@ def _collection_count(client: Any, collection_name: str) -> int:
 
 async def verify_migration() -> int:
     """Compare rebuilt collection counts with successful SQLite pages."""
-    expected_pages = await PageRepository(DatabaseConnection()).count_pages(
-        status_filter="completed"
-    )
+    expected_pages = await PageRepository(
+        DatabaseConnection(read_only=True)
+    ).count_pages(status_filter="completed")
     client = weaviate.connect_to_local(
         host=settings.WEAVIATE_HOST,
         port=settings.WEAVIATE_PORT,

@@ -15,10 +15,14 @@ async def test_dry_run_targets_all_completed_pages() -> None:
     page_repo.count_pages = AsyncMock(return_value=10_001)
     page_repo.get_pages = AsyncMock(return_value=[])
 
-    with patch("scripts.reindex_weaviate.PageRepository", return_value=page_repo):
+    with (
+        patch("scripts.reindex_weaviate.DatabaseConnection") as database_connection,
+        patch("scripts.reindex_weaviate.PageRepository", return_value=page_repo),
+    ):
         result = await reindex(max_pages=None, dry_run=True)
 
     assert result == 0
+    database_connection.assert_called_once_with(read_only=True)
     page_repo.get_pages.assert_awaited_once_with(
         limit=10_001,
         status_filter="completed",

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import aiosqlite
 import pytest
 from grimoire_api.repositories.database import DatabaseConnection
+from grimoire_api.utils.exceptions import DatabaseError
 
 
 class TestDatabaseInitialization:
@@ -86,6 +87,43 @@ class TestDatabaseInitialization:
                     await db.initialize_tables()
         finally:
             Path(db_path).unlink(missing_ok=True)
+
+
+class TestReadOnlyDatabaseConnection:
+    """DatabaseConnectionの読み取り専用接続を検証する."""
+
+    @pytest.mark.asyncio
+    async def test_fetches_from_read_only_database(self, tmp_path: Path) -> None:
+        """読み取り専用モードでも既存DBを参照できることを確認する."""
+        db_path = tmp_path / "readonly.db"
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute("CREATE TABLE samples (value TEXT NOT NULL)")
+            await conn.execute("INSERT INTO samples VALUES ('ok')")
+            await conn.commit()
+
+        db = DatabaseConnection(str(db_path), read_only=True)
+
+        row = await db.fetch_one("SELECT value FROM samples")
+
+        assert row is not None
+        assert row["value"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_read_only_database_rejects_writes(self, tmp_path: Path) -> None:
+        """読み取り専用モードからの更新が失敗することを確認する."""
+        db_path = tmp_path / "readonly.db"
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute("CREATE TABLE samples (value TEXT NOT NULL)")
+            await conn.commit()
+
+        db = DatabaseConnection(str(db_path), read_only=True)
+
+        with pytest.raises(DatabaseError, match="attempt to write a readonly database"):
+            await db.execute("INSERT INTO samples VALUES ('ng')")
+
+
+class TestLegacyDatabaseMigration:
+    """旧データベースの移行処理を検証する."""
 
     @pytest.mark.asyncio
     async def test_legacy_pages_are_backfilled_idempotently(self) -> None:
