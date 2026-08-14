@@ -20,7 +20,8 @@ Weaviate `1.33.1` から `1.38.8` への本番移行を補助する一時ツー�
 
 本番サーバーへPython依存関係をインストールせず、すべて `run.sh` 経由で実行します。
 `prepare` はイメージをビルドした後、ワークスペース仮想環境 `/app/.venv` のPythonで
-`weaviate-client`と検索ツールをimportできることを確認します。
+`self_check` モジュールを実行し、`weaviate-client`と検索ツールをimportできることを
+確認します。`python -c` のコード文字列はシェルへ渡しません。
 
 ```bash
 bash tools/weaviate_1_38_migration/run.sh prepare
