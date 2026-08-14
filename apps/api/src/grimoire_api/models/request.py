@@ -1,6 +1,8 @@
 """Request models."""
 
-from pydantic import BaseModel, HttpUrl
+import re
+
+from pydantic import BaseModel, HttpUrl, field_validator
 
 from .database import ReprocessStartStep
 
@@ -12,6 +14,14 @@ class ProcessUrlRequest(BaseModel):
     memo: str | None = None
     slack_channel: str | None = None
     slack_user: str | None = None
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def reject_malformed_url_suffix(cls, value: object) -> object:
+        """Slack マークアップ由来の不正な末尾を正規化前に拒否する."""
+        if isinstance(value, str) and re.search(r"(?:>|%3e)$", value, re.IGNORECASE):
+            raise ValueError("URL must not end with '>' or '%3E'")
+        return value
 
 
 class RetryAllRequest(BaseModel):

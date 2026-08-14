@@ -78,6 +78,26 @@ class TestProcessRouter:
             "https://example.com/", "test memo"
         )
 
+    def test_process_url_rejects_raw_slack_suffix(self) -> None:
+        """末尾に Slack の閉じ山括弧がある URL を拒否する."""
+        app.dependency_overrides[get_weaviate_client] = lambda: object()
+        response = client.post(
+            "/api/v1/process-url",
+            json={"url": "https://example.com/article>"},
+        )
+
+        assert response.status_code == 422
+
+    def test_process_url_rejects_encoded_slack_suffix(self) -> None:
+        """末尾のエンコード済み閉じ山括弧も拒否する."""
+        app.dependency_overrides[get_weaviate_client] = lambda: object()
+        response = client.post(
+            "/api/v1/process-url",
+            json={"url": "https://example.com/article%3E"},
+        )
+
+        assert response.status_code == 422
+
     def test_process_url_weaviate_unavailable(self) -> None:
         """Weaviate未接続時に503が返ることのテスト."""
 

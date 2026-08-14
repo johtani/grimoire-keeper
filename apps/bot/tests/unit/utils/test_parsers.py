@@ -77,3 +77,43 @@ class TestParseUrlAndMemo:
 
         assert url == "https://example.com"
         assert memo == "https://another.com"
+
+    def test_slack_formatted_url(self):
+        """Slack の山括弧を URL に含めない."""
+        url, memo = parse_url_and_memo("<https://example.com/path> 記事")
+
+        assert url == "https://example.com/path"
+        assert memo == "記事"
+
+    def test_slack_formatted_url_with_label(self):
+        """Slack のリンクラベルを memo に含めない."""
+        url, memo = parse_url_and_memo("メモ <https://example.com/path|記事リンク>")
+
+        assert url == "https://example.com/path"
+        assert memo == "メモ"
+
+    def test_rich_text_link_takes_priority(self):
+        """rich text の link.url をテキスト内 URL より優先する."""
+        blocks = [
+            {
+                "type": "rich_text",
+                "elements": [
+                    {
+                        "type": "rich_text_section",
+                        "elements": [
+                            {
+                                "type": "link",
+                                "url": "https://structured.example/article",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+
+        url, memo = parse_url_and_memo(
+            "<https://fallback.example/article> 保存用", blocks
+        )
+
+        assert url == "https://structured.example/article"
+        assert memo == "<https://fallback.example/article> 保存用"
