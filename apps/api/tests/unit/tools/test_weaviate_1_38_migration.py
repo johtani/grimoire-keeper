@@ -44,6 +44,22 @@ def test_read_only_database_commands_run_as_root() -> None:
     assert run_script.count("MIGRATION_UID=0 MIGRATION_GID=0 run_tool") == 3
 
 
+def test_migration_backup_handles_root_owned_json_atomically() -> None:
+    """root所有JSONをsudoで読み、完成したバックアップだけを公開する."""
+    migrate_script = (
+        Path(__file__).parents[5] / "tools" / "weaviate_1_38_migration" / "migrate.sh"
+    ).read_text(encoding="utf-8")
+
+    sudo_tar = 'sudo tar -C "${DATA_ROOT}" -czf "${BACKUP_TEMP}" database json'
+    chown = 'sudo chown "${USER}:${USER}" "${BACKUP_TEMP}"'
+    publish = 'mv "${BACKUP_TEMP}" "${BACKUP_FILE}"'
+    assert sudo_tar in migrate_script
+    assert chown in migrate_script
+    assert publish in migrate_script
+    assert migrate_script.index(sudo_tar) < migrate_script.index(chown)
+    assert migrate_script.index(chown) < migrate_script.index(publish)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("page_count, expected", [(2, 0), (1, 1)])
 async def test_verify_migration_page_counts(page_count: int, expected: int) -> None:

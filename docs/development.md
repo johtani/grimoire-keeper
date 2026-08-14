@@ -97,6 +97,10 @@ bash tools/weaviate_1_38_migration/migrate.sh
    されていることを検証する。
 7. 検証済みマーカー `.grimoire-migration-ready` を作成する。
 
+バックアップは、APIコンテナがroot所有・`0600`で作成したJSONも読めるよう
+`sudo tar`で一時ファイルへ作成します。成功後に実行ユーザーへ所有権を戻してから
+正式な `.tar.gz` 名へ変更するため、途中失敗したファイルはバックアップとして扱いません。
+
 Jina APIやLLMは再実行しません。ページの `status` と `last_success_step` も変更
 しません。個別ページの失敗または件数不一致があれば、スクリプトは非0で終了し、
 APIへの切り替えは行いません。

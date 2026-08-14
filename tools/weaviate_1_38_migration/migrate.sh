@@ -10,6 +10,7 @@ BACKUP_ROOT="${DATA_ROOT}/backups"
 MIGRATION_MARKER="${NEW_WEAVIATE_DATA}/.grimoire-migration-ready"
 BACKUP_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_FILE="${BACKUP_ROOT}/pre-weaviate-1.38.8-${BACKUP_TIMESTAMP}.tar.gz"
+BACKUP_TEMP="${BACKUP_FILE}.partial"
 ROLLBACK_INFO="${BACKUP_ROOT}/pre-weaviate-1.38.8-${BACKUP_TIMESTAMP}.txt"
 
 export WEAVIATE_IMAGE="cr.weaviate.io/semitechnologies/weaviate:1.38.8"
@@ -66,7 +67,9 @@ echo "旧サービスを停止します。旧Weaviateデータは変更しませ
 docker compose -f "${COMPOSE_FILE}" down
 
 echo "SQLiteとJina JSONをバックアップします: ${BACKUP_FILE}"
-tar -C "${DATA_ROOT}" -czf "${BACKUP_FILE}" database json
+sudo tar -C "${DATA_ROOT}" -czf "${BACKUP_TEMP}" database json
+sudo chown "${USER}:${USER}" "${BACKUP_TEMP}"
+mv "${BACKUP_TEMP}" "${BACKUP_FILE}"
 BACKUP_SHA256="$(sha256sum "${BACKUP_FILE}")"
 BACKUP_SHA256="${BACKUP_SHA256%% *}"
 echo "sqlite_json_backup_sha256=${BACKUP_SHA256}" >> "${ROLLBACK_INFO}"
