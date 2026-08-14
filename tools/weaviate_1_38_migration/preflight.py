@@ -213,7 +213,6 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
             http_status = data.get("httpStatus") if isinstance(data, dict) else None
             source_statuses = (
                 source.get("code") if isinstance(source, dict) else None,
-                source.get("status") if isinstance(source, dict) else None,
                 http_status,
             )
             source_failed = any(

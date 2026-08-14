@@ -44,11 +44,15 @@ SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロッ
 確認します。スキーマ・接続の問題は`FAIL`、再取得で修復可能な保存データの問題は
 `WARN`として報告します。
 
-再インデックスは、URL末尾の`%3E`、Jina HTTP 4xx/5xx、欠損・破損JSON、空の
+再インデックスは、URL末尾の`%3E`、取得元の`data.httpStatus`またはレスポンス
+`code`が示すHTTP 4xx/5xx、欠損・破損JSON、空の
 タイトル・本文、チャンク生成不能を修復待ちとして除外します。SQLiteとJSONは変更せず、
 `data/migration/repair-pending.json`へページID、URL、理由を保存します。件数検証では
 `SQLite完了ページ数 = 移行対象数 + 修復待ち数`と、Weaviateページ数が移行対象数に
 一致することを確認します。
+
+トップレベルの`status`はJina独自のアプリケーションステータスで、正常時にも
+`20000`となるためHTTPエラー判定には使用しません。
 
 専用Composeからは本番サービスがorphanに見えるため、ラッパーは警告だけを抑止します。
 稼働中のAPI、Weaviate、Web、botを削除し得る `--remove-orphans` は使用しません。
