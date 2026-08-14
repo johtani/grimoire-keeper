@@ -1,5 +1,7 @@
 """Database connection management."""
 
+from pathlib import Path
+
 import aiosqlite
 
 from ..config import settings
@@ -9,13 +11,22 @@ from ..utils.exceptions import DatabaseError
 class DatabaseConnection:
     """データベース接続管理クラス."""
 
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: str | None = None, *, read_only: bool = False):
         """初期化.
 
         Args:
             db_path: データベースファイルパス
+            read_only: SQLiteを読み取り専用モードで開くか
         """
         self.db_path = db_path or settings.DATABASE_PATH
+        self.read_only = read_only
+
+    def _connect(self) -> aiosqlite.Connection:
+        """設定されたモードでSQLite接続を作成する."""
+        if self.read_only:
+            database_uri = f"file:{Path(self.db_path).resolve().as_posix()}?mode=ro"
+            return aiosqlite.connect(database_uri, uri=True)
+        return aiosqlite.connect(self.db_path)
 
     async def execute_transaction(self, queries: list[tuple[str, tuple]]) -> None:
         """複数クエリをひとつのトランザクションでアトミックに実行.
@@ -27,7 +38,7 @@ class DatabaseConnection:
             DatabaseError: 実行エラー (自動ロールバック)
         """
         try:
-            async with aiosqlite.connect(self.db_path) as conn:
+            async with self._connect() as conn:
                 await conn.execute("PRAGMA busy_timeout=30000")
                 for query, params in queries:
                     await conn.execute(query, params)
@@ -46,7 +57,7 @@ class DatabaseConnection:
             lastrowid
         """
         try:
-            async with aiosqlite.connect(self.db_path) as conn:
+            async with self._connect() as conn:
                 await conn.execute("PRAGMA busy_timeout=30000")
                 cursor = await conn.execute(query, params)
                 await conn.commit()
@@ -65,7 +76,7 @@ class DatabaseConnection:
             取得した行
         """
         try:
-            async with aiosqlite.connect(self.db_path) as conn:
+            async with self._connect() as conn:
                 conn.row_factory = aiosqlite.Row
                 await conn.execute("PRAGMA busy_timeout=30000")
                 async with conn.execute(query, params) as cursor:
@@ -84,7 +95,7 @@ class DatabaseConnection:
             取得した行のリスト
         """
         try:
-            async with aiosqlite.connect(self.db_path) as conn:
+            async with self._connect() as conn:
                 conn.row_factory = aiosqlite.Row
                 await conn.execute("PRAGMA busy_timeout=30000")
                 async with conn.execute(query, params) as cursor:
