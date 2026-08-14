@@ -15,6 +15,30 @@ from tools.weaviate_1_38_migration.preflight import run_preflight
 from tools.weaviate_1_38_migration.rollback_check import run_rollback_check
 
 
+def test_migration_compose_allows_sqlite_wal_locking() -> None:
+    """DBはWAL用に書込可能でマウントし、他の本番データはread-onlyに保つ."""
+    compose_path = (
+        Path(__file__).parents[5]
+        / "tools"
+        / "weaviate_1_38_migration"
+        / "docker-compose.yml"
+    )
+    compose = compose_path.read_text(encoding="utf-8")
+
+    assert "/opt/grimoire-keeper-data/database:/data\n" in compose
+    assert "/opt/grimoire-keeper-data/database:/data:ro" not in compose
+    assert "/opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro" in compose
+
+
+def test_read_only_database_commands_run_as_root() -> None:
+    """root所有のWALを扱うDB参照コマンドだけrootで実行する."""
+    run_script = (
+        Path(__file__).parents[5] / "tools" / "weaviate_1_38_migration" / "run.sh"
+    ).read_text(encoding="utf-8")
+
+    assert run_script.count("MIGRATION_UID=0 MIGRATION_GID=0 run_tool") == 2
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("page_count, expected", [(2, 0), (1, 1)])
 async def test_verify_migration_page_counts(page_count: int, expected: int) -> None:
