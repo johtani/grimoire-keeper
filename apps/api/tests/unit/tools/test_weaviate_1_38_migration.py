@@ -7,10 +7,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiosqlite
 import pytest
+from grimoire_api.repositories.database import DatabaseConnection
 
 from tools.weaviate_1_38_migration import preflight, rollback_check
 from tools.weaviate_1_38_migration.check_counts import verify_migration
+from tools.weaviate_1_38_migration.page_repository import MigrationPageRepository
 from tools.weaviate_1_38_migration.preflight import run_preflight
 from tools.weaviate_1_38_migration.rollback_check import run_rollback_check
 
@@ -43,7 +46,7 @@ def test_read_only_database_commands_run_as_root() -> None:
 @pytest.mark.parametrize("page_count, expected", [(2, 0), (1, 1)])
 async def test_verify_migration_page_counts(page_count: int, expected: int) -> None:
     page_repo = MagicMock()
-    page_repo.count_pages = AsyncMock(return_value=2)
+    page_repo.count_completed_pages = AsyncMock(return_value=2)
     client = MagicMock()
     client.is_ready.return_value = True
     client.collections.exists.return_value = True
@@ -55,7 +58,7 @@ async def test_verify_migration_page_counts(page_count: int, expected: int) -> N
 
     with (
         patch(
-            "tools.weaviate_1_38_migration.check_counts.PageRepository",
+            "tools.weaviate_1_38_migration.check_counts.MigrationPageRepository",
             return_value=page_repo,
         ),
         patch(
@@ -67,6 +70,56 @@ async def test_verify_migration_page_counts(page_count: int, expected: int) -> N
 
     assert result == expected
     client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_migration_repository_reads_legacy_pages_schema(tmp_path: Path) -> None:
+    """status列のない旧DBから完了ページだけを取得する."""
+    db_path = tmp_path / "legacy.db"
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute(
+            """CREATE TABLE pages (
+                id INTEGER PRIMARY KEY, url TEXT, title TEXT, memo TEXT,
+                summary TEXT, keywords TEXT, weaviate_id TEXT,
+                last_success_step TEXT, created_at TEXT, updated_at TEXT
+            )"""
+        )
+        await conn.executemany(
+            "INSERT INTO pages VALUES (?, ?, ?, NULL, ?, '[]', ?, ?, ?, ?)",
+            [
+                (
+                    1,
+                    "https://completed.example.com",
+                    "completed",
+                    "summary",
+                    "uuid-1",
+                    "completed",
+                    "2026-01-01T00:00:00",
+                    "2026-01-01T00:00:00",
+                ),
+                (
+                    2,
+                    "https://failed.example.com",
+                    "failed",
+                    None,
+                    None,
+                    "downloaded",
+                    "2026-01-01T00:00:00",
+                    "2026-01-01T00:00:00",
+                ),
+            ],
+        )
+        await conn.commit()
+
+    repository = MigrationPageRepository(
+        DatabaseConnection(str(db_path), read_only=True)
+    )
+
+    assert await repository.count_completed_pages() == 1
+    pages = await repository.get_completed_pages(limit=10)
+    assert [page.id for page in pages] == [1]
+    assert pages[0].status.value == "succeeded"
+    assert (await repository.get_page(1)) == pages[0]
 
 
 def _write_queries_and_baseline(

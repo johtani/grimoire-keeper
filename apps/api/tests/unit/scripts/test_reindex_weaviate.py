@@ -12,37 +12,37 @@ from scripts.reindex_weaviate import _positive_int, reindex
 async def test_dry_run_targets_all_completed_pages() -> None:
     """上限未指定なら1万件を超えても成功済み全ページを対象にする."""
     page_repo = MagicMock()
-    page_repo.count_pages = AsyncMock(return_value=10_001)
-    page_repo.get_pages = AsyncMock(return_value=[])
+    page_repo.count_completed_pages = AsyncMock(return_value=10_001)
+    page_repo.get_completed_pages = AsyncMock(return_value=[])
 
     with (
         patch("scripts.reindex_weaviate.DatabaseConnection") as database_connection,
-        patch("scripts.reindex_weaviate.PageRepository", return_value=page_repo),
+        patch(
+            "scripts.reindex_weaviate.MigrationPageRepository",
+            return_value=page_repo,
+        ),
     ):
         result = await reindex(max_pages=None, dry_run=True)
 
     assert result == 0
     database_connection.assert_called_once_with(read_only=True)
-    page_repo.get_pages.assert_awaited_once_with(
-        limit=10_001,
-        status_filter="completed",
-        sort_by="id",
-        order="asc",
-    )
+    page_repo.get_completed_pages.assert_awaited_once_with(limit=10_001)
 
 
 @pytest.mark.asyncio
 async def test_dry_run_respects_max_pages() -> None:
     """--max-pages 指定時だけ対象件数を制限する."""
     page_repo = MagicMock()
-    page_repo.count_pages = AsyncMock(return_value=100)
-    page_repo.get_pages = AsyncMock(return_value=[])
+    page_repo.count_completed_pages = AsyncMock(return_value=100)
+    page_repo.get_completed_pages = AsyncMock(return_value=[])
 
-    with patch("scripts.reindex_weaviate.PageRepository", return_value=page_repo):
+    with patch(
+        "scripts.reindex_weaviate.MigrationPageRepository", return_value=page_repo
+    ):
         result = await reindex(max_pages=5, dry_run=True)
 
     assert result == 0
-    assert page_repo.get_pages.await_args.kwargs["limit"] == 5
+    assert page_repo.get_completed_pages.await_args.kwargs["limit"] == 5
 
 
 def test_positive_int_rejects_zero() -> None:

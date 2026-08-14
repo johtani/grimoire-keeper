@@ -11,7 +11,10 @@ sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 import weaviate  # noqa: E402
 from grimoire_api.config import settings  # noqa: E402
 from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
-from grimoire_api.repositories.page_repository import PageRepository  # noqa: E402
+
+from tools.weaviate_1_38_migration.page_repository import (  # noqa: E402
+    MigrationPageRepository,
+)
 
 
 def _collection_count(client: Any, collection_name: str) -> int:
@@ -22,9 +25,9 @@ def _collection_count(client: Any, collection_name: str) -> int:
 
 async def verify_migration() -> int:
     """Compare rebuilt collection counts with successful SQLite pages."""
-    expected_pages = await PageRepository(
+    expected_pages = await MigrationPageRepository(
         DatabaseConnection(read_only=True)
-    ).count_pages(status_filter="completed")
+    ).count_completed_pages()
     client = weaviate.connect_to_local(
         host=settings.WEAVIATE_HOST,
         port=settings.WEAVIATE_PORT,
