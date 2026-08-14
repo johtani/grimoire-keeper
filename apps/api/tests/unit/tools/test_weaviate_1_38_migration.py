@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import sqlite3
 import tarfile
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -39,7 +41,7 @@ def test_read_only_database_commands_run_as_root() -> None:
         Path(__file__).parents[5] / "tools" / "weaviate_1_38_migration" / "run.sh"
     ).read_text(encoding="utf-8")
 
-    assert run_script.count("MIGRATION_UID=0 MIGRATION_GID=0 run_tool") == 2
+    assert run_script.count("MIGRATION_UID=0 MIGRATION_GID=0 run_tool") == 3
 
 
 @pytest.mark.asyncio
@@ -168,6 +170,23 @@ def _prepare_preflight(
         path = data_root / directory
         path.mkdir(parents=True)
         (path / "data").write_text("ready", encoding="utf-8")
+    with closing(sqlite3.connect(data_root / "database" / "grimoire.db")) as connection:
+        connection.execute(
+            """CREATE TABLE pages (
+                id INTEGER PRIMARY KEY, url TEXT, title TEXT, memo TEXT,
+                summary TEXT, keywords TEXT, weaviate_id TEXT,
+                last_success_step TEXT, created_at TEXT, updated_at TEXT
+            )"""
+        )
+        connection.execute(
+            """INSERT INTO pages VALUES (
+                1, 'https://example.com', 'title', NULL, 'summary', '[]',
+                'uuid-1', 'completed', '2026-01-01T00:00:00',
+                '2026-01-01T00:00:00'
+            )"""
+        )
+        connection.commit()
+    (data_root / "json" / "1.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(preflight.shutil, "which", lambda _: "/usr/bin/tool")
     monkeypatch.setattr(preflight, "_has_bws_token", lambda: True)
     monkeypatch.setattr(
@@ -223,6 +242,32 @@ def test_preflight_rejects_populated_new_data(
 
     check = next(item for item in checks if item.name == "empty new Weaviate data")
     assert check.status == "FAIL"
+
+
+def test_preflight_rejects_missing_completed_page_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """成功済みページのJina JSON不足を移行前に検出する."""
+    repo_root, data_root = _prepare_preflight(tmp_path, monkeypatch)
+    queries_path, baseline_path = _write_queries_and_baseline(tmp_path)
+    (data_root / "json" / "1.json").unlink()
+
+    checks = run_preflight(
+        repo_root,
+        data_root,
+        queries_path,
+        baseline_path,
+        1.0,
+        "http://api/health",
+        "http://weaviate/ready",
+        url_checker=lambda _: (True, "HTTP 200"),
+    )
+
+    coverage = next(
+        check for check in checks if check.name == "completed page JSON coverage"
+    )
+    assert coverage.status == "FAIL"
+    assert "page IDs: 1" in coverage.detail
 
 
 def test_containerized_preflight_skips_host_environment(
