@@ -33,6 +33,9 @@ bash tools/weaviate_1_38_migration/run.sh preflight
 Python処理はツールコンテナ内で行います。本番データルートは読み取り専用、生成する
 検索スナップショットとレポートだけは `data/migration/` へ書き込みます。
 
+専用Composeからは本番サービスがorphanに見えるため、ラッパーは警告だけを抑止します。
+稼働中のAPI、Weaviate、Web、botを削除し得る `--remove-orphans` は使用しません。
+
 ## 保持期間
 
 このディレクトリ内のツールは今回のパス、バージョン、移行方式に依存するため、

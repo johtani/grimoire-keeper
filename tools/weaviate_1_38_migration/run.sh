@@ -12,6 +12,10 @@ DEFAULT_QUERIES="${MIGRATION_DIR}/search_queries.json"
 DEFAULT_BEFORE="${MIGRATION_DIR}/search-before-1.33.1.json"
 DEFAULT_AFTER="${MIGRATION_DIR}/search-after-1.38.8.json"
 
+# The tools compose file intentionally shares the production project name.
+# Never remove the production services as "orphans" from this wrapper.
+export COMPOSE_IGNORE_ORPHANS=true
+
 load_bws_token() {
     if [ -z "${BWS_ACCESS_TOKEN:-}" ]; then
         local bws_env="${HOME}/.config/bws.env"
