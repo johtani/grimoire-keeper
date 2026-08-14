@@ -94,7 +94,8 @@ bash tools/weaviate_1_38_migration/migrate.sh
    Weaviate `1.38.8` だけを起動する。
 5. SQLiteとJina JSONから新しい2コレクションへ再インデックスする。
 6. 成功済みSQLiteページ数と `GrimoirePage` 件数が一致し、本文チャンクが作成
-   されていることを検証する。
+   されていることを検証する。修復待ちがある場合は、修復待ちを除いた移行対象件数と
+   `GrimoirePage`件数を比較する。
 7. 検証済みマーカー `.grimoire-migration-ready` を作成する。
 
 バックアップは、APIコンテナがroot所有・`0600`で作成したJSONも読めるよう
@@ -106,8 +107,13 @@ Jina APIやLLMは再実行しません。ページの `status` と `last_success
 APIへの切り替えは行いません。
 
 保存済みJinaレスポンスがHTTP 4xx/5xxを示す場合、本文らしい文字列が含まれていても
-エラーページを索引化せず、`preflight`と再インデックスを失敗させます。本文が空、
-タイトルが空、またはJSONが壊れている場合も同様です。
+エラーページを索引化せず、`preflight`と再インデックスで修復待ちとして検出します。
+本文が空、タイトルが空、またはJSONが壊れている場合も同様です。
+
+ただし移行全体は停止せず、これらを修復待ちとして再インデックスから除外し、
+`data/migration/repair-pending.json`へ記録します。SQLiteとJSONは変更しません。
+Weaviateや埋め込みAPIの障害は修復待ちにせず、移行を失敗させます。移行後はレポートの
+ページをURL修正後にダウンロード工程から再処理します。
 
 ### 検証
 

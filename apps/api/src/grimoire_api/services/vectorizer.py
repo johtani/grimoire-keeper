@@ -134,6 +134,22 @@ class VectorizerService:
         except Exception as e:
             raise VectorizerError(f"Failed to save page to Weaviate: {str(e)}")
 
+    async def delete_page_from_index(self, page_id: int) -> None:
+        """再構築先のページ代表・本文チャンクをページID単位で削除する."""
+        try:
+            page_collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_PAGE_COLLECTION_NAME
+            )
+            chunk_collection = self.weaviate_client.collections.get(
+                settings.WEAVIATE_CHUNK_COLLECTION_NAME
+            )
+            await self._delete_existing_objects(page_collection, page_id)
+            await self._delete_existing_objects(chunk_collection, page_id)
+        except Exception as e:
+            raise VectorizerError(
+                f"Failed to remove page {page_id} from Weaviate: {str(e)}"
+            ) from e
+
     async def _save_chunks_to_weaviate(self, page_data: Page, chunks: list[str]) -> str:
         """後方互換用の内部エイリアス."""
         return await self._save_page_to_weaviate(page_data, chunks)

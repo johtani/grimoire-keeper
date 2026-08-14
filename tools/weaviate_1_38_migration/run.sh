@@ -117,13 +117,15 @@ dry_run() {
     # The production API runs as root and may own SQLite's WAL/SHM files.
     # SQLite mode=ro prevents SQL writes while root permits WAL locking.
     MIGRATION_UID=0 MIGRATION_GID=0 run_tool \
-        "${PYTHON_BIN}" /app/scripts/reindex_weaviate.py --dry-run
+        "${PYTHON_BIN}" /app/scripts/reindex_weaviate.py --dry-run \
+        --repair-pending-output /migration/repair-pending.json
 }
 
 check_counts() {
     require_host_tools
     MIGRATION_UID=0 MIGRATION_GID=0 run_tool \
-        "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.check_counts
+        "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.check_counts \
+        --repair-pending-report /migration/repair-pending.json
 }
 
 compare() {
