@@ -75,8 +75,7 @@ prepare() {
     fi
     bws run -- docker compose --project-directory "${PROJECT_ROOT}" \
         -f "${COMPOSE_FILE}" build migration-tools
-    run_tool "${PYTHON_BIN}" -c \
-        "import weaviate; import tools.search_regression.snapshot"
+    run_tool "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.self_check
     echo "移行ツールコンテナのPython依存を確認しました"
 }
 
