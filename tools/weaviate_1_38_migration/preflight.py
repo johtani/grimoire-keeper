@@ -170,16 +170,16 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
                     "OR (summary IS NOT NULL AND weaviate_id IS NOT NULL)"
                 )
             add("SQLite schema compatibility", True, schema)
-            completed_ids = {
-                int(row[0])
+            completed_pages = {
+                int(row[0]): str(row[1])
                 for row in connection.execute(
-                    f"SELECT id FROM pages WHERE {completed_condition}"
+                    f"SELECT id, title FROM pages WHERE {completed_condition}"
                 ).fetchall()
             }
             add(
                 "completed SQLite pages",
                 True,
-                f"{len(completed_ids)} pages can be selected",
+                f"{len(completed_pages)} pages can be selected",
             )
     except (OSError, sqlite3.Error) as exc:
         add("SQLite readable", False, str(exc))
@@ -187,16 +187,43 @@ def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
 
     missing_json = sorted(
         page_id
-        for page_id in completed_ids
+        for page_id in completed_pages
         if not (json_path / f"{page_id}.json").is_file()
     )
     preview = ", ".join(str(page_id) for page_id in missing_json[:10])
     detail = (
-        f"all {len(completed_ids)} completed pages have JSON"
+        f"all {len(completed_pages)} completed pages have JSON"
         if not missing_json
         else f"missing {len(missing_json)} JSON files; page IDs: {preview}"
     )
     add("completed page JSON coverage", not missing_json, detail)
+
+    invalid_json: list[int] = []
+    for page_id, page_title in completed_pages.items():
+        source_path = json_path / f"{page_id}.json"
+        if not source_path.is_file():
+            continue
+        try:
+            source = json.loads(source_path.read_text(encoding="utf-8"))
+            data = source.get("data") if isinstance(source, dict) else None
+            content = data.get("content") if isinstance(data, dict) else None
+            jina_title = data.get("title") if isinstance(data, dict) else None
+            title = (
+                jina_title
+                if isinstance(jina_title, str) and jina_title.strip()
+                else page_title
+            )
+            if not isinstance(content, str) or not content.strip() or not title.strip():
+                invalid_json.append(page_id)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            invalid_json.append(page_id)
+    preview = ", ".join(str(page_id) for page_id in invalid_json[:10])
+    detail = (
+        "all available completed-page JSON files contain usable title and content"
+        if not invalid_json
+        else f"invalid {len(invalid_json)} JSON files; page IDs: {preview}"
+    )
+    add("completed page JSON validity", not invalid_json, detail)
     return checks
 
 

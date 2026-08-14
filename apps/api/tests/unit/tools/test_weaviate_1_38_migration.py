@@ -202,7 +202,10 @@ def _prepare_preflight(
             )"""
         )
         connection.commit()
-    (data_root / "json" / "1.json").write_text("{}", encoding="utf-8")
+    (data_root / "json" / "1.json").write_text(
+        json.dumps({"data": {"title": "", "content": "stored content"}}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(preflight.shutil, "which", lambda _: "/usr/bin/tool")
     monkeypatch.setattr(preflight, "_has_bws_token", lambda: True)
     monkeypatch.setattr(
@@ -284,6 +287,35 @@ def test_preflight_rejects_missing_completed_page_json(
     )
     assert coverage.status == "FAIL"
     assert "page IDs: 1" in coverage.detail
+
+
+def test_preflight_rejects_completed_page_json_without_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """本文が空のJina JSONを移行前に検出する."""
+    repo_root, data_root = _prepare_preflight(tmp_path, monkeypatch)
+    queries_path, baseline_path = _write_queries_and_baseline(tmp_path)
+    (data_root / "json" / "1.json").write_text(
+        json.dumps({"data": {"title": "title", "content": ""}}),
+        encoding="utf-8",
+    )
+
+    checks = run_preflight(
+        repo_root,
+        data_root,
+        queries_path,
+        baseline_path,
+        1.0,
+        "http://api/health",
+        "http://weaviate/ready",
+        url_checker=lambda _: (True, "HTTP 200"),
+    )
+
+    validity = next(
+        check for check in checks if check.name == "completed page JSON validity"
+    )
+    assert validity.status == "FAIL"
+    assert "page IDs: 1" in validity.detail
 
 
 def test_containerized_preflight_skips_host_environment(
