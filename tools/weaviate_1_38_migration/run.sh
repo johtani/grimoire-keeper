@@ -7,6 +7,7 @@ PROJECT_ROOT="$(cd "${TOOLS_DIR}/../.." && pwd)"
 COMPOSE_FILE="${TOOLS_DIR}/docker-compose.yml"
 MIGRATION_DIR="${PROJECT_ROOT}/data/migration"
 CONTAINER_MIGRATION_DIR="/migration"
+PYTHON_BIN="/app/.venv/bin/python"
 DEFAULT_QUERIES="${MIGRATION_DIR}/search_queries.json"
 DEFAULT_BEFORE="${MIGRATION_DIR}/search-before-1.33.1.json"
 DEFAULT_AFTER="${MIGRATION_DIR}/search-after-1.38.8.json"
@@ -70,6 +71,9 @@ prepare() {
     fi
     bws run -- docker compose --project-directory "${PROJECT_ROOT}" \
         -f "${COMPOSE_FILE}" build migration-tools
+    run_tool "${PYTHON_BIN}" -c \
+        "import weaviate; import tools.search_regression.snapshot"
+    echo "移行ツールコンテナのPython依存を確認しました"
 }
 
 capture() {
@@ -77,7 +81,7 @@ capture() {
     local output="$2"
     require_host_tools
     require_prepared
-    run_tool /app/apps/api/.venv/bin/python -m tools.search_regression.snapshot capture \
+    run_tool "${PYTHON_BIN}" -m tools.search_regression.snapshot capture \
         --api-url http://host.docker.internal:8000 \
         --queries "${CONTAINER_MIGRATION_DIR}/search_queries.json" \
         --label "${label}" \
@@ -91,7 +95,7 @@ preflight() {
         echo "ERROR: ${DEFAULT_BEFORE} がありません。先に capture-before を実行してください" >&2
         exit 1
     fi
-    run_tool /app/apps/api/.venv/bin/python -m tools.weaviate_1_38_migration.preflight \
+    run_tool "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.preflight \
         --containerized \
         --data-root /opt/grimoire-keeper-data \
         --queries "${CONTAINER_MIGRATION_DIR}/search_queries.json" \
@@ -103,12 +107,12 @@ preflight() {
 
 dry_run() {
     require_host_tools
-    run_tool /app/apps/api/.venv/bin/python /app/scripts/reindex_weaviate.py --dry-run
+    run_tool "${PYTHON_BIN}" /app/scripts/reindex_weaviate.py --dry-run
 }
 
 check_counts() {
     require_host_tools
-    run_tool /app/apps/api/.venv/bin/python -m tools.weaviate_1_38_migration.check_counts
+    run_tool "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.check_counts
 }
 
 compare() {
@@ -119,7 +123,7 @@ compare() {
         exit 1
     fi
     local threshold="${SEARCH_OVERLAP_THRESHOLD:-0.8}"
-    run_tool /app/apps/api/.venv/bin/python -m tools.search_regression.snapshot compare \
+    run_tool "${PYTHON_BIN}" -m tools.search_regression.snapshot compare \
         --before "${CONTAINER_MIGRATION_DIR}/search-before-1.33.1.json" \
         --after "${CONTAINER_MIGRATION_DIR}/search-after-1.38.8.json" \
         --output "${CONTAINER_MIGRATION_DIR}/search-comparison.json" \
@@ -140,7 +144,7 @@ rollback_check() {
         exit 1
     fi
     git -C "${PROJECT_ROOT}" cat-file -e "${api_commit}^{commit}"
-    run_tool /app/apps/api/.venv/bin/python -m tools.weaviate_1_38_migration.rollback_check \
+    run_tool "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.rollback_check \
         --containerized \
         --verified-api-commit "${api_commit}" \
         --rollback-info "${rollback_info}" \
