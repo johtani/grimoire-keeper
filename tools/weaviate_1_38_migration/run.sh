@@ -98,9 +98,13 @@ preflight() {
         echo "ERROR: ${DEFAULT_BEFORE} がありません。先に capture-before を実行してください" >&2
         exit 1
     fi
-    run_tool "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.preflight \
+    # SQLite WAL/SHM files may be owned by the root API container.
+    MIGRATION_UID=0 MIGRATION_GID=0 run_tool \
+        "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.preflight \
         --containerized \
         --data-root /opt/grimoire-keeper-data \
+        --database /data/grimoire.db \
+        --json-path /app/apps/api/data/json \
         --queries "${CONTAINER_MIGRATION_DIR}/search_queries.json" \
         --baseline "${CONTAINER_MIGRATION_DIR}/search-before-1.33.1.json" \
         --api-health-url http://host.docker.internal:8000/api/v1/health \

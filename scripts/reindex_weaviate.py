@@ -13,22 +13,20 @@ import weaviate  # noqa: E402
 from grimoire_api.config import settings  # noqa: E402
 from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
 from grimoire_api.repositories.file_repository import FileRepository  # noqa: E402
-from grimoire_api.repositories.page_repository import PageRepository  # noqa: E402
 from grimoire_api.services.chunking_service import ChunkingService  # noqa: E402
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
+
+from tools.weaviate_1_38_migration.page_repository import (  # noqa: E402
+    MigrationPageRepository,
+)
 
 
 async def reindex(max_pages: int | None, dry_run: bool) -> int:
     """成功済みページを新しいWeaviateコレクションへ再構築する."""
-    page_repo = PageRepository(DatabaseConnection(read_only=dry_run))
-    total_pages = await page_repo.count_pages(status_filter="completed")
+    page_repo = MigrationPageRepository(DatabaseConnection(read_only=dry_run))
+    total_pages = await page_repo.count_completed_pages()
     target_count = min(total_pages, max_pages) if max_pages is not None else total_pages
-    pages = await page_repo.get_pages(
-        limit=target_count,
-        status_filter="completed",
-        sort_by="id",
-        order="asc",
-    )
+    pages = await page_repo.get_completed_pages(limit=target_count)
     print(f"対象ページ: {len(pages)} / 成功済みページ: {total_pages}")
     if dry_run:
         for page in pages:

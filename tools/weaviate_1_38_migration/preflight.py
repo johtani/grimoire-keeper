@@ -8,8 +8,10 @@ import json
 import math
 import os
 import shutil
+import sqlite3
 import subprocess
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -114,6 +116,90 @@ def _baseline_has_results(baseline: dict[str, Any]) -> bool:
     return True
 
 
+def _check_sqlite_and_json(database_path: Path, json_path: Path) -> list[Check]:
+    """Check the source SQLite schema and completed-page JSON coverage."""
+    checks: list[Check] = []
+
+    def add(name: str, passed: bool, detail: str) -> None:
+        checks.append(Check(name, "PASS" if passed else "FAIL", detail))
+
+    if not database_path.is_file():
+        add("SQLite database file", False, str(database_path))
+        return checks
+    add("SQLite database file", True, str(database_path))
+
+    required_columns = {
+        "id",
+        "url",
+        "title",
+        "memo",
+        "summary",
+        "keywords",
+        "weaviate_id",
+        "last_success_step",
+        "created_at",
+        "updated_at",
+    }
+    try:
+        database_uri = f"file:{database_path.resolve().as_posix()}?mode=ro"
+        with closing(sqlite3.connect(database_uri, uri=True)) as connection:
+            columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(pages)").fetchall()
+            }
+            missing_columns = sorted(required_columns - columns)
+            add(
+                "SQLite pages schema",
+                not missing_columns,
+                (
+                    "required columns are present"
+                    if not missing_columns
+                    else f"missing columns: {', '.join(missing_columns)}"
+                ),
+            )
+            if missing_columns:
+                return checks
+
+            if "status" in columns:
+                schema = "current (status column)"
+                completed_condition = "status = 'succeeded'"
+            else:
+                schema = "legacy (without status column)"
+                completed_condition = (
+                    "last_success_step = 'completed' "
+                    "OR (summary IS NOT NULL AND weaviate_id IS NOT NULL)"
+                )
+            add("SQLite schema compatibility", True, schema)
+            completed_ids = {
+                int(row[0])
+                for row in connection.execute(
+                    f"SELECT id FROM pages WHERE {completed_condition}"
+                ).fetchall()
+            }
+            add(
+                "completed SQLite pages",
+                True,
+                f"{len(completed_ids)} pages can be selected",
+            )
+    except (OSError, sqlite3.Error) as exc:
+        add("SQLite readable", False, str(exc))
+        return checks
+
+    missing_json = sorted(
+        page_id
+        for page_id in completed_ids
+        if not (json_path / f"{page_id}.json").is_file()
+    )
+    preview = ", ".join(str(page_id) for page_id in missing_json[:10])
+    detail = (
+        f"all {len(completed_ids)} completed pages have JSON"
+        if not missing_json
+        else f"missing {len(missing_json)} JSON files; page IDs: {preview}"
+    )
+    add("completed page JSON coverage", not missing_json, detail)
+    return checks
+
+
 def run_preflight(
     repo_root: Path,
     data_root: Path,
@@ -124,6 +210,8 @@ def run_preflight(
     weaviate_ready_url: str,
     url_checker: Callable[[str], tuple[bool, str]] = _url_is_ready,
     check_host_environment: bool = True,
+    database_path: Path | None = None,
+    json_path: Path | None = None,
 ) -> list[Check]:
     """Run checks without changing services or migration data."""
     checks: list[Check] = []
@@ -181,6 +269,12 @@ def run_preflight(
     )
     add("empty new Weaviate data", new_is_safe, str(new_data))
     add("migration marker absent", not marker.exists(), str(marker))
+    checks.extend(
+        _check_sqlite_and_json(
+            database_path or database / "grimoire.db",
+            json_path or json_data,
+        )
+    )
 
     try:
         source_bytes = sum(
@@ -249,6 +343,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--queries", required=True, type=Path)
     parser.add_argument("--baseline", required=True, type=Path)
+    parser.add_argument("--database", type=Path)
+    parser.add_argument("--json-path", type=Path)
     parser.add_argument("--minimum-free-gb", type=_nonnegative_float, default=5.0)
     parser.add_argument(
         "--api-health-url", default="http://localhost:8000/api/v1/health"
@@ -276,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
         args.api_health_url,
         args.weaviate_ready_url,
         check_host_environment=not args.containerized,
+        database_path=args.database,
+        json_path=args.json_path,
     )
     for check in checks:
         print(f"[{check.status}] {check.name}: {check.detail}")

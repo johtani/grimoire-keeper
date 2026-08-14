@@ -38,6 +38,10 @@ SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロッ
 コンテナはrootで実行します。生成する検索スナップショットとレポートは
 `data/migration/` へ書き込みます。
 
+`preflight`はさらにSQLiteを`mode=ro`で実際に開き、`pages`の必須列、旧・新
+スキーマの互換性、成功済みページの抽出、および各ページに対応するJina JSONの存在を
+確認します。不足があればサービス停止前に失敗します。
+
 専用Composeからは本番サービスがorphanに見えるため、ラッパーは警告だけを抑止します。
 稼働中のAPI、Weaviate、Web、botを削除し得る `--remove-orphans` は使用しません。
 
