@@ -52,8 +52,8 @@ require_host_tools() {
 }
 
 run_tool() {
-    export MIGRATION_UID="$(id -u)"
-    export MIGRATION_GID="$(id -g)"
+    export MIGRATION_UID="${MIGRATION_UID:-$(id -u)}"
+    export MIGRATION_GID="${MIGRATION_GID:-$(id -g)}"
     bws run -- docker compose --project-directory "${PROJECT_ROOT}" \
         -f "${COMPOSE_FILE}" run --rm migration-tools "$@"
 }
@@ -110,12 +110,16 @@ preflight() {
 
 dry_run() {
     require_host_tools
-    run_tool "${PYTHON_BIN}" /app/scripts/reindex_weaviate.py --dry-run
+    # The production API runs as root and may own SQLite's WAL/SHM files.
+    # SQLite mode=ro prevents SQL writes while root permits WAL locking.
+    MIGRATION_UID=0 MIGRATION_GID=0 run_tool \
+        "${PYTHON_BIN}" /app/scripts/reindex_weaviate.py --dry-run
 }
 
 check_counts() {
     require_host_tools
-    run_tool "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.check_counts
+    MIGRATION_UID=0 MIGRATION_GID=0 run_tool \
+        "${PYTHON_BIN}" -m tools.weaviate_1_38_migration.check_counts
 }
 
 compare() {

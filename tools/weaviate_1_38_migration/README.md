@@ -31,8 +31,12 @@ bash tools/weaviate_1_38_migration/run.sh preflight
 ```
 
 ホスト側ではDocker Compose、`bws`、Git、認証設定、クリーンな作業ツリーを確認します。
-Python処理はツールコンテナ内で行います。本番データルートは読み取り専用、生成する
-検索スナップショットとレポートだけは `data/migration/` へ書き込みます。
+Python処理はツールコンテナ内で行います。JSONと本番データルートは読み取り専用です。
+SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロック処理のため書き込み可能で
+マウントしますが、`dry-run`と`check-counts`はSQLite URIの`mode=ro`でSQL更新を禁止
+します。本番APIがroot所有で作成したWALファイルも扱えるよう、この2コマンドの
+コンテナはrootで実行します。生成する検索スナップショットとレポートは
+`data/migration/` へ書き込みます。
 
 専用Composeからは本番サービスがorphanに見えるため、ラッパーは警告だけを抑止します。
 稼働中のAPI、Weaviate、Web、botを削除し得る `--remove-orphans` は使用しません。

@@ -25,6 +25,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - /opt/grimoire-keeper-data:/opt/grimoire-keeper-data:ro
-      - /opt/grimoire-keeper-data/database:/data:ro
+      # SQLiteのread-only接続でもWALの共有メモリとロック処理には
+      # ディレクトリへの書き込み権限が必要。SQL更新はmode=roで禁止する。
+      - /opt/grimoire-keeper-data/database:/data
       - /opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro
       - ./data/migration:/migration
