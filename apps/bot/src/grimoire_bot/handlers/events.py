@@ -27,7 +27,7 @@ def register_event_handlers(app: AsyncApp) -> None:
             return
 
         # URLとmemoを分割
-        url, memo = parse_url_and_memo(clean_text)
+        url, memo = parse_url_and_memo(clean_text, event.get("blocks"))
 
         if url:
             await say(f"<@{user}> URLを処理中です...")
