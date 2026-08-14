@@ -144,6 +144,55 @@ def test_compare_snapshots_reports_result_and_rank_changes() -> None:
     ]
 
 
+def test_compare_snapshots_compares_keyword_results_by_unique_page() -> None:
+    request = {
+        "name": "keyword",
+        "type": "keywords",
+        "keywords": ["example"],
+        "limit": 5,
+    }
+
+    def keyword_snapshot(label: str, results: list[dict[str, int]]) -> dict:
+        return {
+            "schema_version": 1,
+            "label": label,
+            "queries": [
+                {
+                    "name": "keyword",
+                    "request": request,
+                    "response": {"total": len(results), "results": results},
+                }
+            ],
+        }
+
+    comparison = compare_snapshots(
+        keyword_snapshot(
+            "before",
+            [
+                {"page_id": 2, "chunk_id": 0},
+                {"page_id": 2, "chunk_id": 1},
+                {"page_id": 2, "chunk_id": 2},
+            ],
+        ),
+        keyword_snapshot(
+            "after",
+            [
+                {"page_id": 2, "chunk_id": 0},
+                {"page_id": 16, "chunk_id": 0},
+            ],
+        ),
+    )
+    query = comparison["queries"][0]
+
+    assert query["comparison_unit"] == "page"
+    assert query["before_results"] == ["page:2"]
+    assert query["after_results"] == ["page:2", "page:16"]
+    assert query["missing_results"] == []
+    assert query["added_results"] == ["page:16"]
+    assert query["overlap_ratio"] == 1.0
+    assert query["top_result_unchanged"] is True
+
+
 def test_compare_snapshots_rejects_changed_query() -> None:
     before = _snapshot("before", [1])
     after = _snapshot("after", [1])

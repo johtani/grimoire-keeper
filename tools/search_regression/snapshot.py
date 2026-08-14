@@ -174,6 +174,29 @@ def _result_key(result: Any) -> str:
     raise ValueError("search result must contain page_id or url")
 
 
+def _page_result_key(result: Any) -> str:
+    """Return a page-level key for results that are not chunk-oriented."""
+    if not isinstance(result, dict):
+        raise ValueError("search result must be an object")
+    page_id = result.get("page_id")
+    if page_id is not None:
+        return f"page:{page_id}"
+    url = result.get("url")
+    if isinstance(url, str) and url:
+        return f"url:{url}"
+    raise ValueError("search result must contain page_id or url")
+
+
+def _comparison_keys(results: list[Any], query_type: Any) -> list[str]:
+    """Build ordered comparison keys, deduplicating page-level keyword results."""
+    if query_type != "keywords":
+        return [_result_key(result) for result in results]
+
+    # The legacy index returned one keyword hit per chunk, while the new index
+    # returns one representative object per page. Compare their logical pages.
+    return list(dict.fromkeys(_page_result_key(result) for result in results))
+
+
 def _snapshot_queries(snapshot: JsonObject, label: str) -> dict[str, JsonObject]:
     if snapshot.get("schema_version") != SNAPSHOT_SCHEMA_VERSION:
         raise ValueError(f"{label} snapshot has unsupported schema_version")
@@ -215,8 +238,10 @@ def compare_snapshots(before: JsonObject, after: JsonObject) -> JsonObject:
         if not isinstance(before_results, list) or not isinstance(after_results, list):
             raise ValueError(f"query '{name}' has invalid results")
 
-        before_keys = [_result_key(result) for result in before_results]
-        after_keys = [_result_key(result) for result in after_results]
+        request = before_query.get("request")
+        query_type = request.get("type") if isinstance(request, dict) else None
+        before_keys = _comparison_keys(before_results, query_type)
+        after_keys = _comparison_keys(after_results, query_type)
         before_set = set(before_keys)
         after_set = set(after_keys)
         shared = before_set & after_set
@@ -233,6 +258,7 @@ def compare_snapshots(before: JsonObject, after: JsonObject) -> JsonObject:
         comparisons.append(
             {
                 "name": name,
+                "comparison_unit": "page" if query_type == "keywords" else "chunk",
                 "before_total": before_response.get("total", len(before_results)),
                 "after_total": after_response.get("total", len(after_results)),
                 "before_results": before_keys,
