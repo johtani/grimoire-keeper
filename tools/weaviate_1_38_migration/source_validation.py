@@ -59,7 +59,6 @@ def classify_stored_source(
         (name, value)
         for name, value in (
             ("code", source.get("code")),
-            ("status", source.get("status")),
             ("data.httpStatus", data.get("httpStatus")),
         )
         if isinstance(value, int) and not isinstance(value, bool) and value >= 400

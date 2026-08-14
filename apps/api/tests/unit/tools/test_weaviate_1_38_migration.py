@@ -194,6 +194,37 @@ def test_classify_stored_source_reports_malformed_404(tmp_path: Path) -> None:
     }
 
 
+def test_classify_stored_source_accepts_jina_status_20000(tmp_path: Path) -> None:
+    """Jina独自の正常status=20000をHTTPエラー扱いしない."""
+    page = Page(
+        id=1,
+        url="https://example.com/page",
+        title="title",
+        memo=None,
+        summary="summary",
+        keywords=[],
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        weaviate_id="old-id",
+    )
+    (tmp_path / "1.json").write_text(
+        json.dumps(
+            {
+                "code": 200,
+                "status": 20000,
+                "data": {
+                    "title": "title",
+                    "content": "valid content",
+                    "httpStatus": 200,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert classify_stored_source(page, tmp_path) is None
+
+
 @pytest.mark.asyncio
 async def test_migration_repository_reads_legacy_pages_schema(tmp_path: Path) -> None:
     """status列のない旧DBから完了ページだけを取得する."""
@@ -307,7 +338,17 @@ def _prepare_preflight(
         )
         connection.commit()
     (data_root / "json" / "1.json").write_text(
-        json.dumps({"data": {"title": "title", "content": "stored content"}}),
+        json.dumps(
+            {
+                "code": 200,
+                "status": 20000,
+                "data": {
+                    "title": "title",
+                    "content": "stored content",
+                    "httpStatus": 200,
+                },
+            }
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(preflight.shutil, "which", lambda _: "/usr/bin/tool")
