@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     WEAVIATE_PORT: int = 8080
     WEAVIATE_PAGE_COLLECTION_NAME: str = "GrimoirePage"
     WEAVIATE_CHUNK_COLLECTION_NAME: str = "GrimoireContentChunk"
+    WEAVIATE_STARTUP_RETRY_ATTEMPTS: int = 12
+    WEAVIATE_STARTUP_RETRY_INTERVAL: float = 5.0
+    WEAVIATE_STARTUP_TIMEOUT: float = 60.0
+    WEAVIATE_CONNECT_TIMEOUT: float = 5.0
+    WEAVIATE_MONITOR_INTERVAL: float = 5.0
+    WEAVIATE_WORKER_STOP_TIMEOUT: float = 10.0
 
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"

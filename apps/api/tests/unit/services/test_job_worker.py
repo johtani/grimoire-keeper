@@ -1,5 +1,6 @@
 """Persistent job worker tests."""
 
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -55,6 +56,45 @@ async def test_worker_recovers_on_start() -> None:
     await worker.stop()
 
     job_repo.recover_running.assert_awaited_once()
+
+
+async def test_worker_cancels_task_after_stop_timeout() -> None:
+    worker = JobWorker(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    never_finishes = asyncio.Event()
+    task = asyncio.create_task(never_finishes.wait())
+    worker._task = task
+
+    stopped = await worker.stop(timeout=0.01)
+    await asyncio.sleep(0)
+
+    assert not stopped
+    assert task.cancelled()
+    await worker.wait_stopped()
+    assert worker._task is None
+
+
+async def test_worker_stop_returns_when_task_suppresses_cancellation() -> None:
+    worker = JobWorker(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    release = asyncio.Event()
+
+    async def cancellation_resistant_task() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    task = asyncio.create_task(cancellation_resistant_task())
+    worker._task = task
+    await asyncio.sleep(0)
+
+    stopped = await asyncio.wait_for(worker.stop(timeout=0.01), timeout=0.1)
+
+    assert not stopped
+    assert not task.done()
+    assert worker._task is task
+    release.set()
+    await worker.wait_stopped()
+    assert worker._task is None
 
 
 async def test_worker_marks_success() -> None:

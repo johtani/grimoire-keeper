@@ -37,12 +37,44 @@ class JobWorker:
         self._stop_event.clear()
         self._task = asyncio.create_task(self.run(), name="grimoire-job-worker")
 
-    async def stop(self) -> None:
-        """新規取得を止め、実行中ジョブの完了を待つ."""
+    async def stop(self, timeout: float | None = None) -> bool:
+        """新規取得を止め、実行中ジョブを期限付きで待つ."""
         self._stop_event.set()
-        if self._task is not None:
-            await self._task
+        task = self._task
+        if task is None:
+            return True
+        if timeout is None:
+            await task
             self._task = None
+            return True
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        if task not in done:
+            logger.warning(
+                "Job worker did not stop within %.1f seconds; cancelling", timeout
+            )
+            task.cancel()
+            task.add_done_callback(self._consume_task_result)
+            return False
+        await task
+        self._task = None
+        return True
+
+    async def wait_stopped(self) -> None:
+        """Wait until a previously detached worker task has fully stopped."""
+        task = self._task
+        if task is None:
+            return
+        await asyncio.gather(task, return_exceptions=True)
+        if self._task is task:
+            self._task = None
+
+    @staticmethod
+    def _consume_task_result(task: asyncio.Task[None]) -> None:
+        """Retrieve a detached task result to avoid unhandled-exception warnings."""
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
 
     async def run(self) -> None:
         """停止要求まで queued ジョブを順番に処理する."""
