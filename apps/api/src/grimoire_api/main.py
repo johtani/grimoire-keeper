@@ -5,7 +5,6 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 
-import weaviate
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from grimoire_shared.telemetry import setup_telemetry
@@ -28,6 +27,7 @@ from .services.base_processor import BaseProcessorService
 from .services.job_worker import JobWorker
 from .services.llm_service import LLMService
 from .services.vectorizer import VectorizerService
+from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
 
 # 警告フィルタを適用
@@ -57,21 +57,13 @@ async def lifespan(app: FastAPI) -> Any:
     else:
         logger.warning("Database initialization failed, but continuing startup")
 
-    # 起動時処理 - Weaviate クライアント初期化
-    try:
-        weaviate_client = weaviate.connect_to_local(
-            host=settings.WEAVIATE_HOST,
-            port=settings.WEAVIATE_PORT,
-            headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
-        )
-        app.state.weaviate_client = weaviate_client
-        logger.info("Weaviate client initialized successfully")
-    except Exception as e:
-        app.state.weaviate_client = None
-        logger.warning("Weaviate connection failed, continuing startup: %s", e)
+    job_worker: JobWorker | None = None
 
-    job_worker = None
-    if app.state.weaviate_client is not None:
+    async def start_job_worker(weaviate_client: Any) -> None:
+        """Start a worker bound to the newly connected Weaviate client."""
+        nonlocal job_worker
+        if job_worker is not None:
+            return
         db = get_db_connection()
         page_repo = PageRepository(db)
         log_repo = LogRepository(db)
@@ -84,27 +76,48 @@ async def lifespan(app: FastAPI) -> Any:
                 page_repo,
                 file_repo,
                 get_chunking_service(),
-                app.state.weaviate_client,
+                weaviate_client,
             ),
             page_repo=page_repo,
             log_repo=log_repo,
             file_repo=file_repo,
             job_repo=job_repo,
         )
-        job_worker = JobWorker(job_repo, page_repo, log_repo, processor)
-        await job_worker.start()
-        app.state.job_worker = job_worker
+        new_job_worker = JobWorker(job_repo, page_repo, log_repo, processor)
+        await new_job_worker.start()
+        job_worker = new_job_worker
+        app.state.job_worker = new_job_worker
         logger.info("Persistent job worker started")
+
+    async def stop_job_worker() -> None:
+        """Stop the worker before discarding its Weaviate client."""
+        nonlocal job_worker
+        if job_worker is None:
+            return
+        await job_worker.stop()
+        job_worker = None
+        app.state.job_worker = None
+        logger.info("Persistent job worker stopped")
+
+    weaviate_manager = WeaviateConnectionManager(
+        host=settings.WEAVIATE_HOST,
+        port=settings.WEAVIATE_PORT,
+        api_key=settings.OPENAI_API_KEY,
+        startup_attempts=settings.WEAVIATE_STARTUP_RETRY_ATTEMPTS,
+        startup_interval=settings.WEAVIATE_STARTUP_RETRY_INTERVAL,
+        connect_timeout=settings.WEAVIATE_CONNECT_TIMEOUT,
+        monitor_interval=settings.WEAVIATE_MONITOR_INTERVAL,
+        on_connected=start_job_worker,
+        on_disconnected=stop_job_worker,
+    )
+    app.state.weaviate_manager = weaviate_manager
+    app.state.job_worker = None
+    await weaviate_manager.start()
 
     yield
 
     # 終了時処理
-    if job_worker is not None:
-        await job_worker.stop()
-        logger.info("Persistent job worker stopped")
-    if getattr(app.state, "weaviate_client", None) is not None:
-        app.state.weaviate_client.close()
-        logger.info("Weaviate client closed")
+    await weaviate_manager.stop()
     await get_jina_client().close()
     logger.info("Jina client closed")
     logger.info("Application shutting down")

@@ -58,7 +58,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - weaviate
+      weaviate:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - grimoire-network
@@ -77,6 +78,12 @@ services:
       CLUSTER_HOSTNAME: 'node1'
     volumes:
       - ${WEAVIATE_DATA_PATH:-/opt/grimoire-keeper-data/weaviate-1.38.8}:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
     networks:
       - grimoire-network

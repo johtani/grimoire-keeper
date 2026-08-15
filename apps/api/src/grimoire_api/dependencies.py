@@ -110,8 +110,9 @@ def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
     Raises:
         HTTPException: Weaviate が未接続の場合 (503)
     """
-    client: weaviate.WeaviateClient | None = getattr(
-        request.app.state, "weaviate_client", None
+    manager = getattr(request.app.state, "weaviate_manager", None)
+    client: weaviate.WeaviateClient | None = (
+        manager.get_client() if manager is not None else None
     )
     if client is None:
         raise HTTPException(status_code=503, detail="Weaviate is not available")
