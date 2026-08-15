@@ -11,10 +11,12 @@ from .repositories.file_repository import FileRepository
 from .repositories.job_repository import JobRepository
 from .repositories.log_repository import LogRepository
 from .repositories.page_repository import PageRepository
+from .repositories.repair_repository import RepairRepository
 from .services.chunking_service import ChunkingService
 from .services.jina_client import JinaClient
 from .services.llm_service import LLMService
 from .services.page_service import PageService
+from .services.repair_service import RepairService
 from .services.retry_service import RetryService
 from .services.search_service import SearchService
 from .services.url_processor import UrlProcessorService
@@ -80,6 +82,22 @@ def get_job_repository(
 ) -> JobRepository:
     """ジョブリポジトリ依存性注入."""
     return JobRepository(db)
+
+
+def get_repair_repository(
+    db: DatabaseConnection = Depends(get_db_connection),
+) -> RepairRepository:
+    return RepairRepository(db)
+
+
+def get_repair_service(
+    page_repo: PageRepository = Depends(get_page_repository),
+    repair_repo: RepairRepository = Depends(get_repair_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
+    log_repo: LogRepository = Depends(get_log_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
+) -> RepairService:
+    return RepairService(page_repo, repair_repo, file_repo, log_repo, job_repo)
 
 
 def get_page_service(

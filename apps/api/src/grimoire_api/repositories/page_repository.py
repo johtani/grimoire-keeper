@@ -203,6 +203,34 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update page status: {e}")
 
+    async def update_url_if_current(
+        self, page_id: int, current_url: str, new_url: str
+    ) -> bool:
+        """現在URLが一致する場合だけURLを更新して検索対象外にする."""
+        try:
+            async with aiosqlite.connect(self.db.db_path) as conn:
+                await conn.execute("PRAGMA busy_timeout=30000")
+                await conn.execute("BEGIN IMMEDIATE")
+                duplicate = await (
+                    await conn.execute(
+                        "SELECT id FROM pages WHERE url=? AND id<>?", (new_url, page_id)
+                    )
+                ).fetchone()
+                if duplicate:
+                    await conn.rollback()
+                    raise DatabaseError("URL already belongs to another page")
+                cursor = await conn.execute(
+                    """UPDATE pages SET url=?, status='failed', updated_at=?
+                    WHERE id=? AND url=?""",
+                    (new_url, datetime.now(), page_id, current_url),
+                )
+                await conn.commit()
+                return cursor.rowcount == 1
+        except DatabaseError:
+            raise
+        except Exception as e:
+            raise DatabaseError(f"Failed to update page URL: {e}") from e
+
     async def update_title_and_step(
         self, page_id: int, title: str, step: ProcessingStep
     ) -> None:

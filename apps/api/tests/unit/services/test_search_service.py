@@ -196,7 +196,7 @@ class TestSearchService:
         assert call_args[1]["query"] == "memo query"
         assert call_args[1]["target_vector"] == "memo_vector"
         assert call_args[1]["limit"] == 3
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None
 
     @pytest.mark.asyncio
     async def test_keyword_search(
@@ -499,4 +499,4 @@ class TestSearchService:
         assert call_args[1]["query"] == "title query"
         assert call_args[1]["target_vector"] == "title_vector"
         assert call_args[1]["limit"] == 5
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None

@@ -127,6 +127,14 @@ class JobRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to recover jobs: {e}")
 
+    async def get_latest_for_page(self, page_id: int) -> Job | None:
+        row = await self.db.fetch_one(
+            "SELECT * FROM jobs WHERE page_id=? "
+            "ORDER BY created_at DESC, id DESC LIMIT 1",
+            (page_id,),
+        )
+        return self._row_to_job(row) if row else None
+
     @staticmethod
     def _parse_datetime(value: str | datetime | None) -> datetime | None:
         return datetime.fromisoformat(value) if isinstance(value, str) else value

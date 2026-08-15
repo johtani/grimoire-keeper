@@ -3,7 +3,11 @@
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
-from grimoire_api.dependencies import get_file_repository, get_page_service
+from grimoire_api.dependencies import (
+    get_file_repository,
+    get_page_service,
+    get_repair_service,
+)
 from grimoire_api.main import app
 
 client = TestClient(app)
@@ -163,3 +167,57 @@ class TestPagesRouter:
         mock_page_service.list_pages.assert_called_once_with(
             limit=20, offset=0, sort="created_at", order="desc", status_filter="failed"
         )
+
+    def test_update_page_url_success(self) -> None:
+        mock_service = AsyncMock()
+        mock_service.update_url.return_value = {
+            "current_url": "https://example.com/bad%3E",
+            "new_url": "https://example.com/good",
+            "status": "failed",
+        }
+        app.dependency_overrides[get_repair_service] = lambda: mock_service
+
+        response = client.patch(
+            "/api/v1/pages/56/url",
+            json={
+                "current_url": "https://example.com/bad%3E",
+                "new_url": "https://example.com/good",
+            },
+        )
+
+        assert response.status_code == 200
+        mock_service.update_url.assert_awaited_once_with(
+            56, "https://example.com/bad%3E", "https://example.com/good"
+        )
+
+    def test_update_page_url_rejects_malformed_suffix(self) -> None:
+        app.dependency_overrides[get_repair_service] = lambda: AsyncMock()
+        response = client.patch(
+            "/api/v1/pages/56/url",
+            json={
+                "current_url": "https://example.com/old",
+                "new_url": "https://example.com/bad%3E",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_update_page_url_returns_conflict(self) -> None:
+        mock_service = AsyncMock()
+        mock_service.update_url.side_effect = FileExistsError("URL already exists")
+        app.dependency_overrides[get_repair_service] = lambda: mock_service
+        response = client.patch(
+            "/api/v1/pages/56/url",
+            json={
+                "current_url": "https://example.com/old",
+                "new_url": "https://example.com/new",
+            },
+        )
+        assert response.status_code == 409
+
+    def test_list_pending_repairs(self) -> None:
+        mock_service = AsyncMock()
+        mock_service.list_cases.return_value = []
+        app.dependency_overrides[get_repair_service] = lambda: mock_service
+        response = client.get("/api/v1/repairs?status=pending")
+        assert response.status_code == 200
+        assert response.json() == {"repairs": [], "total": 0}

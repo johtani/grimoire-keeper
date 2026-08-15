@@ -3,11 +3,13 @@
 import asyncio
 import logging
 
-from ..models.database import PipelineStartStep
+from ..models.database import PipelineStartStep, RepairStatus
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
+from ..repositories.repair_repository import RepairRepository
 from .base_processor import BaseProcessorService
+from .repair_service import validate_stored_source
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +23,14 @@ class JobWorker:
         page_repo: PageRepository,
         log_repo: LogRepository,
         processor: BaseProcessorService,
+        repair_repo: RepairRepository | None = None,
         poll_interval: float = 0.5,
     ):
         self.job_repo = job_repo
         self.page_repo = page_repo
         self.log_repo = log_repo
         self.processor = processor
+        self.repair_repo = repair_repo
         self.poll_interval = poll_interval
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -103,8 +107,28 @@ class JobWorker:
                 page_id, log_id, page.url, start_step, job_id
             )
             await self.job_repo.succeed(job_id, page_id)
+            await self._resolve_repair_if_valid(page_id)
         except Exception as e:
             logger.exception("Job %s failed", job_id)
             if log_id is not None:
                 await self.log_repo.update_status(log_id, "failed", str(e))
             await self.job_repo.fail(job_id, page_id, str(e))
+
+    async def _resolve_repair_if_valid(self, page_id: int) -> None:
+        """正常な保存JSONとWeaviate登録を確認して修復済みにする."""
+        try:
+            if self.repair_repo is None:
+                return
+            case = await self.repair_repo.get_by_page_id(page_id)
+            if case is None or case.status != RepairStatus.PENDING:
+                return
+            page = await self.page_repo.get_page(page_id)
+            if page is None:
+                return
+            source = await self.processor.file_repo.load_json_file(page_id)
+            registered = await self.processor.vectorizer.is_page_registered(page_id)
+            if not validate_stored_source(page_id, page.url, source) and registered:
+                await self.repair_repo.resolve(page_id)
+        except Exception:
+            logger.exception("Repair resolution check failed for page %s", page_id)
+            return

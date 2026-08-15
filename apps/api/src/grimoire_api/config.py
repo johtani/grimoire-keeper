@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"
+    REPAIR_REPORT_PATH: str = "./data/migration/repair-pending.json"
 
     # Build Info
     GIT_COMMIT: str = "unknown"

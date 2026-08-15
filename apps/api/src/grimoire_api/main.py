@@ -23,6 +23,7 @@ from .dependencies import (
 from .repositories.job_repository import JobRepository
 from .repositories.log_repository import LogRepository
 from .repositories.page_repository import PageRepository
+from .repositories.repair_repository import RepairRepository
 from .routers import health, pages, process, retry, search
 from .services.base_processor import BaseProcessorService
 from .services.job_worker import JobWorker
@@ -84,7 +85,9 @@ async def lifespan(app: FastAPI) -> Any:
             file_repo=file_repo,
             job_repo=job_repo,
         )
-        new_job_worker = JobWorker(job_repo, page_repo, log_repo, processor)
+        new_job_worker = JobWorker(
+            job_repo, page_repo, log_repo, processor, RepairRepository(db)
+        )
         await new_job_worker.start()
         job_worker = new_job_worker
         app.state.job_worker = new_job_worker
