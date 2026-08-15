@@ -79,7 +79,7 @@ services:
     volumes:
       - ${WEAVIATE_DATA_PATH:-/opt/grimoire-keeper-data/weaviate-1.38.8}:/var/lib/weaviate
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/v1/.well-known/ready"]
       interval: 5s
       timeout: 3s
       retries: 12

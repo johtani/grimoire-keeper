@@ -92,6 +92,34 @@ async def test_start_continues_degraded_after_retry_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_startup_deadline_includes_connected_callback() -> None:
+    client = MagicMock()
+    client.is_ready.return_value = True
+    callback_blocker = asyncio.Event()
+
+    async def blocked_callback(_: object) -> None:
+        await callback_blocker.wait()
+
+    manager = WeaviateConnectionManager(
+        "weaviate",
+        8080,
+        "test-key",
+        startup_attempts=1,
+        startup_timeout=0.01,
+        on_connected=blocked_callback,  # type: ignore[arg-type]
+    )
+
+    with patch(
+        "grimoire_api.services.weaviate_connection.weaviate.connect_to_local",
+        return_value=client,
+    ):
+        await asyncio.wait_for(manager.start(), timeout=0.1)
+        assert not manager.is_available
+        client.close.assert_called_once()
+        await manager.stop()
+
+
+@pytest.mark.asyncio
 async def test_monitor_reconnects_after_initial_failure() -> None:
     client = MagicMock()
     client.is_ready.return_value = True

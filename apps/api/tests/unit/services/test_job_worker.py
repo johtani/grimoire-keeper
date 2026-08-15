@@ -64,10 +64,12 @@ async def test_worker_cancels_task_after_stop_timeout() -> None:
     task = asyncio.create_task(never_finishes.wait())
     worker._task = task
 
-    await worker.stop(timeout=0.01)
+    stopped = await worker.stop(timeout=0.01)
     await asyncio.sleep(0)
 
+    assert not stopped
     assert task.cancelled()
+    await worker.wait_stopped()
     assert worker._task is None
 
 
@@ -85,12 +87,14 @@ async def test_worker_stop_returns_when_task_suppresses_cancellation() -> None:
     worker._task = task
     await asyncio.sleep(0)
 
-    await asyncio.wait_for(worker.stop(timeout=0.01), timeout=0.1)
+    stopped = await asyncio.wait_for(worker.stop(timeout=0.01), timeout=0.1)
 
+    assert not stopped
     assert not task.done()
-    assert worker._task is None
+    assert worker._task is task
     release.set()
-    await task
+    await worker.wait_stopped()
+    assert worker._task is None
 
 
 async def test_worker_marks_success() -> None:

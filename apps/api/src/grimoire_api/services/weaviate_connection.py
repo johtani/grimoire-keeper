@@ -57,7 +57,9 @@ class WeaviateConnectionManager:
             remaining = deadline - loop.time()
             if remaining <= 0:
                 break
-            if await self._connect(attempt, self.startup_attempts, remaining):
+            if await self._connect(
+                attempt, self.startup_attempts, remaining, deadline=deadline
+            ):
                 break
             if attempt < self.startup_attempts:
                 remaining = deadline - loop.time()
@@ -117,6 +119,7 @@ class WeaviateConnectionManager:
         attempt: int | None = None,
         limit: int | None = None,
         remaining: float | None = None,
+        deadline: float | None = None,
     ) -> bool:
         async with self._lock:
             if self.client is not None:
@@ -142,7 +145,14 @@ class WeaviateConnectionManager:
                 if not ready:
                     raise RuntimeError("Weaviate reported that it is not ready")
                 if self.on_connected is not None:
-                    await self.on_connected(client)
+                    if deadline is None:
+                        await self.on_connected(client)
+                    else:
+                        callback_timeout = deadline - asyncio.get_running_loop().time()
+                        if callback_timeout <= 0:
+                            raise TimeoutError("Weaviate startup deadline exceeded")
+                        async with asyncio.timeout(callback_timeout):
+                            await self.on_connected(client)
                 self.client = client
                 logger.info("Weaviate connection established%s", attempt_text)
                 return True
