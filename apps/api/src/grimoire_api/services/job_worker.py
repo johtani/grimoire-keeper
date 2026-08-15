@@ -44,17 +44,26 @@ class JobWorker:
         self._task = None
         if task is None:
             return
-        try:
-            if timeout is None:
-                await task
-            else:
-                await asyncio.wait_for(task, timeout=timeout)
-        except TimeoutError:
+        if timeout is None:
+            await task
+            return
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        if task not in done:
             logger.warning(
                 "Job worker did not stop within %.1f seconds; cancelling", timeout
             )
             task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+            task.add_done_callback(self._consume_task_result)
+            return
+        await task
+
+    @staticmethod
+    def _consume_task_result(task: asyncio.Task[None]) -> None:
+        """Retrieve a detached task result to avoid unhandled-exception warnings."""
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
 
     async def run(self) -> None:
         """停止要求まで queued ジョブを順番に処理する."""

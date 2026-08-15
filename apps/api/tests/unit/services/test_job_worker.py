@@ -65,9 +65,32 @@ async def test_worker_cancels_task_after_stop_timeout() -> None:
     worker._task = task
 
     await worker.stop(timeout=0.01)
+    await asyncio.sleep(0)
 
     assert task.cancelled()
     assert worker._task is None
+
+
+async def test_worker_stop_returns_when_task_suppresses_cancellation() -> None:
+    worker = JobWorker(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    release = asyncio.Event()
+
+    async def cancellation_resistant_task() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    task = asyncio.create_task(cancellation_resistant_task())
+    worker._task = task
+    await asyncio.sleep(0)
+
+    await asyncio.wait_for(worker.stop(timeout=0.01), timeout=0.1)
+
+    assert not task.done()
+    assert worker._task is None
+    release.set()
+    await task
 
 
 async def test_worker_marks_success() -> None:
