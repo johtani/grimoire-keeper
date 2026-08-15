@@ -22,6 +22,8 @@ class RepairRepository:
         source: str,
         reasons: list[dict[str, str]],
         report_url: str | None = None,
+        *,
+        reopen_resolved: bool = True,
     ) -> None:
         now = datetime.now()
         await self.db.execute(
@@ -30,9 +32,26 @@ class RepairRepository:
             VALUES (?, ?, ?, ?, 'pending', ?, NULL)
             ON CONFLICT(page_id) DO UPDATE SET
                 source=excluded.source, report_url=excluded.report_url,
-                reasons=excluded.reasons, status='pending',
-                detected_at=excluded.detected_at, resolved_at=NULL""",
-            (page_id, source, report_url, json.dumps(reasons), now),
+                reasons=excluded.reasons,
+                status=CASE
+                    WHEN repair_cases.status='resolved' AND ?=0 THEN 'resolved'
+                    ELSE 'pending' END,
+                detected_at=CASE
+                    WHEN repair_cases.status='resolved' AND ?=0
+                    THEN repair_cases.detected_at ELSE excluded.detected_at END,
+                resolved_at=CASE
+                    WHEN repair_cases.status='resolved' AND ?=0
+                    THEN repair_cases.resolved_at ELSE NULL END""",
+            (
+                page_id,
+                source,
+                report_url,
+                json.dumps(reasons),
+                now,
+                reopen_resolved,
+                reopen_resolved,
+                reopen_resolved,
+            ),
         )
 
     async def resolve(self, page_id: int) -> None:

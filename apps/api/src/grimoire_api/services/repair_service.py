@@ -88,7 +88,6 @@ class RepairService:
     async def scan(self) -> dict[str, int]:
         pages = await self.page_repo.get_all_pages(limit=100000)
         detected = 0
-        resolved = 0
         for page in pages:
             if page.id is None:
                 continue
@@ -96,12 +95,7 @@ class RepairService:
             if reasons:
                 await self.repair_repo.upsert_pending(page.id, "scan", reasons)
                 detected += 1
-            else:
-                case = await self.repair_repo.get_by_page_id(page.id)
-                if case and case.status == RepairStatus.PENDING:
-                    await self.repair_repo.resolve(page.id)
-                    resolved += 1
-        return {"scanned": len(pages), "pending": detected, "resolved": resolved}
+        return {"scanned": len(pages), "pending": detected, "resolved": 0}
 
     async def import_report(self) -> dict[str, int]:
         try:
@@ -149,7 +143,11 @@ class RepairService:
                 ]
                 mismatched += 1
             await self.repair_repo.upsert_pending(
-                page_id, "migration", reasons, report_url
+                page_id,
+                "migration",
+                reasons,
+                report_url,
+                reopen_resolved=False,
             )
             imported += 1
         return {

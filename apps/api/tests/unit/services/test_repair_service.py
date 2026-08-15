@@ -61,6 +61,11 @@ async def test_import_report_is_idempotent_and_warns_on_url_mismatch(
     assert len(cases) == 1
     assert cases[0].reasons[-1]["code"] == "report_url_mismatch"
 
+    await repair_service.repair_repo.resolve(page_id)
+    await repair_service.import_report()
+    resolved = await repair_service.repair_repo.get_by_page_id(page_id)
+    assert resolved and resolved.status == RepairStatus.RESOLVED
+
 
 async def test_scan_detects_page_56_style_bad_url_and_jina_error(
     repair_service: RepairService,
