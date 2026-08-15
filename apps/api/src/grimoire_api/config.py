@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     WEAVIATE_STARTUP_TIMEOUT: float = 60.0
     WEAVIATE_CONNECT_TIMEOUT: float = 5.0
     WEAVIATE_MONITOR_INTERVAL: float = 5.0
+    WEAVIATE_WORKER_STOP_TIMEOUT: float = 10.0
 
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"

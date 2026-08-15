@@ -92,12 +92,16 @@ async def lifespan(app: FastAPI) -> Any:
     async def stop_job_worker() -> None:
         """Stop the worker before discarding its Weaviate client."""
         nonlocal job_worker
-        if job_worker is None:
+        worker = job_worker
+        if worker is None:
             return
-        await job_worker.stop()
         job_worker = None
         app.state.job_worker = None
-        logger.info("Persistent job worker stopped")
+        try:
+            await worker.stop(timeout=settings.WEAVIATE_WORKER_STOP_TIMEOUT)
+            logger.info("Persistent job worker stopped")
+        except Exception:
+            logger.exception("Persistent job worker stop failed")
 
     weaviate_manager = WeaviateConnectionManager(
         host=settings.WEAVIATE_HOST,

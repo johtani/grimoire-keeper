@@ -1,5 +1,6 @@
 """Persistent job worker tests."""
 
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -55,6 +56,18 @@ async def test_worker_recovers_on_start() -> None:
     await worker.stop()
 
     job_repo.recover_running.assert_awaited_once()
+
+
+async def test_worker_cancels_task_after_stop_timeout() -> None:
+    worker = JobWorker(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    never_finishes = asyncio.Event()
+    task = asyncio.create_task(never_finishes.wait())
+    worker._task = task
+
+    await worker.stop(timeout=0.01)
+
+    assert task.cancelled()
+    assert worker._task is None
 
 
 async def test_worker_marks_success() -> None:
