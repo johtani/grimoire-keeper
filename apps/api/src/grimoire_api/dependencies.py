@@ -104,7 +104,7 @@ def get_llm_service(
 # ---------------------------------------------------------------------------
 
 
-def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
+async def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
     """Weaviate クライアントを app.state から取得.
 
     Raises:
@@ -112,7 +112,7 @@ def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
     """
     manager = getattr(request.app.state, "weaviate_manager", None)
     client: weaviate.WeaviateClient | None = (
-        manager.get_client() if manager is not None else None
+        await manager.get_ready_client() if manager is not None else None
     )
     if client is None:
         raise HTTPException(status_code=503, detail="Weaviate is not available")

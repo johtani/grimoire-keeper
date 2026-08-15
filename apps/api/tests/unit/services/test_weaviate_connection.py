@@ -154,3 +154,51 @@ async def test_monitor_replaces_client_after_connection_loss() -> None:
 
     assert old_client.close.call_count == 1
     assert on_disconnected.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cleanup_errors_do_not_prevent_reconnection() -> None:
+    old_client = MagicMock()
+    old_client.is_ready.side_effect = [True, False]
+    old_client.close.side_effect = RuntimeError("close failed")
+    new_client = MagicMock()
+    new_client.is_ready.return_value = True
+    on_disconnected = AsyncMock(side_effect=RuntimeError("stop failed"))
+    manager = WeaviateConnectionManager(
+        "weaviate",
+        8080,
+        "test-key",
+        startup_attempts=1,
+        monitor_interval=0.01,
+        on_disconnected=on_disconnected,
+    )
+
+    with patch(
+        "grimoire_api.services.weaviate_connection.weaviate.connect_to_local",
+        side_effect=[old_client, new_client],
+    ):
+        await manager.start()
+        for _ in range(100):
+            if manager.get_client() is new_client:
+                break
+            await asyncio.sleep(0.01)
+        assert manager.get_client() is new_client
+        assert manager._monitor_task is not None
+        assert not manager._monitor_task.done()
+        await manager.stop()
+
+
+@pytest.mark.asyncio
+async def test_get_ready_client_marks_failed_client_unavailable() -> None:
+    client = MagicMock()
+    client.is_ready.side_effect = [True, RuntimeError("disconnected")]
+    manager = make_manager()
+
+    with patch(
+        "grimoire_api.services.weaviate_connection.weaviate.connect_to_local",
+        return_value=client,
+    ):
+        await manager.start()
+        assert await manager.get_ready_client() is None
+        assert not manager.is_available
+        await manager.stop()

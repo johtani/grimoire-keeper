@@ -1,6 +1,6 @@
 """Tests for health router."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 from grimoire_api.main import app
@@ -13,7 +13,8 @@ class TestHealthRouter:
 
     def test_health_check_returns_build_info(self) -> None:
         """ヘルスチェックがビルド情報を含むことを確認."""
-        app.state.weaviate_manager = MagicMock(is_available=True)
+        app.state.weaviate_manager = MagicMock()
+        app.state.weaviate_manager.get_ready_client = AsyncMock(return_value=object())
         response = client.get("/api/v1/health")
         assert response.status_code == 200
         data = response.json()
@@ -26,7 +27,8 @@ class TestHealthRouter:
 
     def test_health_check_returns_503_when_weaviate_unavailable(self) -> None:
         """Weaviate未接続時はreadinessエラーを返すことを確認."""
-        app.state.weaviate_manager = MagicMock(is_available=False)
+        app.state.weaviate_manager = MagicMock()
+        app.state.weaviate_manager.get_ready_client = AsyncMock(return_value=None)
 
         response = client.get("/api/v1/health")
 
@@ -38,7 +40,8 @@ class TestHealthRouter:
     @patch("grimoire_api.routers.health.APP_VERSION", "1.2.3")
     def test_health_check_with_build_info(self, mock_settings: object) -> None:
         """ビルド情報が環境変数から正しく反映されることを確認."""
-        app.state.weaviate_manager = MagicMock(is_available=True)
+        app.state.weaviate_manager = MagicMock()
+        app.state.weaviate_manager.get_ready_client = AsyncMock(return_value=object())
         mock_settings.GIT_COMMIT = "abc1234"
         mock_settings.BUILD_DATE = "2026-04-09T12:00:00Z"
 

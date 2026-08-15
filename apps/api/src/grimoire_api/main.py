@@ -105,6 +105,7 @@ async def lifespan(app: FastAPI) -> Any:
         api_key=settings.OPENAI_API_KEY,
         startup_attempts=settings.WEAVIATE_STARTUP_RETRY_ATTEMPTS,
         startup_interval=settings.WEAVIATE_STARTUP_RETRY_INTERVAL,
+        startup_timeout=settings.WEAVIATE_STARTUP_TIMEOUT,
         connect_timeout=settings.WEAVIATE_CONNECT_TIMEOUT,
         monitor_interval=settings.WEAVIATE_MONITOR_INTERVAL,
         on_connected=start_job_worker,

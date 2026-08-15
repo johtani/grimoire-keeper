@@ -23,8 +23,9 @@ class WeaviateConnectionManager:
         api_key: str,
         startup_attempts: int = 12,
         startup_interval: float = 5.0,
+        startup_timeout: float = 60.0,
         connect_timeout: float = 5.0,
-        monitor_interval: float = 30.0,
+        monitor_interval: float = 5.0,
         on_connected: ConnectionCallback | None = None,
         on_disconnected: DisconnectionCallback | None = None,
     ) -> None:
@@ -33,6 +34,7 @@ class WeaviateConnectionManager:
         self.api_key = api_key
         self.startup_attempts = startup_attempts
         self.startup_interval = startup_interval
+        self.startup_timeout = startup_timeout
         self.connect_timeout = connect_timeout
         self.monitor_interval = monitor_interval
         self.on_connected = on_connected
@@ -48,20 +50,31 @@ class WeaviateConnectionManager:
 
     async def start(self) -> None:
         """Try the bounded startup connection, then begin background monitoring."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.startup_timeout
+        attempt = 0
         for attempt in range(1, self.startup_attempts + 1):
-            if await self._connect(attempt, self.startup_attempts):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            if await self._connect(attempt, self.startup_attempts, remaining):
                 break
             if attempt < self.startup_attempts:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                delay = min(self.startup_interval, remaining)
                 logger.info(
                     "Retrying Weaviate connection in %.1f seconds",
-                    self.startup_interval,
+                    delay,
                 )
-                await asyncio.sleep(self.startup_interval)
-        else:
+                await asyncio.sleep(delay)
+        if self.client is None:
             logger.error(
-                "Weaviate startup connection retry limit reached after %d attempts; "
-                "continuing in degraded mode",
-                self.startup_attempts,
+                "Weaviate startup connection limit reached after at most %.1f seconds "
+                "and %d attempts; continuing in degraded mode",
+                self.startup_timeout,
+                attempt,
             )
 
         self._monitor_task = asyncio.create_task(
@@ -83,8 +96,27 @@ class WeaviateConnectionManager:
         """Return the active ready client, if any."""
         return self.client
 
+    async def get_ready_client(self) -> weaviate.WeaviateClient | None:
+        """Return the client only if it is currently ready."""
+        client = self.client
+        if client is None:
+            return None
+        try:
+            ready = await asyncio.to_thread(client.is_ready)
+        except Exception as exc:
+            logger.warning("Weaviate request-time readiness check failed: %s", exc)
+            ready = False
+        if ready and client is self.client:
+            return client
+        logger.warning("Weaviate is unavailable; entering degraded mode")
+        await self._disconnect(expected_client=client)
+        return None
+
     async def _connect(
-        self, attempt: int | None = None, limit: int | None = None
+        self,
+        attempt: int | None = None,
+        limit: int | None = None,
+        remaining: float | None = None,
     ) -> bool:
         async with self._lock:
             if self.client is not None:
@@ -94,13 +126,16 @@ class WeaviateConnectionManager:
             )
             try:
                 logger.info("Connecting to Weaviate%s", attempt_text)
+                timeout = self.connect_timeout
+                if remaining is not None:
+                    timeout = min(timeout, max(remaining / 2, 0.001))
                 client = await asyncio.to_thread(
                     weaviate.connect_to_local,
                     host=self.host,
                     port=self.port,
                     headers={"X-OpenAI-Api-Key": self.api_key},
                     additional_config=AdditionalConfig(
-                        timeout=Timeout(init=self.connect_timeout)
+                        timeout=Timeout(init=timeout, query=timeout)
                     ),
                 )
                 ready = await asyncio.to_thread(client.is_ready)
@@ -113,35 +148,47 @@ class WeaviateConnectionManager:
                 return True
             except Exception as exc:
                 if "client" in locals():
-                    await asyncio.to_thread(client.close)
+                    await self._close_client(client)
                 logger.warning("Weaviate connection failed%s: %s", attempt_text, exc)
                 return False
 
-    async def _disconnect(self) -> None:
+    async def _disconnect(
+        self, expected_client: weaviate.WeaviateClient | None = None
+    ) -> None:
         async with self._lock:
             client = self.client
-            if client is None:
+            if client is None or (
+                expected_client is not None and client is not expected_client
+            ):
                 return
             self.client = None
             if self.on_disconnected is not None:
-                await self.on_disconnected()
+                try:
+                    await self.on_disconnected()
+                except Exception:
+                    logger.exception("Weaviate disconnection callback failed")
+            await self._close_client(client)
+
+    async def _close_client(self, client: weaviate.WeaviateClient) -> None:
+        """Close a client without allowing cleanup errors to stop recovery."""
+        try:
             await asyncio.to_thread(client.close)
             logger.info("Weaviate client closed")
+        except Exception:
+            logger.exception("Failed to close Weaviate client")
 
     async def _monitor(self) -> None:
         while True:
-            await asyncio.sleep(self.monitor_interval)
-            client = self.client
-            if client is None:
-                logger.info("Attempting background Weaviate reconnection")
-                await self._connect()
-                continue
             try:
-                ready = await asyncio.to_thread(client.is_ready)
-            except Exception as exc:
-                logger.warning("Weaviate readiness check failed: %s", exc)
-                ready = False
-            if not ready:
-                logger.warning("Weaviate connection lost; entering degraded mode")
-                await self._disconnect()
-                await self._connect()
+                await asyncio.sleep(self.monitor_interval)
+                client = self.client
+                if client is None:
+                    logger.info("Attempting background Weaviate reconnection")
+                    await self._connect()
+                    continue
+                if await self.get_ready_client() is None:
+                    await self._connect()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Unexpected Weaviate monitor error; retrying")

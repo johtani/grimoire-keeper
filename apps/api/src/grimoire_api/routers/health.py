@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/v1", tags=["health"])
 async def health_check(request: Request, response: Response) -> HealthResponse:
     """ヘルスチェックエンドポイント."""
     manager = getattr(request.app.state, "weaviate_manager", None)
-    ready = manager is not None and manager.is_available
+    ready = manager is not None and await manager.get_ready_client() is not None
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthResponse(
