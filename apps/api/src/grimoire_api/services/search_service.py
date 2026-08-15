@@ -43,7 +43,7 @@ class SearchService:
                 return await self._content_vector_search(
                     query, limit, filters, exclude_keywords
                 )
-            return self._page_vector_search(
+            return await self._page_vector_search(
                 query, limit, filters, vector_name, exclude_keywords
             )
         except VectorizerError:
@@ -77,7 +77,7 @@ class SearchService:
         )
         return await self._convert_chunk_results(response)
 
-    def _page_vector_search(
+    async def _page_vector_search(
         self,
         query: str,
         limit: int,
@@ -85,13 +85,15 @@ class SearchService:
         vector_name: str,
         exclude_keywords: list[str] | None,
     ) -> list[SearchResult]:
+        eligible_page_ids = await self.page_repo.get_searchable_page_ids(
+            filters, exclude_keywords
+        )
+        if not eligible_page_ids:
+            return []
         collection = self.weaviate_client.collections.get(
             settings.WEAVIATE_PAGE_COLLECTION_NAME
         )
-        final_filter = self._combine_filters(
-            self._build_weaviate_filter(filters) if filters else None,
-            self._build_exclude_filter(exclude_keywords) if exclude_keywords else None,
-        )
+        final_filter = self._build_page_id_filter(eligible_page_ids)
         response = collection.query.near_text(
             query=query,
             target_vector=vector_name,
@@ -106,11 +108,17 @@ class SearchService:
     ) -> list[SearchResult]:
         """ページ代表コレクションをキーワードで検索する."""
         try:
+            eligible_page_ids = await self.page_repo.get_searchable_page_ids()
+            if not eligible_page_ids:
+                return []
             collection = self.weaviate_client.collections.get(
                 settings.WEAVIATE_PAGE_COLLECTION_NAME
             )
             response = collection.query.fetch_objects(  # type: ignore[call-overload]
-                filters=Filter.by_property("keywords").contains_any(keywords),
+                filters=self._combine_filters(
+                    Filter.by_property("keywords").contains_any(keywords),
+                    self._build_page_id_filter(eligible_page_ids),
+                ),
                 limit=limit,
             )
             return self._convert_page_results(response)

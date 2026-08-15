@@ -211,6 +211,18 @@ class VectorizerService:
         except Exception:
             return False
 
+    async def is_page_registered(self, page_id: int) -> bool:
+        """ページ代表オブジェクトがWeaviateに存在するか確認する."""
+        collection = self.weaviate_client.collections.get(
+            settings.WEAVIATE_PAGE_COLLECTION_NAME
+        )
+        response = await asyncio.to_thread(
+            collection.query.fetch_objects,
+            filters=Filter.by_property("pageId").equal(page_id),
+            limit=1,
+        )
+        return bool(response.objects)
+
     async def ensure_schema(self) -> None:
         """ページ用・本文チャンク用のWeaviateスキーマを作成する."""
         try:

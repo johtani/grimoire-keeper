@@ -73,6 +73,35 @@ class ApiClient {
     async getPageDetail(pageId) {
         return this.request(`/api/v1/pages/${pageId}`);
     }
+
+    async getRepairs(status = 'pending') {
+        return this.request(`/api/v1/repairs?status=${encodeURIComponent(status)}`);
+    }
+
+    async importRepairs() {
+        return this.request('/api/v1/repairs/import', { method: 'POST' });
+    }
+
+    async scanRepairs() {
+        return this.request('/api/v1/repairs/scan', { method: 'POST' });
+    }
+
+    async getPageRepair(pageId) {
+        return this.request(`/api/v1/pages/${pageId}/repair`);
+    }
+
+    async updatePageUrl(pageId, currentUrl, newUrl) {
+        return this.request(`/api/v1/pages/${pageId}/url`, {
+            method: 'PATCH',
+            body: JSON.stringify({ current_url: currentUrl, new_url: newUrl })
+        });
+    }
+
+    async reprocessPage(pageId, fromStep) {
+        return this.request(`/api/v1/reprocess/${pageId}`, {
+            method: 'POST', body: JSON.stringify({ from_step: fromStep })
+        });
+    }
     
     async getPageJson(pageId) {
         return this.request(`/api/v1/pages/${pageId}/json`);

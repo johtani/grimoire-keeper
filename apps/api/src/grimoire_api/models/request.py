@@ -37,6 +37,20 @@ class ReprocessRequest(BaseModel):
     from_step: ReprocessStartStep = ReprocessStartStep.AUTO
 
 
+class UpdatePageUrlRequest(BaseModel):
+    """楽観ロック付きページURL更新リクエスト."""
+
+    current_url: str
+    new_url: HttpUrl
+
+    @field_validator("new_url", mode="before")
+    @classmethod
+    def reject_malformed_url_suffix(cls, value: object) -> object:
+        if isinstance(value, str) and re.search(r"(?:>|%3e)$", value, re.IGNORECASE):
+            raise ValueError("URL must not end with '>' or '%3E'")
+        return value
+
+
 class SearchRequest(BaseModel):
     """検索リクエスト."""
 

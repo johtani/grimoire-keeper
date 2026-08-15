@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const refreshSpinner = document.getElementById('refreshSpinner');
     const pagesTable = document.getElementById('pagesTable');
     const pagination = document.getElementById('pagination');
+    const repairsTable = document.getElementById('repairsTable');
+    const repairStatusFilter = document.getElementById('repairStatusFilter');
 
     let currentPage = 0;
     const pageSize = 20;
@@ -17,6 +19,21 @@ document.addEventListener('DOMContentLoaded', function() {
     sortBy.addEventListener('change', loadPages);
     sortOrder.addEventListener('change', loadPages);
     refreshBtn.addEventListener('click', loadPages);
+    repairStatusFilter.addEventListener('change', loadRepairs);
+    document.getElementById('importRepairsBtn').addEventListener('click', async () => {
+        try {
+            const result = await window.api.importRepairs();
+            alert(`Imported ${result.imported} repair cases (${result.missing_pages} missing pages).`);
+            await loadRepairs();
+        } catch (error) { alert('Import failed: ' + error.message); }
+    });
+    document.getElementById('scanRepairsBtn').addEventListener('click', async () => {
+        try {
+            const result = await window.api.scanRepairs();
+            alert(`Scanned ${result.scanned} pages; ${result.pending} pending.`);
+            await loadRepairs();
+        } catch (error) { alert('Scan failed: ' + error.message); }
+    });
     
     // Retry all failed button
     const retryAllBtn = document.getElementById('retryAllBtn');
@@ -26,6 +43,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial load
     loadPages();
+    loadRepairs();
+
+    async function loadRepairs() {
+        try {
+            const response = await window.api.getRepairs(repairStatusFilter.value);
+            repairsTable.innerHTML = response.repairs.length ? `
+                <div class="table-responsive"><table class="table table-sm table-hover">
+                <thead><tr><th>ID</th><th>URL</th><th>Status</th><th>Reasons</th><th></th></tr></thead>
+                <tbody>${response.repairs.map(item => `<tr>
+                    <td>${item.page_id}</td><td>${escapeHtml(item.url || 'Missing page')}</td>
+                    <td><span class="badge ${item.repair_status === 'resolved' ? 'bg-success' : 'bg-warning text-dark'}">${escapeHtml(item.repair_status)}</span></td>
+                    <td>${item.reasons.map(reason => `<span class="badge bg-warning text-dark me-1" title="${escapeHtml(reason.detail)}">${escapeHtml(reason.code)}</span>`).join('')}</td>
+                    <td><button class="btn btn-sm btn-outline-primary" onclick="showRepairDetail(${item.page_id})">Repair</button></td>
+                </tr>`).join('')}</tbody></table></div>` : '<div class="alert alert-success mb-0">No pending repairs.</div>';
+        } catch (error) {
+            repairsTable.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(error.message)}</div>`;
+        }
+    }
 
     async function loadPages() {
         showLoading();
@@ -215,6 +250,52 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error retrying page: ' + error.message);
         }
     };
+
+    window.showRepairDetail = async function(pageId) {
+        try {
+            const [page, repair] = await Promise.all([
+                window.api.getPageDetail(pageId), window.api.getPageRepair(pageId)
+            ]);
+            displayPageDetailModal(page, repair);
+        } catch (error) { alert('Error loading repair details: ' + error.message); }
+    };
+
+    window.saveRepairUrl = async function(pageId) {
+        const input = document.getElementById('repairUrlInput');
+        const currentUrl = decodeURIComponent(input.dataset.currentUrl);
+        const newUrl = input.value.trim();
+        if (newUrl === currentUrl) return;
+        if (!confirm(`Change URL?\nBefore: ${currentUrl}\nAfter: ${newUrl}\n\nThis does not start reprocessing.`)) return;
+        try {
+            await window.api.updatePageUrl(pageId, currentUrl, newUrl);
+            await window.showRepairDetail(pageId);
+            await Promise.all([loadPages(), loadRepairs()]);
+        } catch (error) { alert('URL update failed: ' + error.message); }
+    };
+
+    window.startRepair = async function(pageId) {
+        const step = document.getElementById('repairStartStep').value;
+        if (!confirm(`Start reprocessing from ${step}?`)) return;
+        try {
+            await window.api.reprocessPage(pageId, step);
+            pollRepair(pageId);
+        } catch (error) { alert('Reprocessing failed: ' + error.message); }
+    };
+
+    async function pollRepair(pageId) {
+        const timer = setInterval(async () => {
+            try {
+                const repair = await window.api.getPageRepair(pageId);
+                if (!repair.latest_job || ['succeeded', 'failed'].includes(repair.latest_job.status)) {
+                    clearInterval(timer);
+                    await Promise.all([loadPages(), loadRepairs()]);
+                }
+                if (repair.latest_job && ['succeeded', 'failed'].includes(repair.latest_job.status)) {
+                    await window.showRepairDetail(pageId);
+                }
+            } catch (_) { clearInterval(timer); }
+        }, 2000);
+    }
     
     async function retryAllFailed() {
         if (!confirm('Are you sure you want to retry all failed pages?')) {
@@ -230,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function displayPageDetailModal(page) {
+    function displayPageDetailModal(page, repair = null) {
         const keywords = Array.isArray(page.keywords) ? page.keywords : 
                         (typeof page.keywords === 'string' ? JSON.parse(page.keywords || '[]') : []);
         
@@ -314,6 +395,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             ` : ''}
+
+            ${repair ? `<div class="row mt-3"><div class="col-12">
+                <h6>Repair</h6>
+                <div class="mb-2"><label class="form-label">URL</label>
+                    <div class="input-group"><input id="repairUrlInput" class="form-control" data-current-url="${encodeURIComponent(page.url)}" value="${escapeHtml(page.url)}">
+                    <button class="btn btn-outline-warning" onclick="saveRepairUrl(${page.id})">Review & Save</button></div>
+                </div>
+                <p><strong>Stored JSON:</strong> ${repair.json_validation.valid ? 'Valid' : 'Invalid'} ·
+                   <strong>Weaviate:</strong> ${repair.weaviate_registered === null ? 'Unavailable' : (repair.weaviate_registered ? 'Registered' : 'Missing')}</p>
+                <div class="mb-2">${repair.reasons.map(reason => `<div class="alert alert-warning py-1 mb-1"><strong>${escapeHtml(reason.code)}</strong>: ${escapeHtml(reason.detail)}</div>`).join('')}</div>
+                <div class="input-group"><select class="form-select" id="repairStartStep">
+                    <option value="download">Jina download</option><option value="llm">LLM processing</option><option value="vectorize">Weaviate registration</option>
+                </select><button class="btn btn-warning" onclick="startRepair(${page.id})">Start Repair</button></div>
+                ${repair.latest_job ? `<small class="d-block mt-2">Job #${repair.latest_job.id}: ${escapeHtml(repair.latest_job.status)}${repair.latest_job.error_message ? ' — ' + escapeHtml(repair.latest_job.error_message) : ''}</small>` : ''}
+            </div></div>` : ''}
         `;
 
         document.getElementById('pageDetailContent').innerHTML = modalContent;
@@ -321,9 +417,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return String(text).replace(/[&<>"']/g, character => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[character]);
     }
 
     function formatDate(dateString) {

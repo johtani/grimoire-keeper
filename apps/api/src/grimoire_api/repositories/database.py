@@ -150,6 +150,20 @@ class DatabaseConnection:
         )
         """
 
+        repair_cases_table = """
+        CREATE TABLE IF NOT EXISTS repair_cases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL UNIQUE,
+            source TEXT NOT NULL,
+            report_url TEXT,
+            reasons TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES pages(id)
+        )
+        """
+
         # 既存テーブルに新しいカラムを追加（マイグレーション）
         migration_query = """
         ALTER TABLE pages ADD COLUMN last_success_step TEXT DEFAULT NULL
@@ -165,6 +179,7 @@ class DatabaseConnection:
             await conn.execute(pages_table)
             await conn.execute(process_logs_table)
             await conn.execute(jobs_table)
+            await conn.execute(repair_cases_table)
 
             # マイグレーション実行（カラムが既に存在する場合はエラーを無視）
             try:
@@ -217,6 +232,10 @@ class DatabaseConnection:
             await conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_page"
                 " ON jobs(page_id) WHERE status IN ('queued', 'running')"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_repair_cases_status"
+                " ON repair_cases(status, detected_at)"
             )
 
             await conn.commit()

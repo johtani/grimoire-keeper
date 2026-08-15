@@ -1,14 +1,97 @@
 """Pages management router."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
-from ..dependencies import get_file_repository, get_page_service
+from ..dependencies import get_file_repository, get_page_service, get_repair_service
+from ..models.database import RepairStatus
+from ..models.request import UpdatePageUrlRequest
 from ..repositories.file_repository import FileRepository
 from ..services.page_service import PageService
+from ..services.repair_service import RepairService
 from ..utils.exceptions import FileOperationError
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
+
+
+@router.get("/repairs")
+async def list_repairs(
+    repair_status: str = Query(
+        RepairStatus.PENDING.value,
+        alias="status",
+        pattern="^(pending|resolved|all)$",
+    ),
+    repair_service: RepairService = Depends(get_repair_service),
+) -> dict:
+    status_filter = None if repair_status == "all" else RepairStatus(repair_status)
+    cases = await repair_service.list_cases(status_filter)
+    return {"repairs": cases, "total": len(cases)}
+
+
+@router.post("/repairs/import", status_code=status.HTTP_200_OK)
+async def import_repairs(
+    repair_service: RepairService = Depends(get_repair_service),
+) -> dict:
+    try:
+        return await repair_service.import_report()
+    except FileOperationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/repairs/scan")
+async def scan_repairs(
+    repair_service: RepairService = Depends(get_repair_service),
+) -> dict:
+    return await repair_service.scan()
+
+
+@router.get("/pages/{page_id}/repair")
+async def get_page_repair(
+    page_id: int,
+    request: Request,
+    repair_service: RepairService = Depends(get_repair_service),
+) -> dict:
+    try:
+        result = await repair_service.get_detail(page_id)
+        manager = getattr(request.app.state, "weaviate_manager", None)
+        client = await manager.get_ready_client() if manager else None
+        registered: bool | None = None
+        if client is not None:
+            from weaviate.classes.query import Filter
+
+            from ..config import settings
+
+            collection = client.collections.get(settings.WEAVIATE_PAGE_COLLECTION_NAME)
+            response = await asyncio.to_thread(
+                collection.query.fetch_objects,
+                filters=Filter.by_property("pageId").equal(page_id),
+                limit=1,
+            )
+            registered = bool(response.objects)
+        result["weaviate_registered"] = registered
+        return result
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/pages/{page_id}/url")
+async def update_page_url(
+    page_id: int,
+    body: UpdatePageUrlRequest,
+    repair_service: RepairService = Depends(get_repair_service),
+) -> dict:
+    try:
+        return await repair_service.update_url(
+            page_id, body.current_url, str(body.new_url)
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (FileExistsError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/pages", response_model=dict)

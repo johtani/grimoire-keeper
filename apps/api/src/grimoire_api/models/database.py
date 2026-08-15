@@ -61,6 +61,13 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class RepairStatus(str, Enum):
+    """修復ケース状態."""
+
+    PENDING = "pending"
+    RESOLVED = "resolved"
+
+
 @dataclass
 class Page:
     """ページデータモデル."""
@@ -105,3 +112,17 @@ class ProcessLog:
     status: str
     error_message: str | None
     created_at: datetime
+
+
+@dataclass
+class RepairCase:
+    """永続化された修復ケース."""
+
+    id: int
+    page_id: int
+    source: str
+    report_url: str | None
+    reasons: list[dict[str, str]]
+    status: RepairStatus
+    detected_at: datetime
+    resolved_at: datetime | None

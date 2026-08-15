@@ -1,12 +1,23 @@
 """Retry processing router."""
 
+from typing import NoReturn
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..dependencies import get_retry_service
 from ..models.request import ReprocessRequest, RetryAllRequest
 from ..services.retry_service import RetryService
+from ..utils.exceptions import DatabaseError, GrimoireAPIError
 
 router = APIRouter(prefix="/api/v1", tags=["retry"])
+
+
+def _raise_retry_error(error: Exception) -> NoReturn:
+    if "UNIQUE constraint failed" in str(error):
+        raise HTTPException(
+            status_code=409, detail="An active job already exists"
+        ) from error
+    raise HTTPException(status_code=500, detail=str(error)) from error
 
 
 @router.post("/retry/{page_id}", status_code=status.HTTP_202_ACCEPTED)
@@ -26,8 +37,10 @@ async def retry_page(
     try:
         result = await retry_service.retry_single_page(page_id)
         return result
+    except (DatabaseError, GrimoireAPIError) as e:
+        _raise_retry_error(e)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_retry_error(e)
 
 
 @router.post("/reprocess/{page_id}", status_code=status.HTTP_202_ACCEPTED)
@@ -51,7 +64,7 @@ async def reprocess_page(
         result = await retry_service.reprocess_page(page_id, from_step)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_retry_error(e)
 
 
 @router.post("/retry-failed", status_code=status.HTTP_202_ACCEPTED)
