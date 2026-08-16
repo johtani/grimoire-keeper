@@ -19,11 +19,11 @@ class TestLogRepository:
         assert isinstance(log_id, int)
 
     @pytest.mark.asyncio
-    async def test_create_log_with_page_id(self, log_repo: Any) -> None:
+    async def test_create_log_with_page_id(self, log_repo: Any, page_repo: Any) -> None:
         """ページID付きログ作成テスト."""
         url = "https://example.com"
         status = "started"
-        page_id = 1
+        page_id = await page_repo.create_page(url, "example")
 
         log_id = await log_repo.create_log(url, status, page_id)
         assert log_id is not None
@@ -66,9 +66,11 @@ class TestLogRepository:
         assert len(logs) >= 3
 
     @pytest.mark.asyncio
-    async def test_has_failed_log_returns_true_when_failed(self, log_repo: Any) -> None:
+    async def test_has_failed_log_returns_true_when_failed(
+        self, log_repo: Any, page_repo: Any
+    ) -> None:
         """失敗ログが存在する場合 True を返すテスト."""
-        page_id = 1
+        page_id = await page_repo.create_page("https://example.com", "example")
         log_id = await log_repo.create_log("https://example.com", "started", page_id)
         await log_repo.update_status(log_id, "failed", "some error")
 
@@ -86,10 +88,10 @@ class TestLogRepository:
 
     @pytest.mark.asyncio
     async def test_has_failed_log_returns_false_when_only_succeeded(
-        self, log_repo: Any
+        self, log_repo: Any, page_repo: Any
     ) -> None:
         """成功ログのみの場合 False を返すテスト."""
-        page_id = 2
+        page_id = await page_repo.create_page("https://example.com", "example")
         log_id = await log_repo.create_log("https://example.com", "started", page_id)
         await log_repo.update_status(log_id, "completed")
 

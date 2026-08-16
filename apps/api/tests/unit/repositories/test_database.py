@@ -89,6 +89,75 @@ class TestDatabaseInitialization:
             Path(db_path).unlink(missing_ok=True)
 
 
+class TestForeignKeyConstraints:
+    """全接続でSQLiteの外部キー制約が有効になることを検証する."""
+
+    @pytest.mark.asyncio
+    async def test_foreign_keys_are_enabled(self, temp_db: DatabaseConnection) -> None:
+        """共通接続でforeign_keys PRAGMAが有効になることを確認する."""
+        async with temp_db.connect() as conn:
+            row = await (await conn.execute("PRAGMA foreign_keys")).fetchone()
+
+        assert row is not None
+        assert row[0] == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("query", "params"),
+        [
+            (
+                "INSERT INTO process_logs (page_id, url, status) VALUES (?, ?, ?)",
+                (999, "https://example.com", "failed"),
+            ),
+            (
+                "INSERT INTO jobs (page_id, kind, status, start_step) "
+                "VALUES (?, ?, ?, ?)",
+                (999, "initial", "queued", "download"),
+            ),
+            (
+                "INSERT INTO repair_cases (page_id, source, reasons) VALUES (?, ?, ?)",
+                (999, "test", "[]"),
+            ),
+        ],
+    )
+    async def test_rejects_unknown_page_id(
+        self, temp_db: DatabaseConnection, query: str, params: tuple
+    ) -> None:
+        """関連テーブルに存在しないpage_idを登録できないことを確認する."""
+        with pytest.raises(DatabaseError, match="FOREIGN KEY constraint failed"):
+            await temp_db.execute(query, params)
+
+    @pytest.mark.asyncio
+    async def test_restricts_page_delete_until_child_is_deleted(
+        self, temp_db: DatabaseConnection
+    ) -> None:
+        """関連行があるページは削除できず、関連行削除後は削除できる."""
+        page_id = await temp_db.execute(
+            "INSERT INTO pages (url, title) VALUES (?, ?)",
+            ("https://example.com", "example"),
+        )
+        await temp_db.execute(
+            "INSERT INTO process_logs (page_id, url, status) VALUES (?, ?, ?)",
+            (page_id, "https://example.com", "failed"),
+        )
+
+        with pytest.raises(DatabaseError, match="FOREIGN KEY constraint failed"):
+            await temp_db.execute("DELETE FROM pages WHERE id = ?", (page_id,))
+
+        assert await temp_db.fetch_one("SELECT id FROM pages WHERE id = ?", (page_id,))
+        assert await temp_db.fetch_one(
+            "SELECT id FROM process_logs WHERE page_id = ?", (page_id,)
+        )
+
+        await temp_db.execute("DELETE FROM process_logs WHERE page_id = ?", (page_id,))
+        await temp_db.execute("DELETE FROM pages WHERE id = ?", (page_id,))
+
+        assert (
+            await temp_db.fetch_one("SELECT id FROM pages WHERE id = ?", (page_id,))
+            is None
+        )
+
+
 class TestReadOnlyDatabaseConnection:
     """DatabaseConnectionの読み取り専用接続を検証する."""
 

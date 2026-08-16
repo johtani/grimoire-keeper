@@ -20,8 +20,7 @@ class JobRepository:
     ) -> int:
         """ジョブ登録とページ状態更新を同一トランザクションで行う."""
         try:
-            async with aiosqlite.connect(self.db.db_path) as conn:
-                await conn.execute("PRAGMA busy_timeout=30000")
+            async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
                 cursor = await conn.execute(
                     """INSERT INTO jobs (page_id, kind, status, start_step)
@@ -40,9 +39,8 @@ class JobRepository:
     async def claim_next(self) -> Job | None:
         """最古の queued ジョブを原子的に取得して running にする."""
         try:
-            async with aiosqlite.connect(self.db.db_path) as conn:
+            async with self.db.connect() as conn:
                 conn.row_factory = aiosqlite.Row
-                await conn.execute("PRAGMA busy_timeout=30000")
                 await conn.execute("BEGIN IMMEDIATE")
                 row = await (
                     await conn.execute(
@@ -111,8 +109,7 @@ class JobRepository:
     async def recover_running(self) -> int:
         """プロセス中断で残った running ジョブを再実行可能にする."""
         try:
-            async with aiosqlite.connect(self.db.db_path) as conn:
-                await conn.execute("PRAGMA busy_timeout=30000")
+            async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
                 cursor = await conn.execute(
                     """UPDATE jobs SET status='queued', started_at=NULL

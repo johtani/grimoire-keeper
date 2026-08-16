@@ -208,8 +208,7 @@ class PageRepository:
     ) -> bool:
         """現在URLが一致する場合だけURLを更新して検索対象外にする."""
         try:
-            async with aiosqlite.connect(self.db.db_path) as conn:
-                await conn.execute("PRAGMA busy_timeout=30000")
+            async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
                 duplicate = await (
                     await conn.execute(
