@@ -1,5 +1,7 @@
 """Database connection management."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiosqlite
@@ -28,6 +30,14 @@ class DatabaseConnection:
             return aiosqlite.connect(database_uri, uri=True)
         return aiosqlite.connect(self.db_path)
 
+    @asynccontextmanager
+    async def connect(self) -> AsyncIterator[aiosqlite.Connection]:
+        """外部キー制約を有効化したSQLite接続を提供する."""
+        async with self._connect() as conn:
+            await conn.execute("PRAGMA foreign_keys=ON")
+            await conn.execute("PRAGMA busy_timeout=30000")
+            yield conn
+
     async def execute_transaction(self, queries: list[tuple[str, tuple]]) -> None:
         """複数クエリをひとつのトランザクションでアトミックに実行.
 
@@ -38,8 +48,7 @@ class DatabaseConnection:
             DatabaseError: 実行エラー (自動ロールバック)
         """
         try:
-            async with self._connect() as conn:
-                await conn.execute("PRAGMA busy_timeout=30000")
+            async with self.connect() as conn:
                 for query, params in queries:
                     await conn.execute(query, params)
                 await conn.commit()
@@ -57,8 +66,7 @@ class DatabaseConnection:
             lastrowid
         """
         try:
-            async with self._connect() as conn:
-                await conn.execute("PRAGMA busy_timeout=30000")
+            async with self.connect() as conn:
                 cursor = await conn.execute(query, params)
                 await conn.commit()
                 return cursor.lastrowid
@@ -76,9 +84,8 @@ class DatabaseConnection:
             取得した行
         """
         try:
-            async with self._connect() as conn:
+            async with self.connect() as conn:
                 conn.row_factory = aiosqlite.Row
-                await conn.execute("PRAGMA busy_timeout=30000")
                 async with conn.execute(query, params) as cursor:
                     return await cursor.fetchone()
         except Exception as e:
@@ -95,9 +102,8 @@ class DatabaseConnection:
             取得した行のリスト
         """
         try:
-            async with self._connect() as conn:
+            async with self.connect() as conn:
                 conn.row_factory = aiosqlite.Row
-                await conn.execute("PRAGMA busy_timeout=30000")
                 async with conn.execute(query, params) as cursor:
                     return list(await cursor.fetchall())
         except Exception as e:
@@ -169,12 +175,11 @@ class DatabaseConnection:
         ALTER TABLE pages ADD COLUMN last_success_step TEXT DEFAULT NULL
         """
 
-        async with aiosqlite.connect(self.db_path) as conn:
+        async with self.connect() as conn:
             # WALモード・パフォーマンス設定
             await conn.execute("PRAGMA journal_mode=WAL")
             await conn.execute("PRAGMA synchronous=NORMAL")
             await conn.execute("PRAGMA cache_size=10000")
-            await conn.execute("PRAGMA busy_timeout=30000")
 
             await conn.execute(pages_table)
             await conn.execute(process_logs_table)

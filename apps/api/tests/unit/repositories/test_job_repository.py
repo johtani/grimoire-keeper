@@ -8,6 +8,15 @@ from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.utils.exceptions import DatabaseError
 
 
+async def test_enqueue_rejects_unknown_page_id(temp_db) -> None:
+    repo = JobRepository(temp_db)
+
+    with pytest.raises(
+        DatabaseError, match="Failed to enqueue job: FOREIGN KEY constraint failed"
+    ):
+        await repo.enqueue(999, JobKind.INITIAL, PipelineStartStep.DOWNLOAD)
+
+
 async def test_active_job_is_unique_per_page(temp_db, page_repo) -> None:
     page_id = await page_repo.create_page("https://example.com", "title")
     repo = JobRepository(temp_db)
