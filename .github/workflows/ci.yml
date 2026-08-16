@@ -38,6 +38,7 @@ jobs:
   unit-test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -56,4 +57,3 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest apps/api/tests/unit/ -v
-
