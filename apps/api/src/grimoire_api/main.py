@@ -53,11 +53,8 @@ SQLite3Instrumentor().instrument()
 async def lifespan(app: FastAPI) -> Any:
     """アプリケーションライフサイクル管理."""
     # 起動時処理 - データベース初期化
-    success = await ensure_database_initialized()
-    if success:
-        logger.info("Database initialized successfully")
-    else:
-        logger.warning("Database initialization failed, but continuing startup")
+    await ensure_database_initialized()
+    logger.info("Database initialized successfully")
 
     job_worker: JobWorker | None = None
     retiring_worker: JobWorker | None = None
@@ -164,15 +161,15 @@ async def lifespan(app: FastAPI) -> Any:
     )
     app.state.weaviate_manager = weaviate_manager
     app.state.job_worker = None
-    await weaviate_manager.start()
-
-    yield
-
-    # 終了時処理
-    await weaviate_manager.stop()
-    await get_jina_client().close()
-    logger.info("Jina client closed")
-    logger.info("Application shutting down")
+    try:
+        await weaviate_manager.start()
+        yield
+    finally:
+        # 終了時処理
+        await weaviate_manager.stop()
+        await get_jina_client().close()
+        logger.info("Jina client closed")
+        logger.info("Application shutting down")
 
 
 app = FastAPI(

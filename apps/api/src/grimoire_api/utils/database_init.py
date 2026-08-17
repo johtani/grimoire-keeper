@@ -28,9 +28,9 @@ async def ensure_database_initialized(db_path: str | None = None) -> bool:
         logger.info("Database tables initialized successfully")
         return True
 
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        return False
+    except Exception:
+        logger.exception("Database initialization failed")
+        raise
 
 
 async def reset_database(db_path: str | None = None) -> bool:
@@ -49,6 +49,6 @@ async def reset_database(db_path: str | None = None) -> bool:
 
         return await ensure_database_initialized(db_path)
 
-    except Exception as e:
-        logger.error(f"Database reset failed: {e}")
-        return False
+    except Exception:
+        logger.exception("Database reset failed")
+        raise
