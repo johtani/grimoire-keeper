@@ -1,8 +1,10 @@
 """Dedicated worker-process lifecycle tests."""
 
+import asyncio
+import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from grimoire_api.worker import worker_lifespan
+from grimoire_api.worker import run_worker, worker_lifespan
 
 
 async def test_worker_lifespan_starts_and_stops_dedicated_worker() -> None:
@@ -67,3 +69,29 @@ async def test_worker_lifespan_does_not_start_after_database_failure() -> None:
             assert str(error) == "database init failed"
 
     manager_class.assert_not_called()
+
+
+async def test_run_worker_stops_on_sigterm() -> None:
+    """コンテナの SIGTERM を受けて lifespan を終了する."""
+    loop = asyncio.get_running_loop()
+    callbacks: dict[signal.Signals, object] = {}
+
+    def add_handler(received_signal: signal.Signals, callback: object) -> None:
+        callbacks[received_signal] = callback
+        if received_signal == signal.SIGTERM:
+            loop.call_soon(callback)  # type: ignore[arg-type]
+
+    with (
+        patch.object(loop, "add_signal_handler", side_effect=add_handler),
+        patch.object(
+            loop, "remove_signal_handler", return_value=True
+        ) as remove_handler,
+        patch("grimoire_api.worker.worker_lifespan") as lifespan,
+    ):
+        lifespan.return_value.__aenter__ = AsyncMock()
+        lifespan.return_value.__aexit__ = AsyncMock(return_value=False)
+        await run_worker()
+
+    assert signal.SIGINT in callbacks
+    assert signal.SIGTERM in callbacks
+    assert remove_handler.call_count == 2

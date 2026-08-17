@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import signal
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -149,8 +150,17 @@ async def worker_lifespan() -> AsyncIterator[None]:
 
 async def run_worker() -> None:
     """Run until the process receives a shutdown signal."""
-    async with worker_lifespan():
-        await asyncio.Event().wait()
+    loop = asyncio.get_running_loop()
+    shutdown_event = asyncio.Event()
+    handled_signals = (signal.SIGINT, signal.SIGTERM)
+    for handled_signal in handled_signals:
+        loop.add_signal_handler(handled_signal, shutdown_event.set)
+    try:
+        async with worker_lifespan():
+            await shutdown_event.wait()
+    finally:
+        for handled_signal in handled_signals:
+            loop.remove_signal_handler(handled_signal)
 
 
 def main() -> None:
