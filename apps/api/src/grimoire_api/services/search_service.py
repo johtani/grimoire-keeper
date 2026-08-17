@@ -1,5 +1,6 @@
 """Search service for the separated Weaviate page and chunk models."""
 
+import asyncio
 from typing import Any
 
 import weaviate
@@ -68,7 +69,8 @@ class SearchService:
             settings.WEAVIATE_CHUNK_COLLECTION_NAME
         )
         page_filter = self._build_page_id_filter(eligible_page_ids)
-        response = collection.query.near_text(
+        response = await asyncio.to_thread(
+            collection.query.near_text,
             query=query,
             target_vector=_CONTENT_VECTOR,
             limit=limit,
@@ -94,7 +96,8 @@ class SearchService:
             settings.WEAVIATE_PAGE_COLLECTION_NAME
         )
         final_filter = self._build_page_id_filter(eligible_page_ids)
-        response = collection.query.near_text(
+        response = await asyncio.to_thread(
+            collection.query.near_text,
             query=query,
             target_vector=vector_name,
             limit=limit,
@@ -114,7 +117,8 @@ class SearchService:
             collection = self.weaviate_client.collections.get(
                 settings.WEAVIATE_PAGE_COLLECTION_NAME
             )
-            response = collection.query.fetch_objects(  # type: ignore[call-overload]
+            response = await asyncio.to_thread(
+                collection.query.fetch_objects,
                 filters=self._combine_filters(
                     Filter.by_property("keywords").contains_any(keywords),
                     self._build_page_id_filter(eligible_page_ids),
