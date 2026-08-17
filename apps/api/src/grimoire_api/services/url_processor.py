@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ..models.database import JobKind, PageStatus, PipelineStartStep
+from ..models.database import PageStatus
 from ..repositories.file_repository import FileRepository
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
@@ -60,17 +60,9 @@ class UrlProcessorService(BaseProcessorService):
                     "message": "URL already exists in the database",
                 }
 
-            # 1. 仮のページ作成
-            page_id = await self.page_repo.create_page(
+            # 1. ページ・開始ログ・初期ジョブを原子的に作成
+            page_id, log_id, job_id = await self.page_repo.create_page_with_initial_job(
                 url=url, title="Processing...", memo=memo or ""
-            )
-
-            # 2. 処理開始ログ作成
-            log_id = await self.log_repo.create_log(url, "started", page_id)
-            if self.job_repo is None:
-                raise GrimoireAPIError("Job repository is not configured")
-            job_id = await self.job_repo.enqueue(
-                page_id, JobKind.INITIAL, PipelineStartStep.DOWNLOAD
             )
 
             return {

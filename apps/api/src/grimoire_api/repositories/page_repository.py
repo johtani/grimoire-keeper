@@ -51,6 +51,52 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to create page: {str(e)}")
 
+    async def create_page_with_initial_job(
+        self, url: str, title: str, memo: str | None = None
+    ) -> tuple[int, int, int]:
+        """Page・開始ログ・初期ジョブを原子的に作成する."""
+        try:
+            async with self.db.connect() as conn:
+                try:
+                    await conn.execute("BEGIN IMMEDIATE")
+                    now = datetime.now()
+                    page_cursor = await conn.execute(
+                        """
+                        INSERT INTO pages
+                            (url, title, memo, status, created_at, updated_at)
+                        VALUES (?, ?, ?, 'queued', ?, ?)
+                        """,
+                        (url, title, memo, now, now),
+                    )
+                    page_id = int(page_cursor.lastrowid or 0)
+
+                    log_cursor = await conn.execute(
+                        """
+                        INSERT INTO process_logs (page_id, url, status, created_at)
+                        VALUES (?, ?, 'started', ?)
+                        """,
+                        (page_id, url, now),
+                    )
+                    log_id = int(log_cursor.lastrowid or 0)
+
+                    job_cursor = await conn.execute(
+                        """
+                        INSERT INTO jobs (page_id, kind, status, start_step)
+                        VALUES (?, 'initial', 'queued', 'download')
+                        """,
+                        (page_id,),
+                    )
+                    job_id = int(job_cursor.lastrowid or 0)
+                    await conn.commit()
+                    return page_id, log_id, job_id
+                except Exception:
+                    await conn.rollback()
+                    raise
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to create page with initial job: {str(e)}"
+            ) from e
+
     async def get_page(self, page_id: int) -> Page | None:
         """ページ取得."""
         try:
