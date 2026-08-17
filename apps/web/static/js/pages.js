@@ -413,7 +413,8 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
 
         document.getElementById('pageDetailContent').innerHTML = modalContent;
-        new bootstrap.Modal(document.getElementById('pageDetailModal')).show();
+        const modalElement = document.getElementById('pageDetailModal');
+        bootstrap.Modal.getOrCreateInstance(modalElement).show();
     }
 
     function escapeHtml(text) {
