@@ -100,7 +100,7 @@ class TestSearchService:
 
         try:
             await asyncio.sleep(0)
-            assert started.wait(timeout=0.5)
+            assert await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=0.5)
 
             event_loop_progressed = False
 
