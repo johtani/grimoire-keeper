@@ -1,13 +1,12 @@
 """URL processing router."""
 
 import time
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..dependencies import get_url_processor_service
 from ..models.request import ProcessUrlRequest
-from ..models.response import ProcessUrlResponse
+from ..models.response import ProcessStatusResponse, ProcessUrlResponse
 from ..services.url_processor import UrlProcessorService
 from ..utils.metrics import url_processing_duration, url_processing_requests
 
@@ -68,11 +67,11 @@ async def process_url(
         url_processing_duration.record(duration)
 
 
-@router.get("/process-status/{page_id}")
+@router.get("/process-status/{page_id}", response_model=ProcessStatusResponse)
 async def get_process_status(
     page_id: int,
     processor: UrlProcessorService = Depends(get_url_processor_service),
-) -> dict[str, Any]:
+) -> ProcessStatusResponse:
     """処理状況取得エンドポイント.
 
     Args:
@@ -84,7 +83,7 @@ async def get_process_status(
     """
     try:
         status = await processor.get_processing_status(page_id)
-        return status
+        return ProcessStatusResponse.model_validate(status)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
