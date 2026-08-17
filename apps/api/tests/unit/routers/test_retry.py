@@ -16,8 +16,11 @@ class TestRetryRouter:
         """個別ページ再処理成功のテスト."""
         mock_service = AsyncMock()
         mock_service.retry_single_page.return_value = {
-            "status": "success",
+            "status": "retry_started",
             "page_id": 1,
+            "job_id": 10,
+            "restart_from": "download",
+            "message": "Retry processing started",
         }
         app.dependency_overrides[get_retry_service] = lambda: mock_service
 
@@ -25,8 +28,9 @@ class TestRetryRouter:
 
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "success"
+        assert data["status"] == "retry_started"
         assert data["page_id"] == 1
+        assert data["restart_from"] == "download"
         mock_service.retry_single_page.assert_called_once_with(1)
 
     def test_retry_single_page_error(self) -> None:
@@ -43,8 +47,11 @@ class TestRetryRouter:
         """ページ再処理成功のテスト."""
         mock_service = AsyncMock()
         mock_service.reprocess_page.return_value = {
-            "status": "success",
+            "status": "reprocess_started",
             "page_id": 2,
+            "job_id": 20,
+            "restart_from": "llm",
+            "message": "Reprocessing started",
         }
         app.dependency_overrides[get_retry_service] = lambda: mock_service
 
@@ -55,13 +62,19 @@ class TestRetryRouter:
 
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "success"
+        assert data["status"] == "reprocess_started"
         mock_service.reprocess_page.assert_called_once_with(2, "llm")
 
     def test_reprocess_page_default_step(self) -> None:
         """from_step 未指定時のデフォルト値テスト."""
         mock_service = AsyncMock()
-        mock_service.reprocess_page.return_value = {"status": "success", "page_id": 3}
+        mock_service.reprocess_page.return_value = {
+            "status": "reprocess_started",
+            "page_id": 3,
+            "job_id": 30,
+            "restart_from": "vectorize",
+            "message": "Reprocessing started",
+        }
         app.dependency_overrides[get_retry_service] = lambda: mock_service
 
         response = client.post("/api/v1/reprocess/3")
@@ -73,9 +86,11 @@ class TestRetryRouter:
         """全失敗ページ再処理成功のテスト."""
         mock_service = AsyncMock()
         mock_service.retry_all_failed.return_value = {
-            "total": 3,
-            "success": 3,
-            "failed": 0,
+            "status": "batch_retry_started",
+            "total_failed_pages": 3,
+            "retry_count": 3,
+            "job_ids": [10, 11, 12],
+            "message": "Batch retry started",
         }
         app.dependency_overrides[get_retry_service] = lambda: mock_service
 
@@ -83,16 +98,18 @@ class TestRetryRouter:
 
         assert response.status_code == 202
         data = response.json()
-        assert data["total"] == 3
-        assert data["success"] == 3
+        assert data["total_failed_pages"] == 3
+        assert data["retry_count"] == 3
 
     def test_retry_all_failed_with_params(self) -> None:
         """パラメータ付き全失敗ページ再処理のテスト."""
         mock_service = AsyncMock()
         mock_service.retry_all_failed.return_value = {
-            "total": 1,
-            "success": 1,
-            "failed": 0,
+            "status": "batch_retry_started",
+            "total_failed_pages": 1,
+            "retry_count": 1,
+            "job_ids": [10],
+            "message": "Batch retry started",
         }
         app.dependency_overrides[get_retry_service] = lambda: mock_service
 

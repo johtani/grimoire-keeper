@@ -133,9 +133,17 @@ class TestProcessRouter:
         """処理状況取得のテスト."""
         mock_processor = AsyncMock()
         mock_processor.get_processing_status.return_value = {
-            "page_id": 1,
             "status": "completed",
-            "last_success_step": "completed",
+            "message": "Processing status retrieved",
+            "page": {
+                "id": 1,
+                "url": "https://example.com",
+                "title": "Example",
+                "memo": None,
+                "summary": "Summary",
+                "keywords": ["example"],
+                "created_at": "2025-01-01T12:00:00+00:00",
+            },
         }
         app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
 
@@ -143,5 +151,6 @@ class TestProcessRouter:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["page_id"] == 1
         assert data["status"] == "completed"
+        assert data["page"]["id"] == 1
+        assert data["page"]["created_at"] == "2025-01-01T12:00:00Z"

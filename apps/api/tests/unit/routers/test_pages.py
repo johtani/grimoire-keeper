@@ -46,6 +46,9 @@ class TestPagesRouter:
         assert data["id"] == 123
         assert data["url"] == "https://example.com"
         assert data["title"] == "Test Article"
+        assert data["created_at"] == "2025-01-01T12:00:00Z"
+        assert data["error_message"] is None
+        assert data["has_json_file"] is False
 
     def test_get_page_not_found(self) -> None:
         """Test page not found."""
@@ -89,6 +92,8 @@ class TestPagesRouter:
         assert data["total"] == 1
         assert len(data["pages"]) == 1
         assert data["pages"][0]["id"] == 123
+        assert data["pages"][0]["created_at"] == "2025-01-01T12:00:00Z"
+        assert data["status_filter"] == "all"
 
     def test_list_pages_with_params(self) -> None:
         """Test pages listing with parameters."""
@@ -186,6 +191,7 @@ class TestPagesRouter:
         )
 
         assert response.status_code == 200
+        assert response.json()["status"] == "failed"
         mock_service.update_url.assert_awaited_once_with(
             56, "https://example.com/bad%3E", "https://example.com/good"
         )

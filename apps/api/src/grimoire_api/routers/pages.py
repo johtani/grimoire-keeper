@@ -4,10 +4,20 @@ import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
+from pydantic import JsonValue
 
 from ..dependencies import get_file_repository, get_page_service, get_repair_service
 from ..models.database import RepairStatus
 from ..models.request import UpdatePageUrlRequest
+from ..models.response import (
+    PageListResponse,
+    PageResponse,
+    RepairDetailResponse,
+    RepairImportResponse,
+    RepairListResponse,
+    RepairScanResponse,
+    UpdatePageUrlResponse,
+)
 from ..repositories.file_repository import FileRepository
 from ..services.page_service import PageService
 from ..services.repair_service import RepairService
@@ -16,7 +26,7 @@ from ..utils.exceptions import FileOperationError
 router = APIRouter(prefix="/api/v1", tags=["pages"])
 
 
-@router.get("/repairs")
+@router.get("/repairs", response_model=RepairListResponse)
 async def list_repairs(
     repair_status: str = Query(
         RepairStatus.PENDING.value,
@@ -24,37 +34,43 @@ async def list_repairs(
         pattern="^(pending|resolved|all)$",
     ),
     repair_service: RepairService = Depends(get_repair_service),
-) -> dict:
+) -> RepairListResponse:
     status_filter = None if repair_status == "all" else RepairStatus(repair_status)
     cases = await repair_service.list_cases(status_filter)
-    return {"repairs": cases, "total": len(cases)}
+    return RepairListResponse.model_validate({"repairs": cases, "total": len(cases)})
 
 
-@router.post("/repairs/import", status_code=status.HTTP_200_OK)
+@router.post(
+    "/repairs/import",
+    response_model=RepairImportResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def import_repairs(
     repair_service: RepairService = Depends(get_repair_service),
-) -> dict:
+) -> RepairImportResponse:
     try:
-        return await repair_service.import_report()
+        result = await repair_service.import_report()
+        return RepairImportResponse.model_validate(result)
     except FileOperationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.post("/repairs/scan")
+@router.post("/repairs/scan", response_model=RepairScanResponse)
 async def scan_repairs(
     repair_service: RepairService = Depends(get_repair_service),
-) -> dict:
-    return await repair_service.scan()
+) -> RepairScanResponse:
+    result = await repair_service.scan()
+    return RepairScanResponse.model_validate(result)
 
 
-@router.get("/pages/{page_id}/repair")
+@router.get("/pages/{page_id}/repair", response_model=RepairDetailResponse)
 async def get_page_repair(
     page_id: int,
     request: Request,
     repair_service: RepairService = Depends(get_repair_service),
-) -> dict:
+) -> RepairDetailResponse:
     try:
         result = await repair_service.get_detail(page_id)
         manager = getattr(request.app.state, "weaviate_manager", None)
@@ -73,28 +89,29 @@ async def get_page_repair(
             )
             registered = bool(response.objects)
         result["weaviate_registered"] = registered
-        return result
+        return RepairDetailResponse.model_validate(result)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.patch("/pages/{page_id}/url")
+@router.patch("/pages/{page_id}/url", response_model=UpdatePageUrlResponse)
 async def update_page_url(
     page_id: int,
     body: UpdatePageUrlRequest,
     repair_service: RepairService = Depends(get_repair_service),
-) -> dict:
+) -> UpdatePageUrlResponse:
     try:
-        return await repair_service.update_url(
+        result = await repair_service.update_url(
             page_id, body.current_url, str(body.new_url)
         )
+        return UpdatePageUrlResponse.model_validate(result)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (FileExistsError, RuntimeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.get("/pages", response_model=dict)
+@router.get("/pages", response_model=PageListResponse)
 async def get_pages(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -102,7 +119,7 @@ async def get_pages(
     order: str = Query("desc", regex="^(asc|desc)$"),
     status: str = Query("all", regex="^(all|completed|processing|failed)$"),
     page_service: PageService = Depends(get_page_service),
-) -> dict:
+) -> PageListResponse:
     """ページ一覧取得.
 
     Args:
@@ -125,24 +142,26 @@ async def get_pages(
             status_filter=status if status != "all" else None,
         )
 
-        return {
-            "pages": pages_data,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "status_filter": status,
-        }
+        return PageListResponse.model_validate(
+            {
+                "pages": pages_data,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "status_filter": status,
+            }
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pages/{page_id}")
+@router.get("/pages/{page_id}", response_model=PageResponse)
 async def get_page_detail(
     page_id: int,
     page_service: PageService = Depends(get_page_service),
     file_repo: FileRepository = Depends(get_file_repository),
-) -> dict:
+) -> PageResponse:
     """ページ詳細取得.
 
     Args:
@@ -163,7 +182,7 @@ async def get_page_detail(
 
         page_data["has_json_file"] = await file_repo.file_exists(page_id)
 
-        return page_data
+        return PageResponse.model_validate(page_data)
 
     except HTTPException:
         raise
@@ -171,7 +190,7 @@ async def get_page_detail(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pages/{page_id}/json")
+@router.get("/pages/{page_id}/json", response_model=JsonValue)
 async def get_page_json(
     page_id: int,
     file_repo: FileRepository = Depends(get_file_repository),
