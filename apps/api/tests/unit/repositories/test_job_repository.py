@@ -43,6 +43,16 @@ async def test_claim_is_atomic(temp_db, page_repo) -> None:
     assert first.attempt == second.attempt == 1
 
 
+async def test_concurrent_claim_does_not_return_same_job(temp_db, page_repo) -> None:
+    repo = JobRepository(temp_db)
+    page_id = await page_repo.create_page("https://example.com", "title")
+    await repo.enqueue(page_id, JobKind.INITIAL, PipelineStartStep.DOWNLOAD)
+
+    first, second = await asyncio.gather(repo.claim_next(), repo.claim_next())
+
+    assert (first is None) != (second is None)
+
+
 async def test_recover_running_jobs(temp_db, page_repo) -> None:
     repo = JobRepository(temp_db)
     page_id = await page_repo.create_page("https://example.com", "title")

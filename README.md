@@ -116,9 +116,9 @@ curl -X POST "http://localhost:8000/api/v1/process-url" \
 ```
 
 The API persists a job and immediately returns `202 Accepted` with `page_id` and
-`job_id`. A single worker in the API process executes queued jobs.
+`job_id`. A dedicated worker process executes queued jobs.
 API はジョブを永続化し、`page_id` と `job_id` を含む `202 Accepted` を即座に返します。
-キューに入ったジョブは API プロセス内の単一ワーカーが処理します。
+キューに入ったジョブは専用 worker プロセスが処理します。
 
 ### Search content / コンテンツの検索
 
@@ -147,7 +147,7 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │   Client    │───▶│  FastAPI    │───▶│   SQLite    │
-│ クライアント │    │     API     │    │ Pages/Jobs  │
+│ クライアント │    │ API process │    │ Pages/Jobs  │
 └─────────────┘    └─────────────┘    └──────┬──────┘
                            │                  │
                            │           Persistent queue
@@ -166,9 +166,19 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 - **FastAPI Backend**: RESTful API for URL processing and search / URL処理と検索のためのRESTful API
 - **SQLite**: Source of truth for pages, current status, jobs, and audit logs / ページ、現在状態、ジョブ、監査ログの正本
 - **JSON Cache**: Replaceable Jina response artifacts used for reprocessing / 再処理に利用するJinaレスポンス成果物
-- **Job Worker**: Single persistent-job worker that resumes queued/interrupted work after startup / 起動後にキュー・中断ジョブを再開する単一ワーカー
+- **Job Worker**: Dedicated singleton process that resumes queued/interrupted work after startup / 起動後にキュー・中断ジョブを再開する専用の単一プロセス
 - **Weaviate**: Rebuildable semantic-search index / 再構築可能なセマンティック検索索引
 - **External APIs**: Jina AI Reader, Google Gemini, OpenAI Embeddings / 外部API
+
+### Process model / プロセスモデル
+
+API processes only accept requests and enqueue jobs, so they may be started with
+multiple Uvicorn workers or replicas. Job execution belongs exclusively to the
+dedicated `worker` service. Run exactly one worker process against a SQLite database.
+
+API プロセスはリクエスト受付とジョブ登録のみを行うため、複数の Uvicorn worker や
+複数 replica で起動できます。ジョブを実行するのは専用 `worker` サービスだけです。
+同じ SQLite データベースに対して起動する worker プロセスは必ず1つにしてください。
 
 ## 🛠️ Development / 開発
 
