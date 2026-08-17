@@ -1,5 +1,7 @@
 """Tests for SearchService."""
 
+import asyncio
+import threading
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -55,6 +57,66 @@ class TestSearchService:
         mock_client = MagicMock()
         service = SearchService(weaviate_client=mock_client)
         assert service.weaviate_client is mock_client
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("search_kind", "vector_name", "query_method"),
+        [
+            ("vector", "content_vector", "near_text"),
+            ("vector", "title_vector", "near_text"),
+            ("vector", "memo_vector", "near_text"),
+            ("keyword", None, "fetch_objects"),
+        ],
+    )
+    async def test_weaviate_search_does_not_block_event_loop(
+        self,
+        search_service: SearchService,
+        mock_weaviate_client: MagicMock,
+        search_kind: str,
+        vector_name: str | None,
+        query_method: str,
+    ) -> None:
+        """Weaviate応答待ち中もイベントループ上の別処理が進行する."""
+        started = threading.Event()
+        release = threading.Event()
+        mock_response = MagicMock()
+        mock_response.objects = []
+
+        def blocking_query(**kwargs: Any) -> MagicMock:
+            started.set()
+            release.wait(timeout=1)
+            return mock_response
+
+        mock_collection = mock_weaviate_client.collections.get.return_value
+        getattr(mock_collection.query, query_method).side_effect = blocking_query
+
+        if search_kind == "keyword":
+            search_task = asyncio.create_task(search_service.keyword_search(["test"]))
+        else:
+            assert vector_name is not None
+            search_task = asyncio.create_task(
+                search_service.vector_search("test", vector_name=vector_name)
+            )
+
+        try:
+            await asyncio.sleep(0)
+            assert started.wait(timeout=0.5)
+
+            event_loop_progressed = False
+
+            async def mark_progress() -> None:
+                nonlocal event_loop_progressed
+                await asyncio.sleep(0)
+                event_loop_progressed = True
+
+            await asyncio.wait_for(mark_progress(), timeout=0.5)
+
+            assert event_loop_progressed
+            assert not search_task.done()
+        finally:
+            release.set()
+
+        assert await search_task == []
 
     @pytest.mark.asyncio
     async def test_vector_search_without_filters(
