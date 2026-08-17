@@ -11,6 +11,7 @@ from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
+from grimoire_api.utils.exceptions import DatabaseError
 
 
 def _fetched_document(url: str = "https://example.com") -> FetchedDocument:
@@ -31,6 +32,7 @@ class TestUrlProcessorService:
         page_repo = AsyncMock()
         page_repo.get_page_by_url = AsyncMock()
         page_repo.create_page = AsyncMock()
+        page_repo.create_page_with_initial_job = AsyncMock()
 
         log_repo = AsyncMock()
         log_repo.create_log = AsyncMock()
@@ -70,9 +72,11 @@ class TestUrlProcessorService:
 
         # モック設定
         mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
-        mock_services["page_repo"].create_page.return_value = page_id
-        mock_services["log_repo"].create_log.return_value = log_id
-        mock_services["job_repo"].enqueue.return_value = 99
+        mock_services["page_repo"].create_page_with_initial_job.return_value = (
+            page_id,
+            log_id,
+            99,
+        )
 
         # 処理実行
         result = await url_processor.prepare_url_processing(url, memo)
@@ -84,9 +88,8 @@ class TestUrlProcessorService:
         assert result["job_id"] == 99
         assert "prepared" in result["message"]
 
-        # 各ステップが呼ばれたことを確認
-        mock_services["log_repo"].create_log.assert_called_once_with(
-            url, "started", page_id
+        mock_services["page_repo"].create_page_with_initial_job.assert_called_once_with(
+            url=url, title="Processing...", memo=memo
         )
 
     @pytest.mark.asyncio
@@ -126,8 +129,11 @@ class TestUrlProcessorService:
 
         # モック設定
         mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
-        mock_services["page_repo"].create_page.return_value = page_id
-        mock_services["log_repo"].create_log.return_value = log_id
+        mock_services["page_repo"].create_page_with_initial_job.return_value = (
+            page_id,
+            log_id,
+            99,
+        )
         mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
         mock_services[
             "llm_service"
@@ -140,9 +146,7 @@ class TestUrlProcessorService:
         assert prepare_result["status"] == "prepared"
         assert prepare_result["page_id"] == page_id
         assert prepare_result["log_id"] == log_id
-        mock_services["log_repo"].create_log.assert_called_once_with(
-            url, "started", page_id
-        )
+        mock_services["page_repo"].create_page_with_initial_job.assert_called_once()
 
         # バックグラウンド処理実行
         await url_processor.process_url_background(page_id, log_id, url)
@@ -351,6 +355,7 @@ class TestUrlProcessorService:
 
         # 新規作成が呼ばれないことを確認
         mock_services["page_repo"].create_page.assert_not_called()
+        mock_services["page_repo"].create_page_with_initial_job.assert_not_called()
 
 
 class TestConcurrentUrlProcessor:
@@ -375,6 +380,77 @@ class TestConcurrentUrlProcessor:
             )
 
         return _make
+
+    @pytest.mark.asyncio
+    async def test_prepare_url_processing_creates_all_records(
+        self, make_url_processor: Any, temp_db: Any
+    ) -> None:
+        """正常系でページ・開始ログ・初期ジョブを作成する."""
+        url = "https://atomic.example.com"
+
+        result = await make_url_processor().prepare_url_processing(url, "memo")
+
+        assert result["status"] == "prepared"
+        page = await temp_db.fetch_one(
+            "SELECT id, url, memo, status FROM pages WHERE id = ?",
+            (result["page_id"],),
+        )
+        log = await temp_db.fetch_one(
+            "SELECT id, page_id, url, status FROM process_logs WHERE id = ?",
+            (result["log_id"],),
+        )
+        job = await temp_db.fetch_one(
+            "SELECT id, page_id, kind, status, start_step FROM jobs WHERE id = ?",
+            (result["job_id"],),
+        )
+        assert page is not None
+        assert dict(page) == {
+            "id": result["page_id"],
+            "url": url,
+            "memo": "memo",
+            "status": "queued",
+        }
+        assert log is not None
+        assert dict(log) == {
+            "id": result["log_id"],
+            "page_id": result["page_id"],
+            "url": url,
+            "status": "started",
+        }
+        assert job is not None
+        assert dict(job) == {
+            "id": result["job_id"],
+            "page_id": result["page_id"],
+            "kind": "initial",
+            "status": "queued",
+            "start_step": "download",
+        }
+
+    @pytest.mark.asyncio
+    async def test_prepare_url_processing_rolls_back_on_job_insert_failure(
+        self, make_url_processor: Any, temp_db: Any
+    ) -> None:
+        """ジョブ作成失敗時にページとログもロールバックする."""
+        url = "https://rollback.example.com"
+        await temp_db.execute(
+            """
+            CREATE TRIGGER fail_initial_job
+            BEFORE INSERT ON jobs
+            WHEN NEW.kind = 'initial'
+            BEGIN
+                SELECT RAISE(ABORT, 'job insert failed');
+            END
+            """
+        )
+
+        with pytest.raises(DatabaseError, match="job insert failed"):
+            await make_url_processor().page_repo.create_page_with_initial_job(
+                url, "Processing...", "memo"
+            )
+
+        for table in ("pages", "process_logs", "jobs"):
+            row = await temp_db.fetch_one(f"SELECT COUNT(*) AS count FROM {table}")
+            assert row is not None and row["count"] == 0
 
     @pytest.mark.asyncio
     async def test_concurrent_prepare_url_processing_same_url(
@@ -408,3 +484,13 @@ class TestConcurrentUrlProcessor:
         page_repo = PageRepository(db=temp_db)
         pages = await page_repo.get_all_pages()
         assert sum(1 for p in pages if p.url == url) == 1
+        page_id = next(p.id for p in pages if p.url == url)
+        log_count = await temp_db.fetch_one(
+            "SELECT COUNT(*) AS count FROM process_logs WHERE page_id = ?",
+            (page_id,),
+        )
+        job_count = await temp_db.fetch_one(
+            "SELECT COUNT(*) AS count FROM jobs WHERE page_id = ?", (page_id,)
+        )
+        assert log_count is not None and log_count["count"] == 1
+        assert job_count is not None and job_count["count"] == 1
