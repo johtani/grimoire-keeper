@@ -64,6 +64,38 @@ services:
     networks:
       - grimoire-network
 
+  worker:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile.prod
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    command: ["uv", "run", "python", "-m", "src.grimoire_api.worker"]
+    volumes:
+      - /opt/grimoire-keeper-data/database:/data
+      - /opt/grimoire-keeper-data/json:/app/apps/api/data/json
+    environment:
+      - PYTHONPATH=/app
+      - WEAVIATE_HOST=weaviate
+      - WEAVIATE_PORT=8080
+      - DATABASE_PATH=/data/grimoire.db
+      - JSON_STORAGE_PATH=/app/apps/api/data/json
+      - OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GRIMOIRE_KEEPER_GOOGLE_API_KEY}
+      - JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}
+      - LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY:-dummy}
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      weaviate:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - grimoire-network
+
   weaviate:
     image: ${WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.38.8}
     ports:

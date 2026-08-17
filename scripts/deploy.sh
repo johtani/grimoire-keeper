@@ -103,6 +103,14 @@ else
     exit 1
 fi
 
+# Worker確認
+if docker compose -f docker-compose.prod.yml ps worker | grep -q "Up"; then
+    echo "OK: Job Worker起動完了"
+else
+    echo "ERROR: Job Worker起動失敗"
+    exit 1
+fi
+
 # Slack Bot確認
 if docker compose -f docker-compose.prod.yml ps bot | grep -q "Up"; then
     echo "OK: Slack Bot起動完了"
@@ -119,4 +127,5 @@ echo ""
 echo "ログ確認:"
 echo "  全体: docker compose -f docker-compose.prod.yml logs -f"
 echo "  API: docker compose -f docker-compose.prod.yml logs -f api"
+echo "  Worker: docker compose -f docker-compose.prod.yml logs -f worker"
 echo "  Bot: docker compose -f docker-compose.prod.yml logs -f bot"

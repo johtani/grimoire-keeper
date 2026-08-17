@@ -1,5 +1,33 @@
 # Development
 
+## API とジョブワーカーの実行モデル
+
+API と永続ジョブワーカーは別プロセスです。開発時はそれぞれ別ターミナルで起動します。
+
+```bash
+bash scripts/dev.sh
+uv run --package grimoire-api python -m grimoire_api.worker
+```
+
+API はジョブを SQLite の `jobs` テーブルへ登録するだけなので複数プロセスで実行できます。
+worker は同じ SQLite に対して必ず1プロセスだけ起動してください。本番 Compose でも
+`worker` サービスを scale せず、replica 数を1に保ちます。
+
+worker は `BEGIN IMMEDIATE` のトランザクションで queued ジョブを原子的に claim します。
+停止要求を受けると新規 claim を止め、実行中ジョブを `WEAVIATE_WORKER_STOP_TIMEOUT` 秒まで
+待機します。期限を超えた処理はキャンセルされ、`running` のまま残ったジョブは次回の
+worker 起動時に `queued` へ戻されます。
+
+`recover_running()` は同じデータベースのすべての running ジョブを復旧対象にするため、
+worker のローリング更新は行いません。次の順序で入れ替えます。
+
+1. 旧 worker を停止し、コンテナが終了したことを確認する。
+2. 新 worker を起動する。
+3. ログで中断ジョブの復旧と処理再開を確認する。
+
+worker を複数プロセスへ水平スケールするには、所有 worker ID、lease、有効期限、heartbeat
+を導入する別対応が必要です。
+
 ## Weaviate 1.38.8への移行
 
 本番のWeaviateを `1.33.1` から `1.38.8` へ更新します。既存ボリュームの

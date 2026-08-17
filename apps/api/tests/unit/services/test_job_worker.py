@@ -58,6 +58,16 @@ async def test_worker_recovers_on_start() -> None:
     job_repo.recover_running.assert_awaited_once()
 
 
+async def test_worker_does_not_claim_after_stop_requested() -> None:
+    job_repo = AsyncMock()
+    worker = JobWorker(job_repo, AsyncMock(), AsyncMock(), AsyncMock())
+    worker._stop_event.set()
+
+    await worker.run()
+
+    job_repo.claim_next.assert_not_awaited()
+
+
 async def test_worker_cancels_task_after_stop_timeout() -> None:
     worker = JobWorker(AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
     never_finishes = asyncio.Event()

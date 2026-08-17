@@ -83,6 +83,9 @@ class JobWorker:
     async def run(self) -> None:
         """停止要求まで queued ジョブを順番に処理する."""
         while not self._stop_event.is_set():
+            # stop() と claim の境界で停止要求を受けても、新しいジョブを取得しない。
+            if self._stop_event.is_set():
+                break
             job = await self.job_repo.claim_next()
             if job is None:
                 try:

@@ -24,6 +24,7 @@ async def test_lifespan_starts_and_stops_manager_after_database_init() -> None:
     ):
         async with lifespan(app):
             manager.start.assert_awaited_once()
+            assert not hasattr(app.state, "job_worker")
 
     initialize.assert_awaited_once()
     manager.stop.assert_awaited_once()
