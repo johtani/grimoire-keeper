@@ -1,6 +1,7 @@
 """Page repository."""
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 import aiosqlite
@@ -355,8 +356,12 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to clear weaviate_id: {str(e)}")
 
-    async def delete_pending_repair_page(self, page_id: int) -> None:
-        """状態を再検証し、ページと全関連行を原子的に削除する."""
+    async def delete_pending_repair_page(
+        self,
+        page_id: int,
+        external_cleanup: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """状態検証から外部・SQLite削除までを排他制御する."""
         try:
             async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
@@ -388,6 +393,8 @@ class PageRepository:
                     raise RepairDeletionConflictError(
                         "Page has a queued or running job"
                     )
+                if external_cleanup is not None:
+                    await external_cleanup()
                 for table in ("process_logs", "jobs", "repair_cases"):
                     await conn.execute(
                         f"DELETE FROM {table} WHERE page_id=?", (page_id,)

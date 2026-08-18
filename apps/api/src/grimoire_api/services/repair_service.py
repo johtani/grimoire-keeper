@@ -257,13 +257,19 @@ class RepairService:
             )
         if await self.job_repo.has_active_for_page(page_id):
             raise RepairDeletionConflictError("Page has a queued or running job")
-        if self.vectorizer is None:
+        vectorizer = self.vectorizer
+        if vectorizer is None:
             raise RepairDeletionError("Weaviate deletion service is not available")
 
         try:
-            await self.vectorizer.delete_page_from_index(page_id)
-            await self.file_repo.delete_json_file(page_id)
-            await self.page_repo.delete_pending_repair_page(page_id)
+
+            async def cleanup_external_data() -> None:
+                await vectorizer.delete_page_from_index(page_id)
+                await self.file_repo.delete_json_file(page_id)
+
+            await self.page_repo.delete_pending_repair_page(
+                page_id, cleanup_external_data
+            )
         except (LookupError, RepairDeletionConflictError):
             raise
         except Exception as exc:
