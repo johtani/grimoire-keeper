@@ -24,9 +24,19 @@ logger = logging.getLogger(__name__)
 def _insert_objects_sync(
     collection: Any, objects_to_insert: list[tuple[dict[str, Any], Any]]
 ) -> None:
-    """Weaviateオブジェクトを同期的に挿入する."""
-    for properties, object_uuid in objects_to_insert:
-        collection.data.insert(properties=properties, uuid=object_uuid)
+    """Weaviateオブジェクトをバッチ挿入し、個別エラーを検査する."""
+    with collection.batch.fixed_size(
+        batch_size=max(1, len(objects_to_insert)), concurrent_requests=1
+    ) as batch:
+        for properties, object_uuid in objects_to_insert:
+            batch.add_object(properties=properties, uuid=object_uuid)
+
+    failed_objects = collection.batch.failed_objects
+    if failed_objects:
+        messages = "; ".join(str(failure.message) for failure in failed_objects)
+        raise VectorizerError(
+            f"Failed to insert {len(failed_objects)} Weaviate objects: {messages}"
+        )
 
 
 class VectorizerService:
@@ -95,7 +105,10 @@ class VectorizerService:
             chunk_collection = self.weaviate_client.collections.get(
                 settings.WEAVIATE_CHUNK_COLLECTION_NAME
             )
+        except Exception as e:
+            raise VectorizerError(f"Failed to save page to Weaviate: {str(e)}") from e
 
+        try:
             await self._delete_existing_objects(page_collection, page_data.id)
             await self._delete_existing_objects(chunk_collection, page_data.id)
 
@@ -132,7 +145,34 @@ class VectorizerService:
             )
             return str(page_uuid)
         except Exception as e:
-            raise VectorizerError(f"Failed to save page to Weaviate: {str(e)}")
+            cleanup_errors = await self._cleanup_failed_save(
+                page_collection, chunk_collection, page_data.id
+            )
+            message = f"Failed to save page to Weaviate: {str(e)}"
+            if cleanup_errors:
+                message += f"; cleanup failed: {'; '.join(cleanup_errors)}"
+            raise VectorizerError(message) from e
+
+    async def _cleanup_failed_save(
+        self, page_collection: Any, chunk_collection: Any, page_id: int
+    ) -> list[str]:
+        """保存失敗後、両コレクションから対象ページの部分登録を除去する."""
+        errors: list[str] = []
+        for collection_name, collection in (
+            ("page", page_collection),
+            ("chunk", chunk_collection),
+        ):
+            try:
+                await self._delete_existing_objects(collection, page_id)
+            except Exception as cleanup_error:
+                logger.error(
+                    "Failed to clean up %s objects for page %d: %s",
+                    collection_name,
+                    page_id,
+                    cleanup_error,
+                )
+                errors.append(f"{collection_name}: {cleanup_error}")
+        return errors
 
     async def delete_page_from_index(self, page_id: int) -> None:
         """再構築先のページ代表・本文チャンクをページID単位で削除する."""
