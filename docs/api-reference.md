@@ -290,6 +290,37 @@ curl -X GET "http://localhost:8000/api/v1/pages/123"
 
 ---
 
+### Delete Pending Repair Page
+
+#### `DELETE /api/v1/pages/{page_id}`
+
+Permanently delete a page only when it has a `pending` repair case and no
+`queued` or `running` job. This removes its page and chunk objects from
+Weaviate, `data/json/{page_id}.json`, and the `pages`, `process_logs`, `jobs`,
+and `repair_cases` SQLite rows.
+
+Missing JSON files and Weaviate objects are treated as already deleted. If an
+external or database deletion fails, the page and repair case remain and a
+failure is recorded in `process_logs`; retry the same request to finish cleanup.
+
+**Response:**
+```json
+{
+  "page_id": 123,
+  "url": "https://example.com/unneeded",
+  "status": "deleted"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Page and related data deleted
+- `404 Not Found`: Page does not exist
+- `409 Conflict`: Repair case is missing/resolved, or an active job exists
+- `500 Internal Server Error`: Partial deletion failed and may be retried
+- `503 Service Unavailable`: Weaviate is unavailable
+
+---
+
 ### List Pages
 
 #### `GET /api/v1/pages`

@@ -147,6 +147,19 @@ def get_vectorizer_service(
     return VectorizerService(page_repo, file_repo, chunking_service, weaviate_client)
 
 
+def get_repair_deletion_service(
+    page_repo: PageRepository = Depends(get_page_repository),
+    repair_repo: RepairRepository = Depends(get_repair_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
+    log_repo: LogRepository = Depends(get_log_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
+    vectorizer: VectorizerService = Depends(get_vectorizer_service),
+) -> RepairService:
+    return RepairService(
+        page_repo, repair_repo, file_repo, log_repo, job_repo, vectorizer=vectorizer
+    )
+
+
 def get_search_service(
     page_repo: PageRepository = Depends(get_page_repository),
     weaviate_client: weaviate.WeaviateClient = Depends(get_weaviate_client),

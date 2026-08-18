@@ -35,3 +35,11 @@ class FileOperationError(GrimoireAPIError):
     """File operation error."""
 
     pass
+
+
+class RepairDeletionConflictError(GrimoireAPIError):
+    """Repair page cannot be deleted in its current state."""
+
+
+class RepairDeletionError(GrimoireAPIError):
+    """Repair page deletion failed and may be retried."""

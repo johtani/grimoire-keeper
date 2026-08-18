@@ -85,3 +85,17 @@ async def test_success_and_failure_update_page_status(temp_db, page_repo) -> Non
     page = await page_repo.get_page(page_id)
     assert page is not None
     assert page.status.value == "succeeded"
+
+
+async def test_has_active_for_page(temp_db, page_repo) -> None:
+    repo = JobRepository(temp_db)
+    page_id = await page_repo.create_page("https://active.example.com", "title")
+    job_id = await repo.enqueue(page_id, JobKind.INITIAL, PipelineStartStep.DOWNLOAD)
+    assert await repo.has_active_for_page(page_id)
+
+    claimed = await repo.claim_next()
+    assert claimed is not None
+    assert await repo.has_active_for_page(page_id)
+
+    await repo.succeed(job_id, page_id)
+    assert not await repo.has_active_for_page(page_id)

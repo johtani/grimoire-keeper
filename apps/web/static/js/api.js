@@ -97,6 +97,10 @@ class ApiClient {
         });
     }
 
+    async deleteRepairPage(pageId) {
+        return this.request(`/api/v1/pages/${pageId}`, { method: 'DELETE' });
+    }
+
     async reprocessPage(pageId, fromStep) {
         return this.request(`/api/v1/reprocess/${pageId}`, {
             method: 'POST', body: JSON.stringify({ from_step: fromStep })

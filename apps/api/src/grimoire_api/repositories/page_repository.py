@@ -1,12 +1,13 @@
 """Page repository."""
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 import aiosqlite
 
 from ..models.database import Page, PageStatus, ProcessingStep
-from ..utils.exceptions import DatabaseError
+from ..utils.exceptions import DatabaseError, RepairDeletionConflictError
 from .database import DatabaseConnection
 
 _ALLOWED_SORT_FIELDS = frozenset({"id", "url", "title", "created_at", "updated_at"})
@@ -354,6 +355,56 @@ class PageRepository:
             await self.db.execute(query, (datetime.now(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to clear weaviate_id: {str(e)}")
+
+    async def delete_pending_repair_page(
+        self,
+        page_id: int,
+        external_cleanup: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """状態検証から外部・SQLite削除までを排他制御する."""
+        try:
+            async with self.db.connect() as conn:
+                await conn.execute("BEGIN IMMEDIATE")
+                page = await (
+                    await conn.execute("SELECT id FROM pages WHERE id=?", (page_id,))
+                ).fetchone()
+                if page is None:
+                    await conn.rollback()
+                    raise LookupError("Page not found")
+                repair = await (
+                    await conn.execute(
+                        "SELECT status FROM repair_cases WHERE page_id=?", (page_id,)
+                    )
+                ).fetchone()
+                if repair is None or repair[0] != "pending":
+                    await conn.rollback()
+                    raise RepairDeletionConflictError(
+                        "Only pages with a pending repair case can be deleted"
+                    )
+                active_job = await (
+                    await conn.execute(
+                        "SELECT 1 FROM jobs WHERE page_id=? "
+                        "AND status IN ('queued', 'running') LIMIT 1",
+                        (page_id,),
+                    )
+                ).fetchone()
+                if active_job is not None:
+                    await conn.rollback()
+                    raise RepairDeletionConflictError(
+                        "Page has a queued or running job"
+                    )
+                if external_cleanup is not None:
+                    await external_cleanup()
+                for table in ("process_logs", "jobs", "repair_cases"):
+                    await conn.execute(
+                        f"DELETE FROM {table} WHERE page_id=?", (page_id,)
+                    )
+                await conn.execute("DELETE FROM pages WHERE id=?", (page_id,))
+                await conn.commit()
+        except (LookupError, RepairDeletionConflictError):
+            raise
+        except Exception as e:
+            raise DatabaseError(f"Failed to delete repair page: {e}") from e
 
     async def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
         """全ページ取得."""

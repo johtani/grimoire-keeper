@@ -2,9 +2,14 @@
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
-from grimoire_api.models.database import RepairStatus
+from grimoire_api.models.database import (
+    JobKind,
+    PipelineStartStep,
+    RepairStatus,
+)
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.job_repository import JobRepository
@@ -12,7 +17,12 @@ from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.repair_service import RepairService
-from grimoire_api.utils.exceptions import DatabaseError
+from grimoire_api.utils.exceptions import (
+    DatabaseError,
+    RepairDeletionConflictError,
+    RepairDeletionError,
+    VectorizerError,
+)
 
 
 @pytest.fixture
@@ -155,3 +165,91 @@ async def test_repository_preserves_database_error_for_duplicate(
         await repair_service.page_repo.update_url_if_current(
             first, "https://a.example", "https://b.example"
         )
+
+
+async def test_delete_pending_repair_page_removes_all_data(
+    repair_service: RepairService,
+) -> None:
+    page_id = await repair_service.page_repo.create_page(
+        "https://example.com/delete", "delete"
+    )
+    await repair_service.file_repo.save_json_file(page_id, {"data": {}})
+    await repair_service.repair_repo.upsert_pending(
+        page_id, "scan", [{"code": "invalid", "detail": "bad"}]
+    )
+    await repair_service.log_repo.create_log(
+        "https://example.com/delete", "failed", page_id
+    )
+    vectorizer = AsyncMock()
+    repair_service.vectorizer = vectorizer
+
+    result = await repair_service.delete_page(page_id)
+
+    assert result == {
+        "page_id": page_id,
+        "url": "https://example.com/delete",
+        "status": "deleted",
+    }
+    vectorizer.delete_page_from_index.assert_awaited_once_with(page_id)
+    assert not await repair_service.file_repo.file_exists(page_id)
+    assert await repair_service.page_repo.get_page(page_id) is None
+    assert await repair_service.repair_repo.get_by_page_id(page_id) is None
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+async def test_delete_rejects_missing_or_resolved_repair(
+    repair_service: RepairService, resolved: bool
+) -> None:
+    page_id = await repair_service.page_repo.create_page(
+        f"https://example.com/not-pending-{resolved}", "title"
+    )
+    if resolved:
+        await repair_service.repair_repo.upsert_pending(
+            page_id, "scan", [{"code": "invalid", "detail": "bad"}]
+        )
+        await repair_service.repair_repo.resolve(page_id)
+
+    with pytest.raises(RepairDeletionConflictError, match="pending repair"):
+        await repair_service.delete_page(page_id)
+
+
+async def test_delete_rejects_active_job(repair_service: RepairService) -> None:
+    page_id = await repair_service.page_repo.create_page(
+        "https://example.com/active", "active"
+    )
+    await repair_service.repair_repo.upsert_pending(
+        page_id, "scan", [{"code": "invalid", "detail": "bad"}]
+    )
+    await repair_service.job_repo.enqueue(
+        page_id, JobKind.REPROCESS, PipelineStartStep.DOWNLOAD
+    )
+    repair_service.vectorizer = AsyncMock()
+
+    with pytest.raises(RepairDeletionConflictError, match="queued or running"):
+        await repair_service.delete_page(page_id)
+    repair_service.vectorizer.delete_page_from_index.assert_not_awaited()
+
+
+async def test_delete_failure_is_logged_and_can_be_retried(
+    repair_service: RepairService,
+) -> None:
+    page_id = await repair_service.page_repo.create_page(
+        "https://example.com/retry-delete", "retry"
+    )
+    await repair_service.repair_repo.upsert_pending(
+        page_id, "scan", [{"code": "invalid", "detail": "bad"}]
+    )
+    vectorizer = AsyncMock()
+    vectorizer.delete_page_from_index.side_effect = VectorizerError("unavailable")
+    repair_service.vectorizer = vectorizer
+
+    with pytest.raises(RepairDeletionError, match="can be retried"):
+        await repair_service.delete_page(page_id)
+
+    assert await repair_service.page_repo.get_page(page_id) is not None
+    assert "unavailable" in (
+        await repair_service.log_repo.get_latest_error(page_id) or ""
+    )
+    vectorizer.delete_page_from_index.side_effect = None
+    await repair_service.delete_page(page_id)
+    assert await repair_service.page_repo.get_page(page_id) is None
