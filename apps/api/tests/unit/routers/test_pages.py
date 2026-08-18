@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from grimoire_api.dependencies import (
     get_file_repository,
     get_page_service,
+    get_repair_deletion_service,
     get_repair_service,
 )
 from grimoire_api.main import app
@@ -239,7 +240,7 @@ class TestPagesRouter:
             "url": "https://example.com/bad",
             "status": "deleted",
         }
-        app.dependency_overrides[get_repair_service] = lambda: mock_service
+        app.dependency_overrides[get_repair_deletion_service] = lambda: mock_service
 
         response = client.delete("/api/v1/pages/56")
 
@@ -249,7 +250,7 @@ class TestPagesRouter:
 
     def test_delete_repair_page_errors(self) -> None:
         mock_service = AsyncMock()
-        app.dependency_overrides[get_repair_service] = lambda: mock_service
+        app.dependency_overrides[get_repair_deletion_service] = lambda: mock_service
         cases = [
             (LookupError("Page not found"), 404),
             (RepairDeletionConflictError("not pending"), 409),

@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import JsonValue
 
-from ..dependencies import get_file_repository, get_page_service, get_repair_service
+from ..dependencies import (
+    get_file_repository,
+    get_page_service,
+    get_repair_deletion_service,
+    get_repair_service,
+)
 from ..models.database import RepairStatus
 from ..models.request import UpdatePageUrlRequest
 from ..models.response import (
@@ -119,7 +124,7 @@ async def update_page_url(
 @router.delete("/pages/{page_id}", response_model=DeletePageResponse)
 async def delete_page(
     page_id: int,
-    repair_service: RepairService = Depends(get_repair_service),
+    repair_service: RepairService = Depends(get_repair_deletion_service),
 ) -> DeletePageResponse:
     """pending repair のページと関連データを削除する."""
     try:
