@@ -25,6 +25,16 @@ class TestVectorizerService:
         mock_delete_result.failed = 0
         mock_collection.data.delete_many.return_value = mock_delete_result
         mock_page_collection.data.delete_many.return_value = mock_delete_result
+        mock_chunk_batch = MagicMock()
+        mock_page_batch = MagicMock()
+        mock_collection.batch.fixed_size.return_value.__enter__.return_value = (
+            mock_chunk_batch
+        )
+        mock_page_collection.batch.fixed_size.return_value.__enter__.return_value = (
+            mock_page_batch
+        )
+        mock_collection.batch.failed_objects = []
+        mock_page_collection.batch.failed_objects = []
 
         mock_collections = MagicMock()
         mock_collections.get.side_effect = lambda name: (
@@ -54,6 +64,8 @@ class TestVectorizerService:
             "weaviate_client": mock_client,
             "mock_collection": mock_collection,
             "mock_page_collection": mock_page_collection,
+            "mock_chunk_batch": mock_chunk_batch,
+            "mock_page_batch": mock_page_batch,
         }
 
     @pytest.fixture
@@ -102,10 +114,6 @@ class TestVectorizerService:
         mock_dependencies["page_repo"].get_page.return_value = mock_page
         mock_dependencies["file_repo"].load_json_file.return_value = mock_jina_data
         mock_dependencies["chunking_service"].chunk_document.return_value = mock_chunks
-        mock_dependencies[
-            "mock_collection"
-        ].data.insert.return_value = "weaviate-id-123"
-
         # 処理実行
         await vectorizer_service.vectorize_content(page_id)
 
@@ -119,8 +127,8 @@ class TestVectorizerService:
         assert document.content == "This is test content for vectorization."
 
         # 本文チャンクコレクションへの保存が3回呼ばれたことを確認
-        assert mock_dependencies["mock_collection"].data.insert.call_count == 3
-        assert mock_dependencies["mock_page_collection"].data.insert.call_count == 1
+        assert mock_dependencies["mock_chunk_batch"].add_object.call_count == 3
+        assert mock_dependencies["mock_page_batch"].add_object.call_count == 1
 
         # Weaviate IDと成功ステップのアトミック更新が呼ばれたことを確認
         mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_called_once()
@@ -272,9 +280,6 @@ class TestVectorizerService:
 
         chunks = ["chunk1", "chunk2"]
 
-        # モック設定
-        mock_dependencies["mock_collection"].data.insert.return_value = "weaviate-id"
-
         # 処理実行
         result = await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
 
@@ -283,10 +288,10 @@ class TestVectorizerService:
         assert "-" in result  # UUIDにはハイフンが含まれる
 
         # Weaviateへの保存が2回呼ばれたことを確認
-        assert mock_dependencies["mock_collection"].data.insert.call_count == 2
+        assert mock_dependencies["mock_chunk_batch"].add_object.call_count == 2
 
         # チャンク側にはページ情報を複製しない
-        call_args_list = mock_dependencies["mock_collection"].data.insert.call_args_list
+        call_args_list = mock_dependencies["mock_chunk_batch"].add_object.call_args_list
 
         # 最初のチャンク
         first_call = call_args_list[0]
@@ -459,6 +464,128 @@ class TestVectorizerService:
         assert len(objects_to_insert) == 2
         assert objects_to_insert[0][0]["content"] == "chunk1"
         assert objects_to_insert[1][0]["content"] == "chunk2"
+
+    @pytest.mark.asyncio
+    async def test_page_batch_failure_cleans_both_collections(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """ページ代表のバッチ失敗時は両コレクションを空にする."""
+        mock_page = Page(
+            id=1,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            weaviate_id=None,
+        )
+        failure = MagicMock()
+        failure.message = "page vectorization failed"
+        mock_dependencies["mock_page_collection"].batch.failed_objects = [failure]
+
+        with pytest.raises(VectorizerError, match="page vectorization failed"):
+            await vectorizer_service._save_page_to_weaviate(mock_page, ["chunk1"])
+
+        assert (
+            mock_dependencies["mock_page_collection"].data.delete_many.call_count == 2
+        )
+        assert mock_dependencies["mock_collection"].data.delete_many.call_count == 2
+        mock_dependencies["mock_chunk_batch"].add_object.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_partial_chunk_batch_failure_cleans_page_and_chunks(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """チャンクの部分失敗時は登録済みページとチャンクを除去する."""
+        mock_page = Page(
+            id=1,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            weaviate_id=None,
+        )
+        failure = MagicMock()
+        failure.message = "second chunk failed"
+        mock_dependencies["mock_collection"].batch.failed_objects = [failure]
+
+        with pytest.raises(VectorizerError, match="second chunk failed"):
+            await vectorizer_service._save_page_to_weaviate(
+                mock_page, ["chunk1", "chunk2"]
+            )
+
+        assert mock_dependencies["mock_page_batch"].add_object.call_count == 1
+        assert mock_dependencies["mock_chunk_batch"].add_object.call_count == 2
+        assert (
+            mock_dependencies["mock_page_collection"].data.delete_many.call_count == 2
+        )
+        assert mock_dependencies["mock_collection"].data.delete_many.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_batch_failure_does_not_update_success_state(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """全オブジェクト登録前にはSQLiteの成功状態を更新しない."""
+        page_id = 1
+        mock_dependencies["page_repo"].get_page.return_value = Page(
+            id=page_id,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            weaviate_id=None,
+        )
+        mock_dependencies["file_repo"].load_json_file.return_value = {
+            "data": {"title": "Test Title", "content": "Valid content"}
+        }
+        mock_dependencies["chunking_service"].chunk_document.return_value = ["chunk1"]
+        failure = MagicMock()
+        failure.message = "chunk failed"
+        mock_dependencies["mock_collection"].batch.failed_objects = [failure]
+
+        with pytest.raises(VectorizerError, match="chunk failed"):
+            await vectorizer_service.vectorize_content(page_id)
+
+        mock_dependencies["page_repo"].update_weaviate_id_and_step.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_attempts_both_collections_and_reports_failure(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """片方の清掃失敗後も他方を清掃し、診断情報を返す."""
+        mock_page = Page(
+            id=1,
+            url="https://example.com",
+            title="Test Title",
+            memo=None,
+            summary=None,
+            keywords=None,
+            created_at=datetime(2024, 1, 1),
+            updated_at=datetime(2024, 1, 1),
+            weaviate_id=None,
+        )
+        failure = MagicMock()
+        failure.message = "batch failed"
+        mock_dependencies["mock_page_collection"].batch.failed_objects = [failure]
+        mock_dependencies["mock_page_collection"].data.delete_many.side_effect = [
+            mock_dependencies["mock_collection"].data.delete_many.return_value,
+            Exception("page cleanup unavailable"),
+        ]
+
+        with pytest.raises(
+            VectorizerError, match="cleanup failed: page: page cleanup unavailable"
+        ):
+            await vectorizer_service._save_page_to_weaviate(mock_page, ["chunk1"])
+
+        assert mock_dependencies["mock_collection"].data.delete_many.call_count == 2
 
     @pytest.mark.asyncio
     async def test_save_chunks_weaviate_delete_failure(
