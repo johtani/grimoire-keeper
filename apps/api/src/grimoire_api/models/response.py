@@ -240,3 +240,11 @@ class UpdatePageUrlResponse(BaseModel):
     current_url: str
     new_url: str
     status: PageResponseStatus
+
+
+class DeletePageResponse(BaseModel):
+    """repair ページ削除レスポンス."""
+
+    page_id: int
+    url: str
+    status: str

@@ -181,6 +181,17 @@ class TestVectorizerService:
         mock_dependencies["mock_collection"].data.delete_many.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_delete_page_from_index_raises_for_failed_objects(
+        self, vectorizer_service, mock_dependencies
+    ):
+        mock_dependencies[
+            "mock_page_collection"
+        ].data.delete_many.return_value.failed = 1
+
+        with pytest.raises(VectorizerError, match="Failed to remove page"):
+            await vectorizer_service.delete_page_from_index(56)
+
+    @pytest.mark.asyncio
     async def test_vectorize_content_no_chunks(
         self, vectorizer_service, mock_dependencies
     ):

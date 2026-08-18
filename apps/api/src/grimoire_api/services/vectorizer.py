@@ -170,8 +170,8 @@ class VectorizerService:
             if hasattr(result, "matches"):
                 logger.info("Deleted %d objects for page %d", result.matches, page_id)
             if hasattr(result, "failed") and result.failed > 0:
-                logger.warning(
-                    "Failed to delete %d objects for page %d", result.failed, page_id
+                raise VectorizerError(
+                    f"Failed to delete {result.failed} objects for page {page_id}"
                 )
             if not hasattr(result, "matches") or result.matches == 0:
                 return

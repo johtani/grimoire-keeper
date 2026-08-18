@@ -6,6 +6,38 @@ from typing import Any
 
 import pytest
 from grimoire_api.models.database import Page, PageStatus
+from grimoire_api.repositories.repair_repository import RepairRepository
+from grimoire_api.utils.exceptions import DatabaseError
+
+
+async def test_delete_pending_repair_page_is_atomic(temp_db, page_repo) -> None:
+    page_id = await page_repo.create_page("https://delete.example.com", "title")
+    await RepairRepository(temp_db).upsert_pending(
+        page_id, "scan", [{"code": "invalid", "detail": "bad"}]
+    )
+    await temp_db.execute(
+        "INSERT INTO process_logs (page_id, url, status) VALUES (?, ?, ?)",
+        (page_id, "https://delete.example.com", "failed"),
+    )
+    await temp_db.execute(
+        "INSERT INTO jobs (page_id, kind, status, start_step) VALUES (?, ?, ?, ?)",
+        (page_id, "retry", "failed", "download"),
+    )
+
+    await temp_db.execute(
+        "CREATE TRIGGER reject_test_page_delete BEFORE DELETE ON pages "
+        "BEGIN SELECT RAISE(ABORT, 'test rollback'); END"
+    )
+    with pytest.raises(DatabaseError, match="test rollback"):
+        await page_repo.delete_pending_repair_page(page_id)
+
+    for table in ("pages", "process_logs", "jobs", "repair_cases"):
+        row = await temp_db.fetch_one(
+            f"SELECT COUNT(*) AS count FROM {table} WHERE "
+            + ("id=?" if table == "pages" else "page_id=?"),
+            (page_id,),
+        )
+        assert row is not None and row["count"] == 1
 
 
 class TestListPages:

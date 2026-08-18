@@ -18,6 +18,7 @@ def test_public_api_success_responses_use_concrete_schemas() -> None:
         ("/api/v1/repairs/import", "post", "200"): "RepairImportResponse",
         ("/api/v1/repairs/scan", "post", "200"): "RepairScanResponse",
         ("/api/v1/pages/{page_id}/repair", "get", "200"): "RepairDetailResponse",
+        ("/api/v1/pages/{page_id}", "delete", "200"): "DeletePageResponse",
         ("/api/v1/pages/{page_id}/url", "patch", "200"): "UpdatePageUrlResponse",
     }
 

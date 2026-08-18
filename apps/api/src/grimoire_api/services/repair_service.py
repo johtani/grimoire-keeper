@@ -15,7 +15,14 @@ from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..repositories.repair_repository import RepairRepository
-from ..utils.exceptions import DatabaseError, FileOperationError, GrimoireAPIError
+from ..utils.exceptions import (
+    DatabaseError,
+    FileOperationError,
+    GrimoireAPIError,
+    RepairDeletionConflictError,
+    RepairDeletionError,
+)
+from .vectorizer import VectorizerService
 
 
 def validate_stored_source(
@@ -61,12 +68,14 @@ class RepairService:
         log_repo: LogRepository,
         job_repo: JobRepository,
         report_path: str | None = None,
+        vectorizer: VectorizerService | None = None,
     ):
         self.page_repo = page_repo
         self.repair_repo = repair_repo
         self.file_repo = file_repo
         self.log_repo = log_repo
         self.job_repo = job_repo
+        self.vectorizer = vectorizer
         self.report_path = Path(report_path or settings.REPAIR_REPORT_PATH)
 
     async def _validate_page(self, page_id: int, url: str) -> list[dict[str, str]]:
@@ -235,3 +244,39 @@ class RepairService:
             "new_url": new_url,
             "status": PageStatus.FAILED.value,
         }
+
+    async def delete_page(self, page_id: int) -> dict[str, Any]:
+        """pending repair ページを全ストレージから安全に削除する."""
+        page = await self.page_repo.get_page(page_id)
+        if page is None:
+            raise LookupError("Page not found")
+        case = await self.repair_repo.get_by_page_id(page_id)
+        if case is None or case.status != RepairStatus.PENDING:
+            raise RepairDeletionConflictError(
+                "Only pages with a pending repair case can be deleted"
+            )
+        if await self.job_repo.has_active_for_page(page_id):
+            raise RepairDeletionConflictError("Page has a queued or running job")
+        if self.vectorizer is None:
+            raise RepairDeletionError("Weaviate deletion service is not available")
+
+        try:
+            await self.vectorizer.delete_page_from_index(page_id)
+            await self.file_repo.delete_json_file(page_id)
+            await self.page_repo.delete_pending_repair_page(page_id)
+        except (LookupError, RepairDeletionConflictError):
+            raise
+        except Exception as exc:
+            try:
+                log_id = await self.log_repo.create_log(
+                    page.url, "repair_delete_failed", page_id
+                )
+                await self.log_repo.update_status(
+                    log_id, "failed", f"repair deletion failed: {exc}"
+                )
+            except DatabaseError:
+                pass
+            raise RepairDeletionError(
+                f"Failed to delete page {page_id}; deletion can be retried: {exc}"
+            ) from exc
+        return {"page_id": page_id, "url": page.url, "status": "deleted"}

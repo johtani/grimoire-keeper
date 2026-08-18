@@ -10,6 +10,7 @@ from ..dependencies import get_file_repository, get_page_service, get_repair_ser
 from ..models.database import RepairStatus
 from ..models.request import UpdatePageUrlRequest
 from ..models.response import (
+    DeletePageResponse,
     PageListResponse,
     PageResponse,
     RepairDetailResponse,
@@ -21,7 +22,11 @@ from ..models.response import (
 from ..repositories.file_repository import FileRepository
 from ..services.page_service import PageService
 from ..services.repair_service import RepairService
-from ..utils.exceptions import FileOperationError
+from ..utils.exceptions import (
+    FileOperationError,
+    RepairDeletionConflictError,
+    RepairDeletionError,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
 
@@ -109,6 +114,23 @@ async def update_page_url(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (FileExistsError, RuntimeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/pages/{page_id}", response_model=DeletePageResponse)
+async def delete_page(
+    page_id: int,
+    repair_service: RepairService = Depends(get_repair_service),
+) -> DeletePageResponse:
+    """pending repair のページと関連データを削除する."""
+    try:
+        result = await repair_service.delete_page(page_id)
+        return DeletePageResponse.model_validate(result)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RepairDeletionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RepairDeletionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/pages", response_model=PageListResponse)

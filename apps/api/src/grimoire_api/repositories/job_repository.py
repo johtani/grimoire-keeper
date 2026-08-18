@@ -132,6 +132,15 @@ class JobRepository:
         )
         return self._row_to_job(row) if row else None
 
+    async def has_active_for_page(self, page_id: int) -> bool:
+        """ページに queued または running ジョブがあるか確認する."""
+        row = await self.db.fetch_one(
+            "SELECT 1 FROM jobs WHERE page_id=? "
+            "AND status IN ('queued', 'running') LIMIT 1",
+            (page_id,),
+        )
+        return row is not None
+
     @staticmethod
     def _parse_datetime(value: str | datetime | None) -> datetime | None:
         return datetime.fromisoformat(value) if isinstance(value, str) else value
