@@ -23,6 +23,30 @@ class Migration:
     apply: Callable[[aiosqlite.Connection], Awaitable[None]]
 
 
+@dataclass(frozen=True)
+class SchemaInspection:
+    """Read-only result used to plan a database migration."""
+
+    current_version: int
+    has_history: bool
+    is_empty: bool
+
+    @property
+    def pending_versions(self) -> tuple[int, ...]:
+        """Versions that still need to be applied."""
+        return tuple(range(self.current_version + 1, LATEST_SCHEMA_VERSION + 1))
+
+    @property
+    def migration_required(self) -> bool:
+        """Whether migration or legacy-history bootstrapping is required."""
+        return bool(self.pending_versions) or not self.has_history
+
+    @property
+    def backup_required(self) -> bool:
+        """Whether existing data must be backed up before migration."""
+        return self.migration_required and not self.is_empty
+
+
 BASE_PAGE_COLUMNS = (
     "id",
     "url",
@@ -239,7 +263,7 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
         detail = integrity[0] if integrity else "no result"
         raise SchemaMigrationError(f"Corrupt SQLite database: {detail}")
 
-    if version == LATEST_SCHEMA_VERSION:
+    if version >= 3:
         cursor = await conn.execute(
             "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index'"
         )
@@ -259,12 +283,13 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 False,
             ),
             "idx_jobs_active_page": ("jobs", ("page_id",), True),
-            "idx_repair_cases_status": (
+        }
+        if version >= 4:
+            required_indexes["idx_repair_cases_status"] = (
                 "repair_cases",
                 ("status", "detected_at"),
                 False,
-            ),
-        }
+            )
         missing_indexes = set(required_indexes) - set(actual_indexes)
         if missing_indexes:
             raise SchemaMigrationError(
@@ -365,6 +390,36 @@ async def validate_database_schema(conn: aiosqlite.Connection) -> int:
         )
     await _validate_schema(conn, version)
     return version
+
+
+async def inspect_database_schema(conn: aiosqlite.Connection) -> SchemaInspection:
+    """Inspect migration state without modifying the database."""
+    tables = await _table_names(conn)
+    if not tables:
+        return SchemaInspection(current_version=0, has_history=False, is_empty=True)
+
+    if "schema_migrations" in tables:
+        version = await get_schema_version(conn)
+        if version == 0:
+            if tables != {"schema_migrations"}:
+                raise SchemaMigrationError(
+                    "Unknown SQLite schema with empty migration history"
+                )
+            return SchemaInspection(current_version=0, has_history=True, is_empty=True)
+        await _validate_schema(conn, version)
+        return SchemaInspection(
+            current_version=version,
+            has_history=True,
+            is_empty=False,
+        )
+
+    version = await _detect_legacy_version(conn)
+    await _validate_schema(conn, version)
+    return SchemaInspection(
+        current_version=version,
+        has_history=False,
+        is_empty=False,
+    )
 
 
 async def migrate_database(conn: aiosqlite.Connection) -> int:

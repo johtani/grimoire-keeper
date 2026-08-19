@@ -69,6 +69,50 @@ echo "ビルド情報: commit=${GIT_COMMIT}, date=${BUILD_DATE}"
 echo "イメージビルド中..."
 bws run -- docker compose -f docker-compose.prod.yml build --no-cache
 
+# 新しいイメージでSQLiteを読み取り専用検査する。
+echo "SQLiteマイグレーション確認中..."
+migration_status=0
+bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+    uv run python ../../scripts/init_database.py migration-status || \
+    migration_status=$?
+
+backup_required=false
+case "${migration_status}" in
+    0)
+        echo "SQLiteスキーマは最新です。自動バックアップを省略します。"
+        ;;
+    10)
+        backup_required=true
+        ;;
+    11)
+        echo "新規SQLiteデータベースです。バックアップを省略します。"
+        ;;
+    *)
+        echo "ERROR: SQLiteスキーマを安全に移行できません"
+        exit 1
+        ;;
+esac
+
+if [ "${FORCE_SQLITE_BACKUP:-false}" = "true" ] && \
+   [ -f "${DATA_ROOT}/database/grimoire.db" ]; then
+    backup_required=true
+fi
+
+if [ "${backup_required}" = "true" ]; then
+    backup_timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+    backup_path="${DATA_ROOT}/backups/database-before-schema-${backup_timestamp}"
+    mkdir -p "${backup_path}"
+    cp -a "${DATA_ROOT}/database/." "${backup_path}/"
+    echo "SQLiteバックアップ作成完了: ${backup_path}"
+fi
+
+# APIとworkerの起動前に単独プロセスでSQLiteを移行・検証する。
+echo "SQLiteマイグレーション実行中..."
+bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+    uv run python ../../scripts/init_database.py sqlite
+bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
+    uv run python ../../scripts/init_database.py check
+
 # サービス起動
 echo "サービス起動中..."
 bws run -- docker compose -f docker-compose.prod.yml up -d

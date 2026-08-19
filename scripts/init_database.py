@@ -14,9 +14,13 @@ from grimoire_api.config import settings  # noqa: E402
 from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
 from grimoire_api.repositories.migrations import (  # noqa: E402
     LATEST_SCHEMA_VERSION,
+    inspect_database_schema,
     validate_database_schema,
 )
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
+
+MIGRATION_PENDING_EXIT_CODE = 10
+NEW_DATABASE_EXIT_CODE = 11
 
 
 async def initialize_database() -> bool:
@@ -143,6 +147,41 @@ async def check_database_status() -> bool:
     return True
 
 
+async def migration_status() -> int:
+    """DBを変更せず、デプロイ前に必要な移行とバックアップを判定する."""
+    print("🔍 Inspecting SQLite migration status...")
+    db_path = Path(settings.DATABASE_PATH)
+    if not db_path.exists():
+        print("Current schema version: none (new database)")
+        print(f"Target schema version: {LATEST_SCHEMA_VERSION}")
+        print(f"Pending migrations: {LATEST_SCHEMA_VERSION}")
+        print("Migration required: yes")
+        print("Backup required: no")
+        return NEW_DATABASE_EXIT_CODE
+
+    try:
+        db = DatabaseConnection(read_only=True)
+        async with db.connect() as conn:
+            inspection = await inspect_database_schema(conn)
+    except Exception as e:
+        print(f"❌ SQLite migration inspection failed: {str(e)}")
+        return 1
+
+    history = "versioned" if inspection.has_history else "legacy/unversioned"
+    current = "none" if inspection.is_empty else str(inspection.current_version)
+    print(f"Current schema version: {current} ({history})")
+    print(f"Target schema version: {LATEST_SCHEMA_VERSION}")
+    print(f"Pending migrations: {len(inspection.pending_versions)}")
+    print(f"Migration required: {'yes' if inspection.migration_required else 'no'}")
+    print(f"Backup required: {'yes' if inspection.backup_required else 'no'}")
+
+    if inspection.backup_required:
+        return MIGRATION_PENDING_EXIT_CODE
+    if inspection.migration_required:
+        return NEW_DATABASE_EXIT_CODE
+    return 0
+
+
 async def reset_database() -> bool:
     """データベースリセット（開発用）."""
     print("🗑️  Resetting database...")
@@ -182,6 +221,8 @@ Commands:
     init       Initialize database and Weaviate schema (default)
     sqlite     Initialize SQLite database only (Weaviate not required)
     check      Check database status
+    migration-status
+               Read-only migration preflight (exit 10=backup, 11=new DB)
     reset      Reset database (WARNING: All data will be lost!)
     help       Show this help message
 
@@ -190,6 +231,7 @@ Examples:
     python scripts/init_database.py init
     python scripts/init_database.py sqlite
     python scripts/init_database.py check
+    python scripts/init_database.py migration-status
     python scripts/init_database.py reset
 """)
 
@@ -201,6 +243,9 @@ async def main() -> None:
     if command == "help":
         print_usage()
         return
+
+    if command == "migration-status":
+        sys.exit(await migration_status())
 
     print("🚀 Grimoire Keeper Database Manager")
     print("=" * 40)

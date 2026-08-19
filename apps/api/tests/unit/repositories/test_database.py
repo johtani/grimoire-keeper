@@ -11,8 +11,10 @@ from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.migrations import (
     LATEST_SCHEMA_VERSION,
     MIGRATIONS,
+    SchemaInspection,
     SchemaMigrationError,
     get_schema_version,
+    inspect_database_schema,
 )
 from grimoire_api.utils.exceptions import DatabaseError
 
@@ -59,6 +61,22 @@ class TestDatabaseInitialization:
 
         assert version == LATEST_SCHEMA_VERSION
         assert rows == [(item.version, item.name) for item in MIGRATIONS]
+
+    @pytest.mark.asyncio
+    async def test_latest_schema_inspection_requires_no_migration(
+        self, temp_db: DatabaseConnection
+    ) -> None:
+        """最新版DBの読み取り専用検査では移行もバックアップも不要になる."""
+        async with temp_db.connect() as conn:
+            inspection = await inspect_database_schema(conn)
+
+        assert inspection == SchemaInspection(
+            current_version=LATEST_SCHEMA_VERSION,
+            has_history=True,
+            is_empty=False,
+        )
+        assert inspection.migration_required is False
+        assert inspection.backup_required is False
 
 
 class TestForeignKeyConstraints:
@@ -187,6 +205,47 @@ class TestLegacyDatabaseMigration:
 
         async with db.connect() as conn:
             assert await get_schema_version(conn) == LATEST_SCHEMA_VERSION
+
+    @pytest.mark.asyncio
+    async def test_legacy_inspection_is_read_only_and_requires_backup(
+        self, tmp_path: Path
+    ) -> None:
+        """旧DBの事前検査は履歴を書かず、バックアップ必要と判定する."""
+        db_path = str(tmp_path / "inspection.db")
+        await self.create_legacy_schema(db_path, 2)
+
+        db = DatabaseConnection(db_path, read_only=True)
+        async with db.connect() as conn:
+            inspection = await inspect_database_schema(conn)
+
+        assert inspection.current_version == 2
+        assert inspection.has_history is False
+        assert inspection.pending_versions == (3, 4)
+        assert inspection.backup_required is True
+
+        async with aiosqlite.connect(db_path) as conn:
+            tables = await (
+                await conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            ).fetchall()
+        assert ("schema_migrations",) not in tables
+
+    @pytest.mark.asyncio
+    async def test_empty_database_inspection_does_not_require_backup(
+        self, tmp_path: Path
+    ) -> None:
+        """空DBは移行対象だがバックアップ対象にはしない."""
+        db_path = tmp_path / "empty.db"
+        db_path.touch()
+
+        db = DatabaseConnection(str(db_path), read_only=True)
+        async with db.connect() as conn:
+            inspection = await inspect_database_schema(conn)
+
+        assert inspection.migration_required is True
+        assert inspection.backup_required is False
+        assert inspection.is_empty is True
 
     @pytest.mark.asyncio
     async def test_legacy_pages_are_backfilled_idempotently(self) -> None:

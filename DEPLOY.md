@@ -158,6 +158,18 @@ git pull
 ./scripts/deploy.sh
 ```
 
+`deploy.sh` はサービス停止後にSQLiteを読み取り専用で検査します。スキーマ移行が必要な
+場合だけ `/opt/grimoire-keeper-data/backups/database-before-schema-<timestamp>` へ
+自動バックアップし、単独プロセスで移行と検証を完了してからサービスを起動します。
+未知・破損・将来スキーマを検出した場合は、バックアップや移行を推測で進めず
+デプロイを中止します。
+
+スキーマ移行がなくてもバックアップする場合:
+
+```bash
+FORCE_SQLITE_BACKUP=true ./scripts/deploy.sh
+```
+
 ### ログ監視
 ```bash
 # リアルタイムログ
