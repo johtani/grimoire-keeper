@@ -6,6 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 from grimoire_api.dependencies import get_retry_service
 from grimoire_api.main import app
+from grimoire_api.utils.exceptions import (
+    ResourceConflictError,
+    ResourceNotFoundError,
+)
 
 client = TestClient(app)
 
@@ -43,6 +47,49 @@ class TestRetryRouter:
         response = client.post("/api/v1/retry/1")
 
         assert response.status_code == 500
+
+    @pytest.mark.parametrize(
+        ("path", "service_method", "error", "status_code", "code"),
+        [
+            (
+                "/api/v1/retry/999",
+                "retry_single_page",
+                ResourceNotFoundError("Page 999 not found"),
+                404,
+                "not_found",
+            ),
+            (
+                "/api/v1/reprocess/999",
+                "reprocess_page",
+                ResourceNotFoundError("Page 999 not found"),
+                404,
+                "not_found",
+            ),
+            (
+                "/api/v1/retry/999",
+                "retry_single_page",
+                ResourceConflictError("An active job already exists"),
+                409,
+                "conflict",
+            ),
+        ],
+    )
+    def test_page_operation_domain_errors(
+        self,
+        path: str,
+        service_method: str,
+        error: Exception,
+        status_code: int,
+        code: str,
+    ) -> None:
+        mock_service = AsyncMock()
+        getattr(mock_service, service_method).side_effect = error
+        app.dependency_overrides[get_retry_service] = lambda: mock_service
+
+        response = client.post(path)
+
+        assert response.status_code == status_code
+        assert response.json()["error"] == {"code": code, "message": str(error)}
 
     def test_reprocess_page_success(self) -> None:
         """ページ再処理成功のテスト."""
@@ -166,3 +213,10 @@ class TestRetryRouter:
         response = client.post("/api/v1/reprocess/2", json={"from_step": "unknown"})
 
         assert response.status_code == 422
+
+    @pytest.mark.parametrize("path", ["/api/v1/retry/0", "/api/v1/reprocess/-1"])
+    def test_page_operations_reject_invalid_page_id(self, path: str) -> None:
+        response = client.post(path)
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"

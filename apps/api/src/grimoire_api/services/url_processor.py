@@ -8,7 +8,7 @@ from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.datetime import utc_isoformat
-from ..utils.exceptions import GrimoireAPIError
+from ..utils.exceptions import GrimoireAPIError, ResourceNotFoundError
 from .base_processor import BaseProcessorService
 from .jina_client import JinaClient
 from .llm_service import LLMService
@@ -100,7 +100,7 @@ class UrlProcessorService(BaseProcessorService):
         try:
             page = await self.page_repo.get_page(page_id)
             if not page:
-                return {"status": "not_found", "message": "Page not found"}
+                raise ResourceNotFoundError(f"Page {page_id} not found")
 
             return {
                 "status": (
@@ -120,5 +120,7 @@ class UrlProcessorService(BaseProcessorService):
                 },
             }
 
+        except ResourceNotFoundError:
+            raise
         except Exception as e:
             return {"status": "error", "message": str(e)}

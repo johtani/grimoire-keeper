@@ -5,8 +5,10 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from grimoire_shared.telemetry import setup_telemetry
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -19,6 +21,7 @@ from .dependencies import (
 from .routers import health, pages, process, retry, search, system_info
 from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
+from .utils.exceptions import ResourceConflictError, ResourceNotFoundError
 
 # 警告フィルタを適用
 from .utils.warnings_filter import *  # noqa: F403, F401
@@ -72,6 +75,56 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    details: list[dict[str, Any]] | None = None,
+) -> JSONResponse:
+    content: dict[str, Any] = {"error": {"code": code, "message": message}}
+    if details is not None:
+        content["error"]["details"] = details
+    return JSONResponse(status_code=status_code, content=content)
+
+
+@app.exception_handler(ResourceNotFoundError)
+async def resource_not_found_handler(
+    request: Request, exc: ResourceNotFoundError
+) -> JSONResponse:
+    """Convert domain not-found errors to the common API contract."""
+    return _error_response(status.HTTP_404_NOT_FOUND, exc.code, str(exc))
+
+
+@app.exception_handler(ResourceConflictError)
+async def resource_conflict_handler(
+    request: Request, exc: ResourceConflictError
+) -> JSONResponse:
+    """Convert domain conflicts to the common API contract."""
+    return _error_response(status.HTTP_409_CONFLICT, exc.code, str(exc))
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return request validation failures in the common API error format."""
+    details = [
+        {
+            "location": [str(part) for part in error["loc"]],
+            "message": error["msg"],
+            "type": error["type"],
+        }
+        for error in exc.errors()
+    ]
+    return _error_response(
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "validation_error",
+        "Request validation failed",
+        details,
+    )
+
 
 # FastAPI自動計装
 FastAPIInstrumentor.instrument_app(app)

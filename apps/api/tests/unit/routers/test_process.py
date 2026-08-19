@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from grimoire_api.dependencies import get_url_processor_service, get_weaviate_client
 from grimoire_api.main import app
+from grimoire_api.utils.exceptions import ResourceNotFoundError
 
 client = TestClient(app)
 
@@ -154,3 +155,23 @@ class TestProcessRouter:
         assert data["status"] == "completed"
         assert data["page"]["id"] == 1
         assert data["page"]["created_at"] == "2025-01-01T12:00:00Z"
+
+    def test_get_process_status_not_found(self) -> None:
+        mock_processor = AsyncMock()
+        mock_processor.get_processing_status.side_effect = ResourceNotFoundError(
+            "Page 999 not found"
+        )
+        app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
+
+        response = client.get("/api/v1/process-status/999")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "error": {"code": "not_found", "message": "Page 999 not found"}
+        }
+
+    def test_get_process_status_rejects_invalid_page_id(self) -> None:
+        response = client.get("/api/v1/process-status/0")
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"

@@ -38,3 +38,25 @@ def test_raw_page_json_has_an_explicit_json_schema() -> None:
     ]["200"]["content"]["application/json"]["schema"]
 
     assert response_schema == {"$ref": "#/components/schemas/JsonValue"}
+
+
+def test_page_resource_errors_use_common_schema() -> None:
+    """Page-ID APIs document the shared 404/409/422 error contract."""
+    schema = TestClient(app).get("/openapi.json").json()
+    expected_statuses = {
+        ("/api/v1/process-status/{page_id}", "get"): (404, 422),
+        ("/api/v1/pages/{page_id}", "get"): (404, 422),
+        ("/api/v1/pages/{page_id}/json", "get"): (404, 422),
+        ("/api/v1/pages/{page_id}/repair", "get"): (404, 422),
+        ("/api/v1/pages/{page_id}/url", "patch"): (404, 409, 422),
+        ("/api/v1/pages/{page_id}", "delete"): (404, 409, 422),
+        ("/api/v1/retry/{page_id}", "post"): (404, 409, 422),
+        ("/api/v1/reprocess/{page_id}", "post"): (404, 409, 422),
+    }
+
+    for (path, method), statuses in expected_statuses.items():
+        for status_code in statuses:
+            response_schema = schema["paths"][path][method]["responses"][
+                str(status_code)
+            ]["content"]["application/json"]["schema"]
+            assert response_schema == {"$ref": "#/components/schemas/ErrorResponse"}
