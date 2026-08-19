@@ -220,7 +220,7 @@ class TestLegacyDatabaseMigration:
 
         assert inspection.current_version == 2
         assert inspection.has_history is False
-        assert inspection.pending_versions == (3, 4)
+        assert inspection.pending_versions == (3, 4, 5)
         assert inspection.backup_required is True
 
         async with aiosqlite.connect(db_path) as conn:
@@ -292,6 +292,49 @@ class TestLegacyDatabaseMigration:
             assert jobs is not None and jobs["count"] == 0
         finally:
             Path(db_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_legacy_timestamps_are_normalized_to_utc(
+        self, tmp_path: Path
+    ) -> None:
+        """naive値とoffset付き値を同じUTC保存形式へ移行する."""
+        db_path = str(tmp_path / "timestamps.db")
+        await self.create_legacy_schema(db_path, 4)
+        async with aiosqlite.connect(db_path) as conn:
+            page = await conn.execute(
+                """INSERT INTO pages
+                (url, title, created_at, updated_at, status)
+                VALUES (?, ?, ?, ?, ?)""",
+                (
+                    "https://example.com",
+                    "example",
+                    "2025-01-01 12:00:00",
+                    "2025-01-02T01:30:00+09:00",
+                    "queued",
+                ),
+            )
+            page_id = int(page.lastrowid or 0)
+            await conn.execute(
+                """INSERT INTO process_logs
+                (page_id, url, status, created_at) VALUES (?, ?, ?, ?)""",
+                (page_id, "https://example.com", "started", "2025-01-01 12:00:00"),
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+        page_row = await db.fetch_one(
+            "SELECT created_at, updated_at FROM pages WHERE id=?", (page_id,)
+        )
+        log_row = await db.fetch_one(
+            "SELECT created_at FROM process_logs WHERE page_id=?", (page_id,)
+        )
+
+        assert page_row is not None
+        assert page_row["created_at"] == "2025-01-01T12:00:00.000Z"
+        assert page_row["updated_at"] == "2025-01-01T16:30:00.000Z"
+        assert log_row is not None
+        assert log_row["created_at"] == "2025-01-01T12:00:00.000Z"
 
     @pytest.mark.asyncio
     async def test_unknown_unversioned_schema_is_rejected(self, tmp_path: Path) -> None:

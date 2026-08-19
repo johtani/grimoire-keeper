@@ -7,7 +7,7 @@ import aiosqlite
 
 from ..utils.exceptions import DatabaseError
 
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 
 
 class SchemaMigrationError(DatabaseError):
@@ -191,11 +191,29 @@ async def _migration_4(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_5(conn: aiosqlite.Connection) -> None:
+    """Treat legacy naive timestamps as UTC and store canonical ISO 8601 values."""
+    timestamp_columns = {
+        "pages": ("created_at", "updated_at"),
+        "process_logs": ("created_at",),
+        "jobs": ("created_at", "started_at", "finished_at"),
+        "repair_cases": ("detected_at", "resolved_at"),
+    }
+    for table, columns in timestamp_columns.items():
+        for column in columns:
+            await conn.execute(
+                f'''UPDATE "{table}"
+                SET "{column}" = strftime('%Y-%m-%dT%H:%M:%fZ', "{column}")
+                WHERE "{column}" IS NOT NULL'''
+            )
+
+
 MIGRATIONS = (
     Migration(1, "create_pages_and_process_logs", _migration_1),
     Migration(2, "add_last_success_step", _migration_2),
     Migration(3, "add_persistent_jobs", _migration_3),
     Migration(4, "add_repair_cases", _migration_4),
+    Migration(5, "normalize_timestamps_to_utc", _migration_5),
 )
 
 

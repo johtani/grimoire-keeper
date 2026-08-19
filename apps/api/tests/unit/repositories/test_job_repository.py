@@ -1,6 +1,7 @@
 """Persistent job repository tests."""
 
 import asyncio
+from datetime import UTC
 
 import pytest
 from grimoire_api.models.database import JobKind, JobStatus, PipelineStartStep
@@ -41,6 +42,8 @@ async def test_claim_is_atomic(temp_db, page_repo) -> None:
     assert first.status == JobStatus.RUNNING
     assert second.status == JobStatus.RUNNING
     assert first.attempt == second.attempt == 1
+    assert first.created_at.tzinfo is UTC
+    assert first.started_at is not None and first.started_at.tzinfo is UTC
 
 
 async def test_concurrent_claim_does_not_return_same_job(temp_db, page_repo) -> None:

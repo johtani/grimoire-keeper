@@ -15,6 +15,7 @@ from ..models.database import Page, ProcessingStep
 from ..models.external import FetchedDocument
 from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
+from ..utils.datetime import utc_isoformat
 from ..utils.exceptions import VectorizerError
 from .chunking_service import ChunkingService
 
@@ -196,9 +197,7 @@ class VectorizerService:
 
     @staticmethod
     def _format_created_at(page_data: Page) -> str:
-        if page_data.created_at.tzinfo is None:
-            return page_data.created_at.replace(tzinfo=None).isoformat() + "Z"
-        return page_data.created_at.isoformat()
+        return utc_isoformat(page_data.created_at)
 
     async def _delete_existing_objects(self, collection: Any, page_id: int) -> None:
         """対象ページの既存オブジェクトを削除し、削除完了を確認する."""

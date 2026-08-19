@@ -7,6 +7,7 @@ from ..repositories.file_repository import FileRepository
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
+from ..utils.datetime import utc_isoformat
 from ..utils.exceptions import GrimoireAPIError
 from .base_processor import BaseProcessorService
 from .jina_client import JinaClient
@@ -115,11 +116,7 @@ class UrlProcessorService(BaseProcessorService):
                     "memo": page.memo,
                     "summary": page.summary,
                     "keywords": page.keywords,
-                    "created_at": (
-                        page.created_at.replace(tzinfo=None).isoformat()
-                        if page.created_at.tzinfo is None
-                        else page.created_at.isoformat()
-                    ),
+                    "created_at": utc_isoformat(page.created_at),
                 },
             }
 
