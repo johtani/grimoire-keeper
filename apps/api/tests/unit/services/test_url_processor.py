@@ -11,7 +11,7 @@ from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
-from grimoire_api.utils.exceptions import DatabaseError
+from grimoire_api.utils.exceptions import DatabaseError, ResourceNotFoundError
 
 
 def _fetched_document(url: str = "https://example.com") -> FetchedDocument:
@@ -323,12 +323,8 @@ class TestUrlProcessorService:
         # モック設定
         mock_services["page_repo"].get_page = AsyncMock(return_value=None)
 
-        # 処理実行
-        status = await url_processor.get_processing_status(page_id)
-
-        # 結果確認
-        assert status["status"] == "not_found"
-        assert "not found" in status["message"]
+        with pytest.raises(ResourceNotFoundError, match="Page 999 not found"):
+            await url_processor.get_processing_status(page_id)
 
     @pytest.mark.asyncio
     async def test_process_url_already_exists(

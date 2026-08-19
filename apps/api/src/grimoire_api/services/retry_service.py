@@ -14,7 +14,12 @@ from ..repositories.file_repository import FileRepository
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
-from ..utils.exceptions import GrimoireAPIError
+from ..utils.exceptions import (
+    DatabaseError,
+    GrimoireAPIError,
+    ResourceConflictError,
+    ResourceNotFoundError,
+)
 from .base_processor import BaseProcessorService
 from .jina_client import JinaClient
 from .llm_service import LLMService
@@ -51,7 +56,7 @@ class RetryService(BaseProcessorService):
         """再処理開始ポイントを取得."""
         page = await self.page_repo.get_page(page_id)
         if not page:
-            raise GrimoireAPIError(f"Page {page_id} not found")
+            raise ResourceNotFoundError(f"Page {page_id} not found")
 
         if not page.last_success_step:
             return PipelineStartStep.DOWNLOAD
@@ -69,20 +74,16 @@ class RetryService(BaseProcessorService):
         try:
             page = await self.page_repo.get_page(page_id)
             if not page:
-                raise GrimoireAPIError(f"Page {page_id} not found")
+                raise ResourceNotFoundError(f"Page {page_id} not found")
 
             if page.status != PageStatus.FAILED:
-                return {
-                    "status": "not_failed",
-                    "page_id": page_id,
-                    "message": "Page is not in failed state",
-                }
+                raise ResourceConflictError("Page is not in failed state")
 
             start_point = await self.get_retry_start_point(page_id)
 
             if self.job_repo is None:
                 raise GrimoireAPIError("Job repository is not configured")
-            job_id = await self.job_repo.enqueue(page_id, JobKind.RETRY, start_point)
+            job_id = await self._enqueue_job(page_id, JobKind.RETRY, start_point)
 
             return {
                 "status": "retry_started",
@@ -92,6 +93,8 @@ class RetryService(BaseProcessorService):
                 "message": f"Retry processing started from {start_point} step",
             }
 
+        except (ResourceNotFoundError, ResourceConflictError):
+            raise
         except Exception as e:
             raise GrimoireAPIError(f"Retry failed: {str(e)}")
 
@@ -104,7 +107,7 @@ class RetryService(BaseProcessorService):
         try:
             page = await self.page_repo.get_page(page_id)
             if not page:
-                raise GrimoireAPIError(f"Page {page_id} not found")
+                raise ResourceNotFoundError(f"Page {page_id} not found")
 
             requested_step = ReprocessStartStep(from_step)
             if requested_step == ReprocessStartStep.AUTO:
@@ -113,9 +116,7 @@ class RetryService(BaseProcessorService):
                 start_point = PipelineStartStep(requested_step.value)
             if self.job_repo is None:
                 raise GrimoireAPIError("Job repository is not configured")
-            job_id = await self.job_repo.enqueue(
-                page_id, JobKind.REPROCESS, start_point
-            )
+            job_id = await self._enqueue_job(page_id, JobKind.REPROCESS, start_point)
 
             return {
                 "status": "reprocess_started",
@@ -125,8 +126,26 @@ class RetryService(BaseProcessorService):
                 "message": f"Reprocessing started from {start_point} step",
             }
 
+        except (ResourceNotFoundError, ResourceConflictError):
+            raise
         except Exception as e:
             raise GrimoireAPIError(f"Reprocess failed: {str(e)}")
+
+    async def _enqueue_job(
+        self,
+        page_id: int,
+        kind: JobKind,
+        start_point: PipelineStartStep,
+    ) -> int:
+        """Enqueue a job and turn an active-job uniqueness race into a conflict."""
+        if self.job_repo is None:
+            raise GrimoireAPIError("Job repository is not configured")
+        try:
+            return await self.job_repo.enqueue(page_id, kind, start_point)
+        except DatabaseError:
+            if await self.job_repo.has_active_for_page(page_id):
+                raise ResourceConflictError("An active job already exists") from None
+            raise
 
     async def retry_all_failed(self, max_retries: int | None = None) -> dict[str, Any]:
         """全失敗ページの再処理."""

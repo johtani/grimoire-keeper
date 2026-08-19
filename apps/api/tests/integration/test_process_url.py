@@ -159,11 +159,11 @@ class TestProcessUrlIntegration:
     def test_process_status_not_found(self, integration_client: Any) -> None:
         """存在しないページの処理状況確認テスト."""
         response = integration_client.get("/api/v1/process-status/99999")
-        assert response.status_code == 200
+        assert response.status_code == 404
 
         data = response.json()
-        assert data["status"] == "not_found"
-        assert "not found" in data["message"]
+        assert data["error"]["code"] == "not_found"
+        assert "not found" in data["error"]["message"]
 
     def test_process_url_with_jina_error(self, integration_client: Any) -> None:
         """Jina AI Readerエラー時のテスト."""

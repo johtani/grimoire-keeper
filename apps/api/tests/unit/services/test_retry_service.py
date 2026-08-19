@@ -12,7 +12,12 @@ from grimoire_api.models.database import (
     ProcessingStep,
 )
 from grimoire_api.services.retry_service import RetryService
-from grimoire_api.utils.exceptions import GrimoireAPIError
+from grimoire_api.utils.exceptions import (
+    DatabaseError,
+    GrimoireAPIError,
+    ResourceConflictError,
+    ResourceNotFoundError,
+)
 
 
 def make_page(
@@ -81,9 +86,8 @@ async def test_retry_uses_current_page_status(
         status=PageStatus.SUCCEEDED
     )
 
-    result = await service.retry_single_page(1)
-
-    assert result["status"] == "not_failed"
+    with pytest.raises(ResourceConflictError, match="not in failed state"):
+        await service.retry_single_page(1)
     dependencies["job_repo"].enqueue.assert_not_awaited()
 
 
@@ -160,5 +164,28 @@ async def test_missing_page_raises_domain_error(
     service: RetryService, dependencies: dict[str, AsyncMock]
 ) -> None:
     dependencies["page_repo"].get_page.return_value = None
-    with pytest.raises(GrimoireAPIError, match="Page 1 not found"):
+    with pytest.raises(ResourceNotFoundError, match="Page 1 not found"):
         await service.get_retry_start_point(1)
+
+
+@pytest.mark.parametrize("operation", ["retry_single_page", "reprocess_page"])
+async def test_page_operations_preserve_not_found_error(
+    service: RetryService,
+    dependencies: dict[str, AsyncMock],
+    operation: str,
+) -> None:
+    dependencies["page_repo"].get_page.return_value = None
+
+    with pytest.raises(ResourceNotFoundError, match="Page 1 not found"):
+        await getattr(service, operation)(1)
+
+
+async def test_active_job_is_a_conflict(
+    service: RetryService, dependencies: dict[str, AsyncMock]
+) -> None:
+    dependencies["page_repo"].get_page.return_value = make_page()
+    dependencies["job_repo"].enqueue.side_effect = DatabaseError("unique")
+    dependencies["job_repo"].has_active_for_page.return_value = True
+
+    with pytest.raises(ResourceConflictError, match="active job"):
+        await service.retry_single_page(1)

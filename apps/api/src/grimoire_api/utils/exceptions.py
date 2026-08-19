@@ -7,6 +7,18 @@ class GrimoireAPIError(Exception):
     pass
 
 
+class ResourceNotFoundError(GrimoireAPIError):
+    """A requested API resource does not exist."""
+
+    code = "not_found"
+
+
+class ResourceConflictError(GrimoireAPIError):
+    """A request conflicts with the current resource state."""
+
+    code = "conflict"
+
+
 class JinaClientError(GrimoireAPIError):
     """Jina AI Reader client error."""
 

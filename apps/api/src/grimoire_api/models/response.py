@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, JsonValue
 
@@ -29,8 +30,21 @@ class ProcessStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
-    NOT_FOUND = "not_found"
     ERROR = "error"
+
+
+class APIError(BaseModel):
+    """Public API error details."""
+
+    code: str
+    message: str
+    details: list[dict[str, Any]] | None = None
+
+
+class ErrorResponse(BaseModel):
+    """Common error response envelope."""
+
+    error: APIError
 
 
 class RetryStatus(str, Enum):

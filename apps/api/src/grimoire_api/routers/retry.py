@@ -1,24 +1,16 @@
 """Retry processing router."""
 
-from typing import NoReturn
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from ..dependencies import get_retry_service
 from ..models.request import ReprocessRequest, RetryAllRequest
-from ..models.response import BatchRetryResponse, RetryResponse
+from ..models.response import BatchRetryResponse, ErrorResponse, RetryResponse
 from ..services.retry_service import RetryService
-from ..utils.exceptions import DatabaseError, GrimoireAPIError
+from ..utils.exceptions import ResourceConflictError, ResourceNotFoundError
 
 router = APIRouter(prefix="/api/v1", tags=["retry"])
-
-
-def _raise_retry_error(error: Exception) -> NoReturn:
-    if "UNIQUE constraint failed" in str(error):
-        raise HTTPException(
-            status_code=409, detail="An active job already exists"
-        ) from error
-    raise HTTPException(status_code=500, detail=str(error)) from error
 
 
 @router.post(
@@ -26,9 +18,14 @@ def _raise_retry_error(error: Exception) -> NoReturn:
     response_model=RetryResponse,
     response_model_exclude_none=True,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
 )
 async def retry_page(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     retry_service: RetryService = Depends(get_retry_service),
 ) -> RetryResponse:
     """個別ページ再処理.
@@ -43,10 +40,10 @@ async def retry_page(
     try:
         result = await retry_service.retry_single_page(page_id)
         return RetryResponse.model_validate(result)
-    except (DatabaseError, GrimoireAPIError) as e:
-        _raise_retry_error(e)
+    except (ResourceNotFoundError, ResourceConflictError):
+        raise
     except Exception as e:
-        _raise_retry_error(e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post(
@@ -54,9 +51,14 @@ async def retry_page(
     response_model=RetryResponse,
     response_model_exclude_none=True,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
 )
 async def reprocess_page(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     request: ReprocessRequest | None = None,
     retry_service: RetryService = Depends(get_retry_service),
 ) -> RetryResponse:
@@ -74,8 +76,10 @@ async def reprocess_page(
         from_step = request.from_step if request else "auto"
         result = await retry_service.reprocess_page(page_id, from_step)
         return RetryResponse.model_validate(result)
+    except (ResourceNotFoundError, ResourceConflictError):
+        raise
     except Exception as e:
-        _raise_retry_error(e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post(

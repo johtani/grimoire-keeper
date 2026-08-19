@@ -1,8 +1,9 @@
 """Pages management router."""
 
 import asyncio
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import JsonValue
 
@@ -16,6 +17,7 @@ from ..models.database import RepairStatus
 from ..models.request import UpdatePageUrlRequest
 from ..models.response import (
     DeletePageResponse,
+    ErrorResponse,
     PageListResponse,
     PageResponse,
     RepairDetailResponse,
@@ -31,6 +33,8 @@ from ..utils.exceptions import (
     FileOperationError,
     RepairDeletionConflictError,
     RepairDeletionError,
+    ResourceConflictError,
+    ResourceNotFoundError,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["pages"])
@@ -75,9 +79,13 @@ async def scan_repairs(
     return RepairScanResponse.model_validate(result)
 
 
-@router.get("/pages/{page_id}/repair", response_model=RepairDetailResponse)
+@router.get(
+    "/pages/{page_id}/repair",
+    response_model=RepairDetailResponse,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
 async def get_page_repair(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     request: Request,
     repair_service: RepairService = Depends(get_repair_service),
 ) -> RepairDetailResponse:
@@ -101,12 +109,20 @@ async def get_page_repair(
         result["weaviate_registered"] = registered
         return RepairDetailResponse.model_validate(result)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise ResourceNotFoundError(str(exc)) from exc
 
 
-@router.patch("/pages/{page_id}/url", response_model=UpdatePageUrlResponse)
+@router.patch(
+    "/pages/{page_id}/url",
+    response_model=UpdatePageUrlResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
 async def update_page_url(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     body: UpdatePageUrlRequest,
     repair_service: RepairService = Depends(get_repair_service),
 ) -> UpdatePageUrlResponse:
@@ -116,14 +132,22 @@ async def update_page_url(
         )
         return UpdatePageUrlResponse.model_validate(result)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise ResourceNotFoundError(str(exc)) from exc
     except (FileExistsError, RuntimeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise ResourceConflictError(str(exc)) from exc
 
 
-@router.delete("/pages/{page_id}", response_model=DeletePageResponse)
+@router.delete(
+    "/pages/{page_id}",
+    response_model=DeletePageResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
 async def delete_page(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     repair_service: RepairService = Depends(get_repair_deletion_service),
 ) -> DeletePageResponse:
     """pending repair のページと関連データを削除する."""
@@ -131,9 +155,9 @@ async def delete_page(
         result = await repair_service.delete_page(page_id)
         return DeletePageResponse.model_validate(result)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise ResourceNotFoundError(str(exc)) from exc
     except RepairDeletionConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise ResourceConflictError(str(exc)) from exc
     except RepairDeletionError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -183,9 +207,13 @@ async def get_pages(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pages/{page_id}", response_model=PageResponse)
+@router.get(
+    "/pages/{page_id}",
+    response_model=PageResponse,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
 async def get_page_detail(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     page_service: PageService = Depends(get_page_service),
     file_repo: FileRepository = Depends(get_file_repository),
 ) -> PageResponse:
@@ -205,21 +233,25 @@ async def get_page_detail(
     try:
         page_data = await page_service.get_page_detail(page_id)
         if not page_data:
-            raise HTTPException(status_code=404, detail="Page not found")
+            raise ResourceNotFoundError(f"Page {page_id} not found")
 
         page_data["has_json_file"] = await file_repo.file_exists(page_id)
 
         return PageResponse.model_validate(page_data)
 
-    except HTTPException:
+    except ResourceNotFoundError:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pages/{page_id}/json", response_model=JsonValue)
+@router.get(
+    "/pages/{page_id}/json",
+    response_model=JsonValue,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
 async def get_page_json(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     file_repo: FileRepository = Depends(get_file_repository),
 ) -> JSONResponse:
     """ページのJSONファイル取得.
@@ -241,7 +273,7 @@ async def get_page_json(
             headers={"Content-Type": "application/json; charset=utf-8"},
         )
 
-    except FileOperationError:
-        raise HTTPException(status_code=404, detail="JSON file not found")
+    except FileOperationError as exc:
+        raise ResourceNotFoundError(f"JSON file for page {page_id} not found") from exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

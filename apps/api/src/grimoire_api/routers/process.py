@@ -1,13 +1,15 @@
 """URL processing router."""
 
 import time
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from ..dependencies import get_url_processor_service
 from ..models.request import ProcessUrlRequest
-from ..models.response import ProcessStatusResponse, ProcessUrlResponse
+from ..models.response import ErrorResponse, ProcessStatusResponse, ProcessUrlResponse
 from ..services.url_processor import UrlProcessorService
+from ..utils.exceptions import ResourceNotFoundError
 from ..utils.metrics import url_processing_duration, url_processing_requests
 
 router = APIRouter(prefix="/api/v1", tags=["process"])
@@ -67,9 +69,13 @@ async def process_url(
         url_processing_duration.record(duration)
 
 
-@router.get("/process-status/{page_id}", response_model=ProcessStatusResponse)
+@router.get(
+    "/process-status/{page_id}",
+    response_model=ProcessStatusResponse,
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
 async def get_process_status(
-    page_id: int,
+    page_id: Annotated[int, Path(gt=0)],
     processor: UrlProcessorService = Depends(get_url_processor_service),
 ) -> ProcessStatusResponse:
     """処理状況取得エンドポイント.
@@ -85,5 +91,7 @@ async def get_process_status(
         status = await processor.get_processing_status(page_id)
         return ProcessStatusResponse.model_validate(status)
 
+    except ResourceNotFoundError:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
