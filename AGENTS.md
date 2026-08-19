@@ -78,6 +78,15 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 - **Weaviate** (`WEAVIATE_HOST:WEAVIATE_PORT`): `GrimoireChunk` コレクション — セマンティック検索用ベクトルチャンク
 - **JSON ファイル** (`JSON_STORAGE_PATH`): Jina の生コンテンツをページごとにキャッシュ (`data/json/{page_id}.json`)
 
+### SQLiteスキーマ変更の規約
+
+- スキーマ変更は `apps/api/src/grimoire_api/repositories/migrations.py` の `MIGRATIONS` 末尾に新しい連番として追加する
+- リリース済みのマイグレーションは変更・並べ替え・削除せず、`LATEST_SCHEMA_VERSION` と期待スキーマ検証を同時に更新する
+- DDL、データ変換、履歴追加は同じトランザクションで実行し、例外文字列によるエラーの握りつぶしや手動DDLを行わない
+- 新規DB、対応する各旧バージョン、再実行、データ保持、ロールバック、未知・破損・将来スキーマの拒否をユニットテストに含める
+- 本番移行前にSQLiteをバックアップし、旧コードへ戻す場合はDBも同じ時点へ復元する
+- 詳細は `docs/development.md` の「SQLiteスキーマの変更」を参照する
+
 ### 重要ファイル
 
 | パス | 役割 |
