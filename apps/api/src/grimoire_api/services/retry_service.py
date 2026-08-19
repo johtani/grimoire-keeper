@@ -128,13 +128,12 @@ class RetryService(BaseProcessorService):
         except Exception as e:
             raise GrimoireAPIError(f"Reprocess failed: {str(e)}")
 
-    async def retry_all_failed(
-        self, max_retries: int | None = None, delay_seconds: int = 1
-    ) -> dict[str, Any]:
+    async def retry_all_failed(self, max_retries: int | None = None) -> dict[str, Any]:
         """全失敗ページの再処理."""
         try:
             failed_pages = await self.page_repo.get_pages(
-                limit=max_retries or 10000, status_filter="failed"
+                limit=10000 if max_retries is None else max_retries,
+                status_filter="failed",
             )
             if not failed_pages:
                 return {

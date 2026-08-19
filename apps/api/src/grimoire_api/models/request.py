@@ -1,8 +1,18 @@
 """Request models."""
 
 import re
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from .database import ReprocessStartStep
 
@@ -27,8 +37,9 @@ class ProcessUrlRequest(BaseModel):
 class RetryAllRequest(BaseModel):
     """一括再処理リクエスト."""
 
-    max_retries: int | None = None
-    delay_seconds: int = 1
+    model_config = ConfigDict(extra="forbid")
+
+    max_retries: int | None = Field(default=None, ge=1, le=1000)
 
 
 class ReprocessRequest(BaseModel):
@@ -51,11 +62,64 @@ class UpdatePageUrlRequest(BaseModel):
         return value
 
 
+SearchKeyword = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
+
+
+class SearchFilters(BaseModel):
+    """検索対象を絞り込むフィルター."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: (
+        Annotated[
+            str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2048)
+        ]
+        | None
+    ) = None
+    keywords: list[SearchKeyword] | None = Field(
+        default=None, min_length=1, max_length=20
+    )
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "SearchFilters":
+        """開始日時が終了日時より後の範囲を拒否する."""
+        if self.date_from is not None:
+            self.date_from = self._as_utc(self.date_from)
+        if self.date_to is not None:
+            self.date_to = self._as_utc(self.date_to)
+        if (
+            self.date_from is not None
+            and self.date_to is not None
+            and self.date_from > self.date_to
+        ):
+            raise ValueError("date_from must not be later than date_to")
+        return self
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        """タイムゾーンなしの入力を UTC として比較可能にする."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+
 class SearchRequest(BaseModel):
     """検索リクエスト."""
 
-    query: str
-    limit: int = 5
-    filters: dict | None = None
-    vector_name: str = "content_vector"
-    exclude_keywords: list[str] | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    query: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+    ]
+    limit: int = Field(default=5, ge=1, le=100)
+    filters: SearchFilters | None = None
+    vector_name: Literal["content_vector", "title_vector", "memo_vector"] = (
+        "content_vector"
+    )
+    exclude_keywords: list[SearchKeyword] | None = Field(
+        default=None, min_length=1, max_length=20
+    )

@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from grimoire_api.dependencies import get_search_service, get_weaviate_client
@@ -136,3 +137,70 @@ class TestSearchRouter:
             vector_name="memo_vector",
             exclude_keywords=None,
         )
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"query": ""},
+            {"query": "   "},
+            {"query": "q" * 1001},
+            {"query": "query", "limit": 0},
+            {"query": "query", "limit": 101},
+            {"query": "query", "vector_name": "unknown_vector"},
+            {"query": "query", "filters": {"unknown": "value"}},
+            {"query": "query", "filters": {"keywords": []}},
+            {"query": "query", "filters": {"keywords": ["k"] * 21}},
+            {"query": "query", "filters": {"keywords": [" "]}},
+            {"query": "query", "filters": {"keywords": ["k" * 101]}},
+            {"query": "query", "filters": {"date_from": "not-a-date"}},
+            {
+                "query": "query",
+                "filters": {
+                    "date_from": "2025-01-02T00:00:00Z",
+                    "date_to": "2025-01-01T00:00:00Z",
+                },
+            },
+            {"query": "query", "exclude_keywords": []},
+            {"query": "query", "exclude_keywords": ["k"] * 21},
+            {"query": "query", "extra": True},
+        ],
+    )
+    def test_search_rejects_invalid_request(self, payload: dict[str, object]) -> None:
+        """制約に違反する検索入力は 422 になる."""
+        app.dependency_overrides[get_search_service] = lambda: AsyncMock()
+
+        response = client.post("/api/v1/search", json=payload)
+
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize("limit", [1, 100])
+    def test_search_accepts_limit_boundaries(self, limit: int) -> None:
+        """検索件数の境界値を受理する."""
+        mock_service = AsyncMock()
+        mock_service.vector_search.return_value = []
+        app.dependency_overrides[get_search_service] = lambda: mock_service
+
+        response = client.post(
+            "/api/v1/search", json={"query": "query", "limit": limit}
+        )
+
+        assert response.status_code == 200
+
+    def test_search_accepts_mixed_timezone_date_filters(self) -> None:
+        """タイムゾーン有無が混在する日時を UTC として検証する."""
+        mock_service = AsyncMock()
+        mock_service.vector_search.return_value = []
+        app.dependency_overrides[get_search_service] = lambda: mock_service
+
+        response = client.post(
+            "/api/v1/search",
+            json={
+                "query": "query",
+                "filters": {
+                    "date_from": "2025-01-01T00:00:00",
+                    "date_to": "2025-01-02T00:00:00Z",
+                },
+            },
+        )
+
+        assert response.status_code == 200

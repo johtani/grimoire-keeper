@@ -144,6 +144,18 @@ async def test_retry_all_uses_only_current_failed_pages(
     assert result["retry_count"] == 2
 
 
+async def test_retry_all_without_max_uses_fallback_limit(
+    service: RetryService, dependencies: dict[str, AsyncMock]
+) -> None:
+    dependencies["page_repo"].get_pages.return_value = []
+
+    await service.retry_all_failed()
+
+    dependencies["page_repo"].get_pages.assert_awaited_once_with(
+        limit=10000, status_filter="failed"
+    )
+
+
 async def test_missing_page_raises_domain_error(
     service: RetryService, dependencies: dict[str, AsyncMock]
 ) -> None:

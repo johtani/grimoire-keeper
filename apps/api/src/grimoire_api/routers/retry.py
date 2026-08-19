@@ -101,7 +101,6 @@ async def retry_all_failed(
         if request:
             result = await retry_service.retry_all_failed(
                 max_retries=request.max_retries,
-                delay_seconds=request.delay_seconds,
             )
         else:
             result = await retry_service.retry_all_failed()

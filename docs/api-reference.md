@@ -143,14 +143,14 @@ Search processed content using vector similarity search.
 ```
 
 **Request Body Parameters:**
-- `query` (string, required): Search query text
-- `limit` (integer, optional, default=5): Maximum number of results
-- `filters` (object, optional): Weaviate filter object for narrowing results
+- `query` (string, required, 1-1000 characters): Search query text; whitespace-only values are rejected
+- `limit` (integer, optional, default=5, range=1-100): Maximum number of results
+- `filters` (object, optional): Search filters. Supported fields are `url` (1-2048 characters), `keywords` (1-20 strings of 1-100 characters), `date_from`, and `date_to`. Unknown fields and reversed date ranges are rejected
 - `vector_name` (string, optional, default="content_vector"): Named vector to
   search against. `content_vector` searches body chunks in
   `GrimoireContentChunk`; `title_vector` and `memo_vector` search one
   representative object per page in `GrimoirePage`.
-- `exclude_keywords` (array of strings, optional): Keywords to exclude from results
+- `exclude_keywords` (array of strings, optional): 1-20 keywords of 1-100 characters to exclude from results
 
 **Response:**
 ```json
@@ -455,15 +455,14 @@ Retry processing for all pages with failed status.
 **Request Body (Optional):**
 ```json
 {
-  "max_retries": 10,
-  "delay_seconds": 5
+  "max_retries": 10
 }
 ```
 
 **Parameters:**
-- `max_retries` (integer, optional, default=unlimited): Maximum number of pages to retry
-- `delay_seconds` (integer, optional, deprecated): Accepted for compatibility;
-  persistent jobs are queued without an in-request delay
+- `max_retries` (integer, optional, default=unlimited, range=1-1000): Maximum number of pages to retry
+
+The unused `delay_seconds` field has been removed. Requests containing it are rejected with `422 Unprocessable Entity`.
 
 **Response:**
 ```json
@@ -489,7 +488,7 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 # Retry with limits
 curl -X POST "http://localhost:8000/api/v1/retry-failed" \
   -H "Content-Type: application/json" \
-  -d '{"max_retries": 10, "delay_seconds": 2}'
+  -d '{"max_retries": 10}'
 ```
 
 ---
