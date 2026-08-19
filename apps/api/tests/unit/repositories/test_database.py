@@ -1,9 +1,11 @@
 """Test database initialization."""
 
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import aiosqlite
+import grimoire_api.repositories.migrations as migration_module
 import pytest
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.migrations import (
@@ -277,18 +279,73 @@ class TestLegacyDatabaseMigration:
             await db.initialize_tables()
 
     @pytest.mark.asyncio
-    async def test_failed_migration_is_rolled_back(self, tmp_path: Path) -> None:
-        """DDL失敗時にスキーマ変更と履歴を同時にロールバックする."""
-        db_path = str(tmp_path / "rollback.db")
+    async def test_legacy_schema_with_existing_indexes_migrates(
+        self, tmp_path: Path
+    ) -> None:
+        """旧実装が作成済みのインデックスを保持して移行する."""
+        db_path = str(tmp_path / "indexed-legacy.db")
         await self.create_legacy_schema(db_path, 2)
         async with aiosqlite.connect(db_path) as conn:
             await conn.execute(
                 "CREATE INDEX idx_process_logs_page_id ON process_logs(page_id)"
             )
+            await conn.execute(
+                "CREATE INDEX idx_process_logs_status ON process_logs(status)"
+            )
+            await conn.execute(
+                "CREATE INDEX idx_pages_last_success_step ON pages(last_success_step)"
+            )
             await conn.commit()
 
         db = DatabaseConnection(db_path)
-        with pytest.raises(aiosqlite.OperationalError, match="already exists"):
+        await db.initialize_tables()
+
+        async with db.connect() as conn:
+            assert await get_schema_version(conn) == LATEST_SCHEMA_VERSION
+
+    @pytest.mark.asyncio
+    async def test_legacy_schema_with_invalid_named_index_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        """名前だけ一致する不正な既存インデックスを受理しない."""
+        db_path = str(tmp_path / "invalid-index.db")
+        await self.create_legacy_schema(db_path, 2)
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "CREATE INDEX idx_process_logs_page_id ON process_logs(status)"
+            )
+            await conn.commit()
+
+        with pytest.raises(SchemaMigrationError, match="invalid index"):
+            await DatabaseConnection(db_path).initialize_tables()
+
+    @pytest.mark.asyncio
+    async def test_failed_migration_is_rolled_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DDL失敗時にスキーマ変更と履歴を同時にロールバックする."""
+        db_path = str(tmp_path / "rollback.db")
+        await self.create_legacy_schema(db_path, 2)
+
+        migration = MIGRATIONS[2]
+
+        async def fail_after_ddl(conn: aiosqlite.Connection) -> None:
+            await migration.apply(conn)
+            await conn.execute("CREATE TABLE migration_marker (id INTEGER)")
+            raise aiosqlite.OperationalError("injected migration failure")
+
+        monkeypatch.setattr(
+            migration_module,
+            "MIGRATIONS",
+            (
+                *MIGRATIONS[:2],
+                replace(migration, apply=fail_after_ddl),
+                *MIGRATIONS[3:],
+            ),
+        )
+
+        db = DatabaseConnection(db_path)
+        with pytest.raises(aiosqlite.OperationalError, match="injected"):
             await db.initialize_tables()
 
         async with aiosqlite.connect(db_path) as conn:
@@ -308,4 +365,5 @@ class TestLegacyDatabaseMigration:
 
         assert "status" not in {row[1] for row in page_columns}
         assert ("jobs",) not in tables
+        assert ("migration_marker",) not in tables
         assert history == [(1,), (2,)]

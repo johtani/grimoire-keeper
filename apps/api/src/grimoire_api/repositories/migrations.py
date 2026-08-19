@@ -126,17 +126,23 @@ async def _migration_3(conn: aiosqlite.Connection) -> None:
                  OR (summary IS NOT NULL AND weaviate_id IS NOT NULL)
             THEN 'succeeded' ELSE 'failed' END"""
     )
-    await conn.execute("CREATE INDEX idx_process_logs_page_id ON process_logs(page_id)")
-    await conn.execute("CREATE INDEX idx_process_logs_status ON process_logs(status)")
     await conn.execute(
-        "CREATE INDEX idx_pages_last_success_step ON pages(last_success_step)"
-    )
-    await conn.execute("CREATE INDEX idx_pages_status ON pages(status)")
-    await conn.execute(
-        "CREATE INDEX idx_jobs_status_created ON jobs(status, created_at, id)"
+        "CREATE INDEX IF NOT EXISTS idx_process_logs_page_id ON process_logs(page_id)"
     )
     await conn.execute(
-        """CREATE UNIQUE INDEX idx_jobs_active_page ON jobs(page_id)
+        "CREATE INDEX IF NOT EXISTS idx_process_logs_status ON process_logs(status)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pages_last_success_step "
+        "ON pages(last_success_step)"
+    )
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status)")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_status_created "
+        "ON jobs(status, created_at, id)"
+    )
+    await conn.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_page ON jobs(page_id)
         WHERE status IN ('queued', 'running')"""
     )
 
@@ -156,7 +162,8 @@ async def _migration_4(conn: aiosqlite.Connection) -> None:
         )"""
     )
     await conn.execute(
-        "CREATE INDEX idx_repair_cases_status ON repair_cases(status, detected_at)"
+        "CREATE INDEX IF NOT EXISTS idx_repair_cases_status "
+        "ON repair_cases(status, detected_at)"
     )
 
 
@@ -234,23 +241,55 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
 
     if version == LATEST_SCHEMA_VERSION:
         cursor = await conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'index'"
+            "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index'"
         )
-        actual_indexes = {row[0] for row in await cursor.fetchall()}
+        actual_indexes = {row[0]: (row[1], row[2]) for row in await cursor.fetchall()}
         required_indexes = {
-            "idx_process_logs_page_id",
-            "idx_process_logs_status",
-            "idx_pages_last_success_step",
-            "idx_pages_status",
-            "idx_jobs_status_created",
-            "idx_jobs_active_page",
-            "idx_repair_cases_status",
+            "idx_process_logs_page_id": ("process_logs", ("page_id",), False),
+            "idx_process_logs_status": ("process_logs", ("status",), False),
+            "idx_pages_last_success_step": (
+                "pages",
+                ("last_success_step",),
+                False,
+            ),
+            "idx_pages_status": ("pages", ("status",), False),
+            "idx_jobs_status_created": (
+                "jobs",
+                ("status", "created_at", "id"),
+                False,
+            ),
+            "idx_jobs_active_page": ("jobs", ("page_id",), True),
+            "idx_repair_cases_status": (
+                "repair_cases",
+                ("status", "detected_at"),
+                False,
+            ),
         }
-        missing_indexes = required_indexes - actual_indexes
+        missing_indexes = set(required_indexes) - set(actual_indexes)
         if missing_indexes:
             raise SchemaMigrationError(
                 f"Corrupt SQLite schema: missing indexes={sorted(missing_indexes)}"
             )
+        for name, (table, columns, unique) in required_indexes.items():
+            actual_table, sql = actual_indexes[name]
+            info = await (await conn.execute(f'PRAGMA index_info("{name}")')).fetchall()
+            actual_columns = tuple(row[2] for row in info)
+            index_list = await (
+                await conn.execute(f'PRAGMA index_list("{table}")')
+            ).fetchall()
+            actual_unique = next(bool(row[2]) for row in index_list if row[1] == name)
+            partial_is_valid = name != "idx_jobs_active_page" or (
+                sql is not None and "WHERE status IN ('queued', 'running')" in sql
+            )
+            if (
+                actual_table != table
+                or actual_columns != columns
+                or actual_unique != unique
+                or not partial_is_valid
+            ):
+                raise SchemaMigrationError(
+                    f"Corrupt SQLite schema: invalid index {name}"
+                )
 
 
 async def _detect_legacy_version(conn: aiosqlite.Connection) -> int:
