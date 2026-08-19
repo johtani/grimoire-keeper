@@ -212,6 +212,23 @@ async def _column_names(conn: aiosqlite.Connection, table: str) -> tuple[str, ..
     return tuple(row[1] for row in await cursor.fetchall())
 
 
+async def _validate_history_table(conn: aiosqlite.Connection) -> None:
+    """Validate the migration ledger before trusting its contents."""
+    cursor = await conn.execute('PRAGMA table_info("schema_migrations")')
+    signature = tuple(
+        (row[1], row[2], row[3], row[4], row[5]) for row in await cursor.fetchall()
+    )
+    expected = (
+        ("version", "INTEGER", 0, None, 1),
+        ("name", "TEXT", 1, None, 0),
+        ("applied_at", "TIMESTAMP", 1, "CURRENT_TIMESTAMP", 0),
+    )
+    if signature != expected:
+        raise SchemaMigrationError(
+            f"Corrupt SQLite migration history table: {signature}; expected {expected}"
+        )
+
+
 def _expected_tables(version: int) -> dict[str, tuple[str, ...]]:
     page_columns: tuple[str, ...] = BASE_PAGE_COLUMNS
     if version >= 2:
@@ -364,6 +381,8 @@ async def get_schema_version(conn: aiosqlite.Connection) -> int:
     tables = await _table_names(conn)
     if "schema_migrations" not in tables:
         raise SchemaMigrationError("SQLite schema has no migration history")
+
+    await _validate_history_table(conn)
 
     cursor = await conn.execute(
         "SELECT version, name FROM schema_migrations ORDER BY version"

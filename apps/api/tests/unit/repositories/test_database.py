@@ -327,6 +327,31 @@ class TestLegacyDatabaseMigration:
             await db.initialize_tables()
 
     @pytest.mark.asyncio
+    async def test_corrupt_migration_history_table_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        """履歴行が正しくても履歴テーブルの制約破損を受理しない."""
+        db_path = str(tmp_path / "corrupt-history.db")
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "ALTER TABLE schema_migrations RENAME TO old_schema_migrations"
+            )
+            await conn.execute(
+                "CREATE TABLE schema_migrations (version INTEGER, name TEXT)"
+            )
+            await conn.execute(
+                "INSERT INTO schema_migrations SELECT version, name "
+                "FROM old_schema_migrations"
+            )
+            await conn.execute("DROP TABLE old_schema_migrations")
+            await conn.commit()
+
+        with pytest.raises(SchemaMigrationError, match="history table"):
+            await db.initialize_tables()
+
+    @pytest.mark.asyncio
     async def test_corrupt_versioned_schema_is_rejected(self, tmp_path: Path) -> None:
         """履歴と実スキーマが一致しないDBでは失敗する."""
         db_path = str(tmp_path / "corrupt.db")
