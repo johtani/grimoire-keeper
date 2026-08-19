@@ -337,6 +337,38 @@ class TestLegacyDatabaseMigration:
         assert log_row["created_at"] == "2025-01-01T12:00:00.000Z"
 
     @pytest.mark.asyncio
+    async def test_invalid_timestamp_migration_rolls_back_without_data_loss(
+        self, tmp_path: Path
+    ) -> None:
+        """解釈不能な日時はNULL化せず、移行を拒否して元の値を保持する."""
+        db_path = str(tmp_path / "invalid-timestamp.db")
+        await self.create_legacy_schema(db_path, 4)
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                """INSERT INTO pages
+                (url, title, created_at, updated_at, status)
+                VALUES (?, ?, ?, ?, ?)""",
+                (
+                    "https://example.com",
+                    "example",
+                    "not-a-timestamp",
+                    "2025-01-01 12:00:00",
+                    "queued",
+                ),
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        with pytest.raises(SchemaMigrationError, match="Invalid timestamp"):
+            await db.initialize_tables()
+
+        row = await db.fetch_one("SELECT created_at FROM pages")
+        assert row is not None
+        assert row["created_at"] == "not-a-timestamp"
+        async with db.connect() as conn:
+            assert await get_schema_version(conn) == 4
+
+    @pytest.mark.asyncio
     async def test_unknown_unversioned_schema_is_rejected(self, tmp_path: Path) -> None:
         """部分的な未知スキーマを推測で修復しない."""
         db_path = str(tmp_path / "unknown.db")

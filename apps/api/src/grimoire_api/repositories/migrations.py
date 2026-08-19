@@ -201,6 +201,18 @@ async def _migration_5(conn: aiosqlite.Connection) -> None:
     }
     for table, columns in timestamp_columns.items():
         for column in columns:
+            invalid = await (
+                await conn.execute(
+                    f'''SELECT 1 FROM "{table}"
+                    WHERE "{column}" IS NOT NULL
+                    AND strftime('%Y-%m-%dT%H:%M:%fZ', "{column}") IS NULL
+                    LIMIT 1'''
+                )
+            ).fetchone()
+            if invalid is not None:
+                raise SchemaMigrationError(
+                    f"Invalid timestamp in {table}.{column}; UTC migration refused"
+                )
             await conn.execute(
                 f'''UPDATE "{table}"
                 SET "{column}" = strftime('%Y-%m-%dT%H:%M:%fZ', "{column}")
