@@ -16,7 +16,7 @@ from .config import settings
 from .dependencies import (
     get_jina_client,
 )
-from .routers import health, pages, process, retry, search
+from .routers import health, pages, process, retry, search, system_info
 from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
 
@@ -91,6 +91,7 @@ app.include_router(process.router)
 app.include_router(search.router)
 app.include_router(pages.router)
 app.include_router(retry.router)
+app.include_router(system_info.router)
 
 
 @app.get("/")

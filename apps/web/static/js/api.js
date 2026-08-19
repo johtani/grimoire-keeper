@@ -146,6 +146,10 @@ class ApiClient {
             return false;
         }
     }
+
+    async getSystemInfo() {
+        return this.request('/api/v1/system-info');
+    }
     
     // JSON file display helper
     openJsonInNewWindow(pageId) {
