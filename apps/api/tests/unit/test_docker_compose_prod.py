@@ -37,3 +37,10 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     assert 'case "${migration_status}"' in deploy
     assert '"${FORCE_SQLITE_BACKUP:-false}"' in deploy
     subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
+
+
+def test_deploy_removes_orphan_containers_when_recreating_services() -> None:
+    deploy = (Path(__file__).parents[4] / "scripts" / "deploy.sh").read_text()
+
+    assert "docker compose -f docker-compose.prod.yml down --remove-orphans" in deploy
+    assert "docker compose -f docker-compose.prod.yml up -d --remove-orphans" in deploy
