@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 from grimoire_api.dependencies import get_retry_service
 from grimoire_api.main import app
@@ -115,13 +116,49 @@ class TestRetryRouter:
 
         response = client.post(
             "/api/v1/retry-failed",
-            json={"max_retries": 5, "delay_seconds": 2},
+            json={"max_retries": 5},
         )
 
         assert response.status_code == 202
-        mock_service.retry_all_failed.assert_called_once_with(
-            max_retries=5, delay_seconds=2
+        mock_service.retry_all_failed.assert_called_once_with(max_retries=5)
+
+    @pytest.mark.parametrize("max_retries", [1, 1000])
+    def test_retry_all_failed_accepts_boundaries(self, max_retries: int) -> None:
+        """一括再処理件数の境界値を受理する."""
+        mock_service = AsyncMock()
+        mock_service.retry_all_failed.return_value = {
+            "status": "no_failed_pages",
+            "total_failed_pages": 0,
+            "retry_count": 0,
+            "message": "No failed pages found",
+        }
+        app.dependency_overrides[get_retry_service] = lambda: mock_service
+
+        response = client.post(
+            "/api/v1/retry-failed", json={"max_retries": max_retries}
         )
+
+        assert response.status_code == 202
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"max_retries": 0},
+            {"max_retries": -1},
+            {"max_retries": 1001},
+            {"delay_seconds": 1},
+            {"unknown": True},
+        ],
+    )
+    def test_retry_all_failed_rejects_invalid_request(
+        self, payload: dict[str, object]
+    ) -> None:
+        """制約違反や廃止済みフィールドを 422 にする."""
+        app.dependency_overrides[get_retry_service] = lambda: AsyncMock()
+
+        response = client.post("/api/v1/retry-failed", json=payload)
+
+        assert response.status_code == 422
 
     def test_reprocess_rejects_unknown_step(self) -> None:
         """未知の from_step は Pydantic により 422 になる."""

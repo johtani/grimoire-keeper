@@ -32,7 +32,11 @@ async def search(
         results = await search_service.vector_search(
             query=request.query,
             limit=request.limit,
-            filters=request.filters,
+            filters=(
+                request.filters.model_dump(exclude_none=True)
+                if request.filters
+                else None
+            ),
             vector_name=request.vector_name,
             exclude_keywords=request.exclude_keywords,
         )

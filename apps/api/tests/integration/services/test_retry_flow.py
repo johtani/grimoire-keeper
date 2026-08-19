@@ -233,7 +233,7 @@ class TestRetryMixedSuccessFailure:
             log_repo=log_repo,
         )
 
-        result = await retry_svc.retry_all_failed(delay_seconds=0)
+        result = await retry_svc.retry_all_failed()
 
         assert result["status"] == "batch_retry_started"
         assert result["total_failed_pages"] == 2
