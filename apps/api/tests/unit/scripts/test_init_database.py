@@ -31,7 +31,7 @@ async def test_sqlite_initialization_runs_migrations(
         assert await initialize_sqlite_only() is True
 
     database.initialize_tables.assert_awaited_once()
-    assert "schema version 4" in capsys.readouterr().out
+    assert f"schema version {LATEST_SCHEMA_VERSION}" in capsys.readouterr().out
 
 
 @pytest.mark.asyncio

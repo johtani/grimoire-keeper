@@ -1,11 +1,10 @@
 """Page service — ページ一覧・詳細取得のビジネスロジック."""
 
-from datetime import datetime
-
 from ..models.database import PageStatus
 from ..repositories.file_repository import FileRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
+from ..utils.datetime import as_utc
 
 
 class PageService:
@@ -93,11 +92,7 @@ class PageService:
                     "title": page.title,
                     "memo": page.memo,
                     "summary": page.summary,
-                    "created_at": (
-                        page.created_at
-                        if isinstance(page.created_at, datetime)
-                        else datetime.fromisoformat(str(page.created_at))
-                    ),
+                    "created_at": as_utc(page.created_at),
                     "status": status,
                     "has_json_file": has_json_file,
                 }

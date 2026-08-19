@@ -5,6 +5,7 @@ from datetime import datetime
 import aiosqlite
 
 from ..models.database import Job, JobKind, JobStatus, PipelineStartStep, ProcessingStep
+from ..utils.datetime import as_utc, utc_isoformat, utc_now, utc_now_isoformat
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 
@@ -23,13 +24,14 @@ class JobRepository:
             async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
                 cursor = await conn.execute(
-                    """INSERT INTO jobs (page_id, kind, status, start_step)
-                    VALUES (?, ?, 'queued', ?)""",
-                    (page_id, kind.value, start_step.value),
+                    """INSERT INTO jobs
+                    (page_id, kind, status, start_step, created_at)
+                    VALUES (?, ?, 'queued', ?, ?)""",
+                    (page_id, kind.value, start_step.value, utc_now_isoformat()),
                 )
                 await conn.execute(
                     "UPDATE pages SET status='queued', updated_at=? WHERE id=?",
-                    (datetime.now(), page_id),
+                    (utc_now_isoformat(), page_id),
                 )
                 await conn.commit()
                 return int(cursor.lastrowid or 0)
@@ -51,15 +53,16 @@ class JobRepository:
                 if row is None:
                     await conn.commit()
                     return None
-                now = datetime.now()
+                now = utc_now()
+                stored_now = utc_isoformat(now)
                 await conn.execute(
                     """UPDATE jobs SET status='running', attempt=attempt+1,
                     started_at=?, finished_at=NULL, error_message=NULL WHERE id=?""",
-                    (now, row["id"]),
+                    (stored_now, row["id"]),
                 )
                 await conn.execute(
                     "UPDATE pages SET status='processing', updated_at=? WHERE id=?",
-                    (now, row["page_id"]),
+                    (stored_now, row["page_id"]),
                 )
                 await conn.commit()
                 values = dict(row)
@@ -76,7 +79,7 @@ class JobRepository:
         )
 
     async def succeed(self, job_id: int, page_id: int) -> None:
-        now = datetime.now()
+        now = utc_now_isoformat()
         await self.db.execute_transaction(
             [
                 (
@@ -91,7 +94,7 @@ class JobRepository:
         )
 
     async def fail(self, job_id: int, page_id: int, message: str) -> None:
-        now = datetime.now()
+        now = utc_now_isoformat()
         await self.db.execute_transaction(
             [
                 (
@@ -143,7 +146,7 @@ class JobRepository:
 
     @staticmethod
     def _parse_datetime(value: str | datetime | None) -> datetime | None:
-        return datetime.fromisoformat(value) if isinstance(value, str) else value
+        return as_utc(value) if value is not None else None
 
     @classmethod
     def _row_to_job(cls, row: dict | aiosqlite.Row) -> Job:

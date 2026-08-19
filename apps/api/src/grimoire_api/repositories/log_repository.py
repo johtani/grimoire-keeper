@@ -1,8 +1,7 @@
 """Log repository."""
 
-from datetime import datetime
-
 from ..models.database import ProcessLog
+from ..utils.datetime import as_utc, utc_now_isoformat
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 
@@ -28,7 +27,7 @@ class LogRepository:
             VALUES (?, ?, ?, ?)
             """
             lastrowid = await self.db.execute(
-                query, (page_id, url, status, datetime.now())
+                query, (page_id, url, status, utc_now_isoformat())
             )
             return lastrowid or 0
         except Exception as e:
@@ -50,7 +49,7 @@ class LogRepository:
                     url=row["url"],
                     status=row["status"],
                     error_message=row["error_message"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
+                    created_at=as_utc(row["created_at"]),
                 )
                 for row in results
             ]
@@ -87,7 +86,7 @@ class LogRepository:
                     url=row["url"],
                     status=row["status"],
                     error_message=row["error_message"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
+                    created_at=as_utc(row["created_at"]),
                 )
                 for row in results
             ]

@@ -2,11 +2,11 @@
 
 import json
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 
 import aiosqlite
 
 from ..models.database import Page, PageStatus, ProcessingStep
+from ..utils.datetime import as_utc, utc_isoformat, utc_now_isoformat
 from ..utils.exceptions import DatabaseError, RepairDeletionConflictError
 from .database import DatabaseConnection
 
@@ -46,7 +46,7 @@ class PageRepository:
             INSERT INTO pages (url, title, memo, status, created_at, updated_at)
             VALUES (?, ?, ?, 'queued', ?, ?)
             """
-            now = datetime.now()
+            now = utc_now_isoformat()
             lastrowid = await self.db.execute(query, (url, title, memo, now, now))
             return lastrowid or 0
         except Exception as e:
@@ -60,7 +60,7 @@ class PageRepository:
             async with self.db.connect() as conn:
                 try:
                     await conn.execute("BEGIN IMMEDIATE")
-                    now = datetime.now()
+                    now = utc_now_isoformat()
                     page_cursor = await conn.execute(
                         """
                         INSERT INTO pages
@@ -82,10 +82,11 @@ class PageRepository:
 
                     job_cursor = await conn.execute(
                         """
-                        INSERT INTO jobs (page_id, kind, status, start_step)
-                        VALUES (?, 'initial', 'queued', 'download')
+                        INSERT INTO jobs
+                            (page_id, kind, status, start_step, created_at)
+                        VALUES (?, 'initial', 'queued', 'download', ?)
                         """,
-                        (page_id,),
+                        (page_id, now),
                     )
                     job_id = int(job_cursor.lastrowid or 0)
                     await conn.commit()
@@ -167,11 +168,11 @@ class PageRepository:
         date_from = filters.get("date_from")
         if date_from:
             conditions.append("created_at >= ?")
-            params.append(date_from)
+            params.append(utc_isoformat(date_from))
         date_to = filters.get("date_to")
         if date_to:
             conditions.append("created_at <= ?")
-            params.append(date_to)
+            params.append(utc_isoformat(date_to))
 
         valid_excludes = [
             keyword.strip()
@@ -207,7 +208,7 @@ class PageRepository:
                 (
                     summary,
                     json.dumps(keywords, ensure_ascii=False),
-                    datetime.now(),
+                    utc_now_isoformat(),
                     page_id,
                 ),
             )
@@ -218,7 +219,7 @@ class PageRepository:
         """ページタイトル更新."""
         try:
             query = "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?"
-            await self.db.execute(query, (title, datetime.now(), page_id))
+            await self.db.execute(query, (title, utc_now_isoformat(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update page title: {str(e)}")
 
@@ -236,7 +237,7 @@ class PageRepository:
             query = (
                 "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
             )
-            await self.db.execute(query, (step, datetime.now(), page_id))
+            await self.db.execute(query, (step, utc_now_isoformat(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update success step: {str(e)}")
 
@@ -245,7 +246,7 @@ class PageRepository:
         try:
             await self.db.execute(
                 "UPDATE pages SET status=?, updated_at=? WHERE id=?",
-                (status.value, datetime.now(), page_id),
+                (status.value, utc_now_isoformat(), page_id),
             )
         except Exception as e:
             raise DatabaseError(f"Failed to update page status: {e}")
@@ -268,7 +269,7 @@ class PageRepository:
                 cursor = await conn.execute(
                     """UPDATE pages SET url=?, status='failed', updated_at=?
                     WHERE id=? AND url=?""",
-                    (new_url, datetime.now(), page_id, current_url),
+                    (new_url, utc_now_isoformat(), page_id, current_url),
                 )
                 await conn.commit()
                 return cursor.rowcount == 1
@@ -285,7 +286,7 @@ class PageRepository:
             "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
         )
         try:
-            now = datetime.now()
+            now = utc_now_isoformat()
             await self.db.execute_transaction(
                 [
                     (
@@ -309,7 +310,7 @@ class PageRepository:
             "UPDATE pages SET summary = ?, keywords = ?, updated_at = ? WHERE id = ?"
         )
         try:
-            now = datetime.now()
+            now = utc_now_isoformat()
             await self.db.execute_transaction(
                 [
                     (
@@ -335,7 +336,7 @@ class PageRepository:
             "UPDATE pages SET last_success_step = ?, updated_at = ? WHERE id = ?"
         )
         try:
-            now = datetime.now()
+            now = utc_now_isoformat()
             await self.db.execute_transaction(
                 [
                     (
@@ -352,7 +353,7 @@ class PageRepository:
         """Weaviate IDをクリア (ロールバック用)."""
         try:
             query = "UPDATE pages SET weaviate_id = NULL, updated_at = ? WHERE id = ?"
-            await self.db.execute(query, (datetime.now(), page_id))
+            await self.db.execute(query, (utc_now_isoformat(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to clear weaviate_id: {str(e)}")
 
@@ -545,8 +546,8 @@ class PageRepository:
             memo=row["memo"],
             summary=row["summary"],
             keywords=self._parse_keywords(row["keywords"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=as_utc(row["created_at"]),
+            updated_at=as_utc(row["updated_at"]),
             weaviate_id=row["weaviate_id"],
             last_success_step=(
                 ProcessingStep(row["last_success_step"])

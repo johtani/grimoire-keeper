@@ -1,11 +1,11 @@
 """Repair-case persistence."""
 
 import json
-from datetime import datetime
 
 import aiosqlite
 
 from ..models.database import RepairCase, RepairStatus
+from ..utils.datetime import as_utc, utc_now_isoformat
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 
@@ -25,7 +25,7 @@ class RepairRepository:
         *,
         reopen_resolved: bool = True,
     ) -> None:
-        now = datetime.now()
+        now = utc_now_isoformat()
         await self.db.execute(
             """INSERT INTO repair_cases
             (page_id, source, report_url, reasons, status, detected_at, resolved_at)
@@ -58,7 +58,7 @@ class RepairRepository:
         await self.db.execute(
             """UPDATE repair_cases SET status='resolved', resolved_at=?
             WHERE page_id=? AND status='pending'""",
-            (datetime.now(), page_id),
+            (utc_now_isoformat(), page_id),
         )
 
     async def get_by_page_id(self, page_id: int) -> RepairCase | None:
@@ -88,11 +88,9 @@ class RepairRepository:
                 report_url=row["report_url"],
                 reasons=reasons,
                 status=RepairStatus(row["status"]),
-                detected_at=datetime.fromisoformat(row["detected_at"]),
+                detected_at=as_utc(row["detected_at"]),
                 resolved_at=(
-                    datetime.fromisoformat(row["resolved_at"])
-                    if row["resolved_at"]
-                    else None
+                    as_utc(row["resolved_at"]) if row["resolved_at"] else None
                 ),
             )
         except Exception as exc:
