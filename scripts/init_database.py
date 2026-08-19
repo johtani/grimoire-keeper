@@ -12,6 +12,10 @@ sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 import weaviate  # noqa: E402
 from grimoire_api.config import settings  # noqa: E402
 from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
+from grimoire_api.repositories.migrations import (  # noqa: E402
+    LATEST_SCHEMA_VERSION,
+    validate_database_schema,
+)
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
 
 
@@ -23,7 +27,10 @@ async def initialize_database() -> bool:
         # SQLiteデータベース初期化
         db = DatabaseConnection()
         await db.initialize_tables()
-        print("✅ SQLite database tables created successfully!")
+        print(
+            "✅ SQLite database migrated successfully "
+            f"(schema version {LATEST_SCHEMA_VERSION})!"
+        )
 
         # Weaviateスキーマ初期化
         print("🔧 Initializing Weaviate schema...")
@@ -69,7 +76,10 @@ async def initialize_sqlite_only() -> bool:
         # SQLiteデータベース初期化
         db = DatabaseConnection()
         await db.initialize_tables()
-        print("✅ SQLite database tables created successfully!")
+        print(
+            "✅ SQLite database migrated successfully "
+            f"(schema version {LATEST_SCHEMA_VERSION})!"
+        )
 
     except Exception as e:
         print(f"❌ SQLite initialization failed: {str(e)}")
@@ -90,17 +100,22 @@ async def check_database_status() -> bool:
     try:
         db = DatabaseConnection()
 
+        async with db.connect() as conn:
+            schema_version = await validate_database_schema(conn)
+        print(f"✅ SQLite schema version: {schema_version}")
+
         # テーブル存在確認
         tables_query = """
         SELECT name FROM sqlite_master
-        WHERE type='table' AND name IN ('pages', 'process_logs', 'jobs')
+        WHERE type='table'
+          AND name IN ('pages', 'process_logs', 'jobs', 'repair_cases')
         """
         tables = await db.fetch_all(tables_query)
         table_names = [table["name"] for table in tables]
 
         print(f"📊 Found tables: {table_names}")
 
-        if {"pages", "process_logs", "jobs"}.issubset(table_names):
+        if {"pages", "process_logs", "jobs", "repair_cases"}.issubset(table_names):
             print("✅ All required tables exist")
 
             # レコード数確認
@@ -136,9 +151,11 @@ async def reset_database() -> bool:
         db = DatabaseConnection()
 
         # テーブル削除
+        await db.execute("DROP TABLE IF EXISTS repair_cases")
         await db.execute("DROP TABLE IF EXISTS jobs")
         await db.execute("DROP TABLE IF EXISTS process_logs")
         await db.execute("DROP TABLE IF EXISTS pages")
+        await db.execute("DROP TABLE IF EXISTS schema_migrations")
         print("🗑️  Existing tables dropped")
 
         # テーブル再作成

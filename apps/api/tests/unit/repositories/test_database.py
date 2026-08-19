@@ -2,11 +2,16 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import aiosqlite
 import pytest
 from grimoire_api.repositories.database import DatabaseConnection
+from grimoire_api.repositories.migrations import (
+    LATEST_SCHEMA_VERSION,
+    MIGRATIONS,
+    SchemaMigrationError,
+    get_schema_version,
+)
 from grimoire_api.utils.exceptions import DatabaseError
 
 
@@ -40,53 +45,18 @@ class TestDatabaseInitialization:
         assert "idx_pages_last_success_step" in index_names
 
     @pytest.mark.asyncio
-    async def test_migration_duplicate_column_error_is_ignored(self) -> None:
-        """duplicate column エラーが発生しても例外にならないことを確認."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = f.name
-        try:
-            db = DatabaseConnection(db_path)
-            duplicate_error = aiosqlite.OperationalError(
-                "duplicate column name: last_success_step"
-            )
-            with patch("aiosqlite.connect") as mock_connect:
-                mock_conn = AsyncMock()
-                mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-                mock_conn.__aexit__ = AsyncMock(return_value=False)
+    async def test_schema_history_created(self, temp_db: DatabaseConnection) -> None:
+        """新規DBに連続したマイグレーション履歴が作成される."""
+        async with temp_db.connect() as conn:
+            version = await get_schema_version(conn)
+            rows = await (
+                await conn.execute(
+                    "SELECT version, name FROM schema_migrations ORDER BY version"
+                )
+            ).fetchall()
 
-                async def execute(query: str, *args: object) -> None:
-                    if "ADD COLUMN last_success_step" in query:
-                        raise duplicate_error
-
-                mock_conn.execute = AsyncMock(side_effect=execute)
-                mock_connect.return_value = mock_conn
-                await db.initialize_tables()  # 例外が発生しないことを確認
-        finally:
-            Path(db_path).unlink(missing_ok=True)
-
-    @pytest.mark.asyncio
-    async def test_migration_other_operational_error_is_raised(self) -> None:
-        """duplicate column 以外の OperationalError は再 raise されることを確認."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = f.name
-        try:
-            db = DatabaseConnection(db_path)
-            other_error = aiosqlite.OperationalError("no such table: pages")
-            with patch("aiosqlite.connect") as mock_connect:
-                mock_conn = AsyncMock()
-                mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-                mock_conn.__aexit__ = AsyncMock(return_value=False)
-
-                async def execute(query: str, *args: object) -> None:
-                    if "ADD COLUMN last_success_step" in query:
-                        raise other_error
-
-                mock_conn.execute = AsyncMock(side_effect=execute)
-                mock_connect.return_value = mock_conn
-                with pytest.raises(aiosqlite.OperationalError, match="no such table"):
-                    await db.initialize_tables()
-        finally:
-            Path(db_path).unlink(missing_ok=True)
+        assert version == LATEST_SCHEMA_VERSION
+        assert rows == [(item.version, item.name) for item in MIGRATIONS]
 
 
 class TestForeignKeyConstraints:
@@ -194,6 +164,28 @@ class TestReadOnlyDatabaseConnection:
 class TestLegacyDatabaseMigration:
     """旧データベースの移行処理を検証する."""
 
+    async def create_legacy_schema(self, db_path: str, version: int) -> None:
+        """指定バージョン相当の履歴なしDBを作る."""
+        async with aiosqlite.connect(db_path) as conn:
+            for migration in MIGRATIONS[:version]:
+                await migration.apply(conn)
+            await conn.commit()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("legacy_version", range(1, LATEST_SCHEMA_VERSION + 1))
+    async def test_each_known_legacy_schema_migrates(
+        self, tmp_path: Path, legacy_version: int
+    ) -> None:
+        """既知の各旧スキーマを判定して最新版へ移行する."""
+        db_path = str(tmp_path / f"legacy-{legacy_version}.db")
+        await self.create_legacy_schema(db_path, legacy_version)
+
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+
+        async with db.connect() as conn:
+            assert await get_schema_version(conn) == LATEST_SCHEMA_VERSION
+
     @pytest.mark.asyncio
     async def test_legacy_pages_are_backfilled_idempotently(self) -> None:
         """旧スキーマの完了・未完了ページを現在状態へ一度だけ移行する."""
@@ -208,6 +200,13 @@ class TestLegacyDatabaseMigration:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     weaviate_id TEXT, last_success_step TEXT)"""
+                )
+                await conn.execute(
+                    """CREATE TABLE process_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, page_id INTEGER,
+                    url TEXT NOT NULL, status TEXT NOT NULL, error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (page_id) REFERENCES pages(id))"""
                 )
                 await conn.execute(
                     """INSERT INTO pages (url, title, summary, weaviate_id)
@@ -232,3 +231,81 @@ class TestLegacyDatabaseMigration:
             assert jobs is not None and jobs["count"] == 0
         finally:
             Path(db_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_unknown_unversioned_schema_is_rejected(self, tmp_path: Path) -> None:
+        """部分的な未知スキーマを推測で修復しない."""
+        db_path = str(tmp_path / "unknown.db")
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute("CREATE TABLE pages (id INTEGER PRIMARY KEY)")
+            await conn.commit()
+
+        with pytest.raises(SchemaMigrationError, match="Unknown unversioned"):
+            await DatabaseConnection(db_path).initialize_tables()
+
+        async with aiosqlite.connect(db_path) as conn:
+            tables = await (
+                await conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            ).fetchall()
+        assert ("schema_migrations",) not in tables
+
+    @pytest.mark.asyncio
+    async def test_future_schema_version_is_rejected(self, tmp_path: Path) -> None:
+        """アプリより新しいスキーマ履歴では安全に失敗する."""
+        db_path = str(tmp_path / "future.db")
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+        await db.execute(
+            "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+            (LATEST_SCHEMA_VERSION + 1, "future"),
+        )
+
+        with pytest.raises(SchemaMigrationError, match="newer than this release"):
+            await db.initialize_tables()
+
+    @pytest.mark.asyncio
+    async def test_corrupt_versioned_schema_is_rejected(self, tmp_path: Path) -> None:
+        """履歴と実スキーマが一致しないDBでは失敗する."""
+        db_path = str(tmp_path / "corrupt.db")
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+        await db.execute("DROP INDEX idx_pages_status")
+
+        with pytest.raises(SchemaMigrationError, match="missing indexes"):
+            await db.initialize_tables()
+
+    @pytest.mark.asyncio
+    async def test_failed_migration_is_rolled_back(self, tmp_path: Path) -> None:
+        """DDL失敗時にスキーマ変更と履歴を同時にロールバックする."""
+        db_path = str(tmp_path / "rollback.db")
+        await self.create_legacy_schema(db_path, 2)
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "CREATE INDEX idx_process_logs_page_id ON process_logs(page_id)"
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        with pytest.raises(aiosqlite.OperationalError, match="already exists"):
+            await db.initialize_tables()
+
+        async with aiosqlite.connect(db_path) as conn:
+            page_columns = await (
+                await conn.execute("PRAGMA table_info(pages)")
+            ).fetchall()
+            tables = await (
+                await conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            ).fetchall()
+            history = await (
+                await conn.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                )
+            ).fetchall()
+
+        assert "status" not in {row[1] for row in page_columns}
+        assert ("jobs",) not in tables
+        assert history == [(1,), (2,)]
