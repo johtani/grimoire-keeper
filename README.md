@@ -235,6 +235,10 @@ uv run pytest apps/api/tests/integration/ -v
 uv run pytest --cov=apps --cov-report=html
 ```
 
+SQLiteスキーマを変更する場合は、バージョン番号、移行テスト、デプロイ前バックアップ、
+ロールバックを含む[開発ガイドのSQLiteスキーマ変更手順](docs/development.md#sqliteスキーマの変更)
+に従ってください。
+
 ## 🔧 Troubleshooting / トラブルシューティング
 
 **Weaviate 接続エラー**
