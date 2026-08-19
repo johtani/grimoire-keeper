@@ -88,6 +88,8 @@ class TestProcessRouter:
         )
 
         assert response.status_code == 422
+        assert "detail" in response.json()
+        assert "error" not in response.json()
 
     def test_process_url_rejects_encoded_slack_suffix(self) -> None:
         """末尾のエンコード済み閉じ山括弧も拒否する."""

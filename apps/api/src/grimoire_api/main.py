@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -27,6 +28,18 @@ from .utils.exceptions import ResourceConflictError, ResourceNotFoundError
 from .utils.warnings_filter import *  # noqa: F403, F401
 
 logger = logging.getLogger(__name__)
+
+PAGE_RESOURCE_ROUTES = frozenset(
+    {
+        "/api/v1/process-status/{page_id}",
+        "/api/v1/pages/{page_id}",
+        "/api/v1/pages/{page_id}/json",
+        "/api/v1/pages/{page_id}/repair",
+        "/api/v1/pages/{page_id}/url",
+        "/api/v1/retry/{page_id}",
+        "/api/v1/reprocess/{page_id}",
+    }
+)
 
 # 環境変数の必須チェック（テスト環境以外）
 if not os.getenv("PYTEST_CURRENT_TEST"):
@@ -109,7 +122,11 @@ async def resource_conflict_handler(
 async def request_validation_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Return request validation failures in the common API error format."""
+    """Use the common validation contract for page-resource APIs."""
+    route = request.scope.get("route")
+    if getattr(route, "path", None) not in PAGE_RESOURCE_ROUTES:
+        return await request_validation_exception_handler(request, exc)
+
     details = [
         {
             "location": [str(part) for part in error["loc"]],
