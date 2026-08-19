@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from .database import (
     JobStatus,
@@ -248,3 +248,42 @@ class DeletePageResponse(BaseModel):
     page_id: int
     url: str
     status: str
+
+
+class ExternalServiceInfo(BaseModel):
+    """External service used by Grimoire Keeper."""
+
+    name: str
+    purpose: str
+    model: str | None = None
+
+
+class VectorizerInfo(BaseModel):
+    """Named vector configuration read from Weaviate."""
+
+    name: str
+    vectorizer: str
+    model: dict[str, JsonValue]
+    uses_module_default: bool
+
+
+class WeaviateCollectionInfo(BaseModel):
+    """Vectorizer configuration for a Weaviate collection."""
+
+    name: str
+    vectors: list[VectorizerInfo]
+
+
+class WeaviateSystemInfo(BaseModel):
+    """Availability and schema information for Weaviate."""
+
+    status: str
+    message: str
+    collections: list[WeaviateCollectionInfo]
+
+
+class SystemInfoResponse(BaseModel):
+    """Public, non-secret runtime service information."""
+
+    services: list[ExternalServiceInfo]
+    weaviate: WeaviateSystemInfo

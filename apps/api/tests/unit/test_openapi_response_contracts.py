@@ -20,6 +20,7 @@ def test_public_api_success_responses_use_concrete_schemas() -> None:
         ("/api/v1/pages/{page_id}/repair", "get", "200"): "RepairDetailResponse",
         ("/api/v1/pages/{page_id}", "delete", "200"): "DeletePageResponse",
         ("/api/v1/pages/{page_id}/url", "patch", "200"): "UpdatePageUrlResponse",
+        ("/api/v1/system-info", "get", "200"): "SystemInfoResponse",
     }
 
     for (path, method, status_code), model_name in expected_schemas.items():
