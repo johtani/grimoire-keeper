@@ -58,7 +58,7 @@ fi
 
 # 既存コンテナ停止・削除
 echo "既存サービス停止中..."
-docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down --remove-orphans
 
 # ビルド情報を環境変数にセット
 export GIT_COMMIT=$(git rev-parse --short HEAD)
@@ -115,7 +115,7 @@ bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
 
 # サービス起動
 echo "サービス起動中..."
-bws run -- docker compose -f docker-compose.prod.yml up -d
+bws run -- docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 # ヘルスチェック
 echo "サービス起動確認中..."
