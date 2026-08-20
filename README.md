@@ -276,7 +276,9 @@ bws secret list        # Bitwarden からシークレット取得テスト
 | `POST` | `/api/v1/retry-failed` | Retry all failed pages / 失敗した全ページを再実行 |
 | `GET` | `/api/v1/pages` | List pages with status filtering / ステータスフィルタ付きページ一覧 |
 | `GET` | `/api/v1/pages/{id}` | Get page details with error info / エラー情報付きページ詳細 |
-| `GET` | `/api/v1/health` | Health check / ヘルスチェック |
+| `GET` | `/api/v1/health` | Backward-compatible readiness check / 後方互換のReadinessチェック |
+| `GET` | `/api/v1/health/ready` | Dependency readiness check / 依存サービスのReadinessチェック |
+| `GET` | `/api/v1/health/live` | API process liveness check / APIプロセスのLivenessチェック |
 
 ### Request/Response Examples / リクエスト・レスポンス例
 

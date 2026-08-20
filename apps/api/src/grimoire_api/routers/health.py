@@ -91,13 +91,31 @@ async def liveness_check() -> LivenessResponse:
     )
 
 
-@router.get("/health/ready", response_model=HealthResponse)
+@router.get(
+    "/health/ready",
+    response_model=HealthResponse,
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": HealthResponse,
+            "description": "SQLite or Weaviate is unavailable",
+        }
+    },
+)
 async def readiness_check(request: Request, response: Response) -> HealthResponse:
     """依存サービスを含めてリクエスト受付可能か確認する."""
     return await _readiness_check(request, response)
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": HealthResponse,
+            "description": "SQLite or Weaviate is unavailable",
+        }
+    },
+)
 async def health_check(request: Request, response: Response) -> HealthResponse:
     """後方互換のため readiness と同じ結果を返す."""
     return await _readiness_check(request, response)
