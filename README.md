@@ -123,7 +123,9 @@ API はジョブを永続化し、`page_id` と `job_id` を含む `202 Accepted
 ### Search content / コンテンツの検索
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/search?query=machine%20learning&limit=5"
+curl -X POST "http://localhost:8000/api/v1/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "machine learning", "limit": 5}'
 ```
 
 ### Check processing status / 処理状況の確認
@@ -267,7 +269,7 @@ bws secret list        # Bitwarden からシークレット取得テスト
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v1/process-url` | Process a URL and extract content / URLを処理してコンテンツを抽出 |
-| `GET` | `/api/v1/search` | Search processed content / 処理済みコンテンツを検索 |
+| `POST` | `/api/v1/search` | Search processed content / 処理済みコンテンツを検索 |
 | `GET` | `/api/v1/process-status/{id}` | Check processing status / 処理状況を確認 |
 | `POST` | `/api/v1/retry/{id}` | Retry failed processing for specific page / 特定ページの失敗処理を再実行 |
 | `POST` | `/api/v1/reprocess/{id}` | Reprocess any page from a selected step / 任意ページを指定ステップから再処理 |
@@ -297,20 +299,30 @@ Response:
 
 **Search / 検索**
 ```json
-GET /api/v1/search?query=machine%20learning&limit=5
+POST /api/v1/search
+{
+  "query": "machine learning",
+  "limit": 5
+}
 
 Response:
 {
   "results": [
     {
       "page_id": 123,
+      "chunk_id": 0,
       "url": "https://example.com",
       "title": "ML Article",
+      "memo": "Interesting article",
+      "content": "Machine learning is a field of artificial intelligence...",
       "summary": "Article about machine learning...",
       "keywords": ["machine learning", "AI"],
+      "created_at": "2026-01-15T09:30:00Z",
       "score": 0.95
     }
-  ]
+  ],
+  "total": 1,
+  "query": "machine learning"
 }
 ```
 
