@@ -84,7 +84,7 @@
 
 4. **Start Weaviate / Weaviateの起動**
    ```bash
-   docker compose up -d weaviate
+   docker compose -f docker-compose.prod.yml up -d weaviate
    ```
 
 5. **Initialize database / データベースの初期化**
@@ -218,7 +218,7 @@ grimoire-keeper/
 3. **Running Services / サービスの実行**
    ```bash
    # Infrastructure / インフラ
-   docker compose up -d weaviate
+   docker compose -f docker-compose.prod.yml up -d weaviate
 
    # Application / アプリケーション (bws run がシークレットを自動注入)
    bash scripts/dev.sh
@@ -245,8 +245,8 @@ SQLiteスキーマを変更する場合は、バージョン番号、移行テ�
 
 **Weaviate 接続エラー**
 ```bash
-docker compose ps weaviate       # 状態確認
-docker compose restart weaviate  # 再起動
+docker compose -f docker-compose.prod.yml ps weaviate       # 状態確認
+docker compose -f docker-compose.prod.yml restart weaviate  # 再起動
 ```
 
 **データベースエラー**
@@ -345,11 +345,11 @@ DATABASE_PATH=./grimoire.db
 
 ### Docker Compose
 
-The project includes a `docker-compose.yml` for running Weaviate:
-プロジェクトにはWeaviate実行用の`docker-compose.yml`が含まれています：
+The project includes a `docker-compose.prod.yml` for running Weaviate:
+プロジェクトにはWeaviate実行用の`docker-compose.prod.yml`が含まれています：
 
 ```bash
-docker compose up -d weaviate
+docker compose -f docker-compose.prod.yml up -d weaviate
 ```
 
 ## 🤝 Contributing / 貢献
