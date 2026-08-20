@@ -1,6 +1,7 @@
 """Search service for the separated Weaviate page and chunk models."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import weaviate
@@ -14,6 +15,8 @@ from ..utils.exceptions import VectorizerError
 
 _PAGE_VECTORS = frozenset({"title_vector", "memo_vector"})
 _CONTENT_VECTOR = "content_vector"
+_CANDIDATE_BATCH_SIZE = 100
+_MAX_CANDIDATES = 1000
 
 
 class SearchService:
@@ -59,25 +62,33 @@ class SearchService:
         filters: dict | None,
         exclude_keywords: list[str] | None,
     ) -> list[SearchResult]:
-        eligible_page_ids = await self.page_repo.get_searchable_page_ids(
-            filters, exclude_keywords
-        )
-        if not eligible_page_ids:
-            return []
-
         collection = self.weaviate_client.collections.get(
             settings.WEAVIATE_CHUNK_COLLECTION_NAME
         )
-        page_filter = self._build_page_id_filter(eligible_page_ids)
-        response = await asyncio.to_thread(
-            collection.query.near_text,
-            query=query,
-            target_vector=_CONTENT_VECTOR,
-            limit=limit,
-            filters=page_filter,
-            return_metadata=MetadataQuery(certainty=True),
+
+        async def fetch_batch(batch_limit: int, offset: int) -> Any:
+            return await asyncio.to_thread(
+                collection.query.near_text,
+                query=query,
+                target_vector=_CONTENT_VECTOR,
+                limit=batch_limit,
+                offset=offset,
+                filters=None,
+                return_metadata=MetadataQuery(certainty=True),
+            )
+
+        candidates = await self._collect_searchable_candidates(
+            fetch_batch, limit, filters, exclude_keywords
         )
-        return await self._convert_chunk_results(response)
+        return [
+            self._result_from_page(
+                page=page,
+                score=self._score(obj),
+                chunk_id=int(obj.properties.get("chunkId", 0)),
+                content=obj.properties.get("content", ""),
+            )
+            for obj, page in candidates
+        ]
 
     async def _page_vector_search(
         self,
@@ -87,54 +98,98 @@ class SearchService:
         vector_name: str,
         exclude_keywords: list[str] | None,
     ) -> list[SearchResult]:
-        eligible_page_ids = await self.page_repo.get_searchable_page_ids(
-            filters, exclude_keywords
-        )
-        if not eligible_page_ids:
-            return []
         collection = self.weaviate_client.collections.get(
             settings.WEAVIATE_PAGE_COLLECTION_NAME
         )
-        final_filter = self._build_page_id_filter(eligible_page_ids)
-        response = await asyncio.to_thread(
-            collection.query.near_text,
-            query=query,
-            target_vector=vector_name,
-            limit=limit,
-            filters=final_filter,
-            return_metadata=MetadataQuery(certainty=True),
+
+        async def fetch_batch(batch_limit: int, offset: int) -> Any:
+            return await asyncio.to_thread(
+                collection.query.near_text,
+                query=query,
+                target_vector=vector_name,
+                limit=batch_limit,
+                offset=offset,
+                filters=None,
+                return_metadata=MetadataQuery(certainty=True),
+            )
+
+        candidates = await self._collect_searchable_candidates(
+            fetch_batch, limit, filters, exclude_keywords
         )
-        return self._convert_page_results(response)
+        return [
+            self._result_from_page(page, self._score(obj), 0, "")
+            for obj, page in candidates
+        ]
 
     async def keyword_search(
         self, keywords: list[str], limit: int = 5
     ) -> list[SearchResult]:
         """ページ代表コレクションをキーワードで検索する."""
         try:
-            eligible_page_ids = await self.page_repo.get_searchable_page_ids()
-            if not eligible_page_ids:
-                return []
             collection = self.weaviate_client.collections.get(
                 settings.WEAVIATE_PAGE_COLLECTION_NAME
             )
-            response = await asyncio.to_thread(
-                collection.query.fetch_objects,
-                filters=self._combine_filters(
-                    Filter.by_property("keywords").contains_any(keywords),
-                    self._build_page_id_filter(eligible_page_ids),
-                ),
-                limit=limit,
+            keyword_filter = Filter.by_property("keywords").contains_any(keywords)
+
+            async def fetch_batch(batch_limit: int, offset: int) -> Any:
+                return await asyncio.to_thread(
+                    collection.query.fetch_objects,
+                    filters=keyword_filter,
+                    limit=batch_limit,
+                    offset=offset,
+                )
+
+            candidates = await self._collect_searchable_candidates(
+                fetch_batch,
+                limit,
+                {"keywords": keywords},
+                None,
             )
-            return self._convert_page_results(response)
+            return [
+                self._result_from_page(page, self._score(obj), 0, "")
+                for obj, page in candidates
+            ]
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")
 
-    @staticmethod
-    def _build_page_id_filter(page_ids: list[int]) -> Any:
-        conditions = [
-            Filter.by_property("pageId").equal(page_id) for page_id in page_ids
-        ]
-        return conditions[0] if len(conditions) == 1 else Filter.any_of(conditions)
+    async def _collect_searchable_candidates(
+        self,
+        fetch_batch: Callable[[int, int], Awaitable[Any]],
+        limit: int,
+        filters: dict | None,
+        exclude_keywords: list[str] | None,
+    ) -> list[tuple[Any, Page]]:
+        """固定サイズで候補を取得し、SQLiteを正として検索可否を判定する."""
+        results: list[tuple[Any, Page]] = []
+        offset = 0
+        while len(results) < limit and offset < _MAX_CANDIDATES:
+            batch_limit = min(_CANDIDATE_BATCH_SIZE, _MAX_CANDIDATES - offset)
+            response = await fetch_batch(batch_limit, offset)
+            objects = response.objects
+            if not objects:
+                break
+
+            page_ids = list(
+                dict.fromkeys(
+                    int(obj.properties.get("pageId", 0))
+                    for obj in objects
+                    if obj.properties.get("pageId")
+                )
+            )
+            pages = await self.page_repo.get_searchable_pages_by_ids(
+                page_ids, filters, exclude_keywords
+            )
+            for obj in objects:
+                page = pages.get(int(obj.properties.get("pageId", 0)))
+                if page is not None:
+                    results.append((obj, page))
+                    if len(results) == limit:
+                        break
+
+            offset += len(objects)
+            if len(objects) < batch_limit:
+                break
+        return results
 
     def _build_weaviate_filter(self, filters: dict) -> Any:
         conditions = []
