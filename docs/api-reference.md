@@ -333,6 +333,262 @@ curl -X GET "http://localhost:8000/api/v1/pages/123"
 
 ---
 
+### Repair Management
+
+Repair cases identify stored pages that need manual correction or reprocessing.
+Cases have a `pending` or `resolved` status.
+
+#### `GET /api/v1/repairs`
+
+List repair cases, filtered by repair status.
+
+**Query Parameters:**
+
+- `status` (string, optional, default=`pending`): `pending`, `resolved`, or `all`
+
+**Response:**
+
+```json
+{
+  "repairs": [
+    {
+      "page_id": 56,
+      "url": "https://example.com/article",
+      "report_url": null,
+      "source": "scan",
+      "reasons": [
+        {
+          "code": "missing_json",
+          "detail": "page 56 JSON is missing_json"
+        }
+      ],
+      "repair_status": "pending",
+      "detected_at": "2026-04-09T12:00:00Z",
+      "resolved_at": null
+    }
+  ],
+  "total": 1
+}
+```
+
+**Status Codes:**
+
+- `200 OK`: Repair cases returned
+- `422 Unprocessable Entity`: `status` is not `pending`, `resolved`, or `all`
+
+**Validation Error Example:**
+
+```json
+{
+  "detail": [
+    {
+      "type": "string_pattern_mismatch",
+      "loc": ["query", "status"],
+      "msg": "String should match pattern '^(pending|resolved|all)$'",
+      "input": "invalid"
+    }
+  ]
+}
+```
+
+#### `POST /api/v1/repairs/import`
+
+Import migration repair cases from `REPAIR_REPORT_PATH` (default:
+`./data/migration/repair-pending.json`). This endpoint has no request body.
+Existing resolved cases are not reopened by an imported report.
+
+**Response:**
+
+```json
+{
+  "imported": 3,
+  "missing_pages": 1,
+  "url_mismatches": 1
+}
+```
+
+**Status Codes:**
+
+- `200 OK`: Report processed
+- `404 Not Found`: Report file does not exist
+- `422 Unprocessable Entity`: Report JSON or schema is invalid
+
+**Error Example:**
+
+```json
+{
+  "detail": "Repair report not found: data/migration/repair-pending.json"
+}
+```
+
+#### `POST /api/v1/repairs/scan`
+
+Scan all stored pages and create or update `pending` repair cases for pages whose
+cached source JSON is missing, invalid, or inconsistent. This endpoint has no
+request body.
+
+**Response:**
+
+```json
+{
+  "scanned": 120,
+  "pending": 2,
+  "resolved": 0
+}
+```
+
+**Status Codes:**
+
+- `200 OK`: Scan completed
+- `500 Internal Server Error`: Scan failed
+
+#### `GET /api/v1/pages/{page_id}/repair`
+
+Get the repair case, current JSON validation result, latest processing error and
+job, and Weaviate registration state for a page. `weaviate_registered` is `null`
+when Weaviate is unavailable.
+
+**Parameters:**
+
+- `page_id` (integer, required, greater than zero): Page ID
+
+**Response:**
+
+```json
+{
+  "page_id": 56,
+  "url": "https://example.com/article%3E",
+  "repair_status": "pending",
+  "reasons": [
+    {
+      "code": "malformed_url_suffix",
+      "detail": "URL ends with > or %3E"
+    }
+  ],
+  "json_validation": {
+    "valid": false,
+    "reasons": [
+      {
+        "code": "malformed_url_suffix",
+        "detail": "URL ends with > or %3E"
+      }
+    ]
+  },
+  "latest_error": "Jina API HTTP error 404",
+  "latest_job": {
+    "id": 91,
+    "status": "failed",
+    "start_step": "download",
+    "current_step": null,
+    "error_message": "Jina API HTTP error 404"
+  },
+  "weaviate_registered": false
+}
+```
+
+`repair_status`, `latest_error`, and `latest_job` can be `null` when no matching
+record exists. A latest job has status `queued`, `running`, `succeeded`, or
+`failed`; `start_step` is `download`, `llm`, or `vectorize`.
+
+**Status Codes:**
+
+- `200 OK`: Repair details returned
+- `404 Not Found`: Page does not exist
+- `422 Unprocessable Entity`: `page_id` is not a positive integer
+
+**Error Example:**
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "Page not found"
+  }
+}
+```
+
+#### `PATCH /api/v1/pages/{page_id}/url`
+
+Correct a page URL using optimistic locking. `current_url` must match the value
+currently stored for the page. A successful update marks the page as `failed`,
+creates or updates a `pending` repair case, and requires the page to be
+reprocessed.
+
+**Parameters:**
+
+- `page_id` (integer, required, greater than zero): Page ID
+
+**Request Body:**
+
+```json
+{
+  "current_url": "https://example.com/article%3E",
+  "new_url": "https://example.com/article"
+}
+```
+
+**Response:**
+
+```json
+{
+  "current_url": "https://example.com/article%3E",
+  "new_url": "https://example.com/article",
+  "status": "failed"
+}
+```
+
+**Status Codes:**
+
+- `200 OK`: URL updated and page marked for repair
+- `404 Not Found`: Page does not exist
+- `409 Conflict`: `current_url` is stale or `new_url` belongs to another page
+- `422 Unprocessable Entity`: Path or request body validation failed
+
+**Conflict Error Example:**
+
+```json
+{
+  "error": {
+    "code": "conflict",
+    "message": "Current URL does not match"
+  }
+}
+```
+
+**Validation Error Example:**
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Request validation failed",
+    "details": [
+      {
+        "location": ["body", "new_url"],
+        "message": "Value error, URL must not end with '>' or '%3E'",
+        "type": "value_error"
+      }
+    ]
+  }
+}
+```
+
+#### Repair State Transitions
+
+1. A report import, integrity scan, or manual URL correction creates or updates a
+   `pending` repair case.
+2. An imported report does not reopen a case that is already `resolved`. A later
+   scan or manual URL correction can reopen it when a current problem is found.
+3. Correct the underlying problem, then enqueue retry or reprocessing through the
+   corresponding processing API.
+4. After a job succeeds, the worker verifies the cached JSON and Weaviate object.
+   If both are valid, it changes the repair case from `pending` to `resolved` and
+   records `resolved_at`.
+5. Use `GET /api/v1/repairs?status=resolved` to audit resolved cases, or delete a
+   page while its repair case is still `pending` with the deletion API below.
+
+---
+
 ### Delete Pending Repair Page
 
 #### `DELETE /api/v1/pages/{page_id}`

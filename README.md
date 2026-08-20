@@ -274,8 +274,13 @@ bws secret list        # Bitwarden からシークレット取得テスト
 | `POST` | `/api/v1/retry/{id}` | Retry failed processing for specific page / 特定ページの失敗処理を再実行 |
 | `POST` | `/api/v1/reprocess/{id}` | Reprocess any page from a selected step / 任意ページを指定ステップから再処理 |
 | `POST` | `/api/v1/retry-failed` | Retry all failed pages / 失敗した全ページを再実行 |
+| `GET` | `/api/v1/repairs` | List repair cases / 修復ケース一覧 |
+| `POST` | `/api/v1/repairs/import` | Import a repair report / 修復レポート取込 |
+| `POST` | `/api/v1/repairs/scan` | Scan pages for repair cases / 修復対象ページのスキャン |
 | `GET` | `/api/v1/pages` | List pages with status filtering / ステータスフィルタ付きページ一覧 |
 | `GET` | `/api/v1/pages/{id}` | Get page details with error info / エラー情報付きページ詳細 |
+| `GET` | `/api/v1/pages/{id}/repair` | Get page repair details / ページ修復詳細 |
+| `PATCH` | `/api/v1/pages/{id}/url` | Correct a page URL / ページURL修正 |
 | `GET` | `/api/v1/health` | Backward-compatible readiness check / 後方互換のReadinessチェック |
 | `GET` | `/api/v1/health/ready` | Dependency readiness check / 依存サービスのReadinessチェック |
 | `GET` | `/api/v1/health/live` | API process liveness check / APIプロセスのLivenessチェック |
