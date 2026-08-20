@@ -8,6 +8,9 @@ def test_public_api_success_responses_use_concrete_schemas() -> None:
     """型付きへ移行した API が具体的な OpenAPI スキーマを公開する."""
     schema = TestClient(app).get("/openapi.json").json()
     expected_schemas = {
+        ("/api/v1/health", "get", "200"): "HealthResponse",
+        ("/api/v1/health/ready", "get", "200"): "HealthResponse",
+        ("/api/v1/health/live", "get", "200"): "LivenessResponse",
         ("/api/v1/pages", "get", "200"): "PageListResponse",
         ("/api/v1/pages/{page_id}", "get", "200"): "PageResponse",
         ("/api/v1/process-status/{page_id}", "get", "200"): "ProcessStatusResponse",
@@ -27,6 +30,17 @@ def test_public_api_success_responses_use_concrete_schemas() -> None:
         response_schema = schema["paths"][path][method]["responses"][status_code]
         assert response_schema["content"]["application/json"]["schema"] == {
             "$ref": f"#/components/schemas/{model_name}"
+        }
+
+
+def test_readiness_errors_use_health_response_schema() -> None:
+    """readiness API が503レスポンスにも通常時と同じ契約を公開する."""
+    schema = TestClient(app).get("/openapi.json").json()
+
+    for path in ("/api/v1/health", "/api/v1/health/ready"):
+        response_schema = schema["paths"][path]["get"]["responses"]["503"]
+        assert response_schema["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/HealthResponse"
         }
 
 

@@ -18,24 +18,67 @@ Currently, no authentication is required. API keys for external services are con
 
 #### `GET /api/v1/health`
 
-Check the health status of the API and its dependencies.
+Backward-compatible alias for the readiness check. It returns the same response as
+`GET /api/v1/health/ready`.
 
-**Response:**
+#### `GET /api/v1/health/ready`
+
+Check whether the API is ready to accept requests. Both SQLite and Weaviate must be
+available for this endpoint to return `200 OK`.
+
+**200 Response:**
+
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-01-01T12:00:00Z",
-  "services": {
-    "database": "healthy",
-    "weaviate": "healthy",
-    "jina_ai": "healthy"
-  }
+  "message": "Grimoire Keeper API is ready",
+  "version": "0.1.0",
+  "git_commit": "abc1234",
+  "build_date": "2026-04-09T12:00:00Z",
+  "database": "ready",
+  "weaviate": "ready"
+}
+```
+
+**503 Response:**
+
+```json
+{
+  "status": "unhealthy",
+  "message": "Weaviate is not available",
+  "version": "0.1.0",
+  "git_commit": "abc1234",
+  "build_date": "2026-04-09T12:00:00Z",
+  "database": "ready",
+  "weaviate": "unavailable"
 }
 ```
 
 **Status Codes:**
-- `200 OK`: All services are healthy
-- `503 Service Unavailable`: One or more services are unhealthy
+
+- `200 OK`: SQLite and Weaviate are ready
+- `503 Service Unavailable`: SQLite or Weaviate is unavailable
+
+#### `GET /api/v1/health/live`
+
+Check whether the API process can respond to HTTP requests. This endpoint does not
+check SQLite or Weaviate.
+
+**200 Response:**
+
+```json
+{
+  "status": "healthy",
+  "message": "Grimoire Keeper API is running",
+  "version": "0.1.0",
+  "git_commit": "abc1234",
+  "build_date": "2026-04-09T12:00:00Z"
+}
+```
+
+**Status Codes:**
+
+- `200 OK`: The API process is running
 
 ---
 
