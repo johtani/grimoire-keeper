@@ -59,7 +59,7 @@ async def initialize_database() -> bool:
                 print("✅ Weaviate schema created successfully!")
             else:
                 print("⚠️  Weaviate is not running. Please start Weaviate first:")
-                print("   docker compose up -d weaviate")
+                print("   docker compose -f docker-compose.prod.yml up -d weaviate")
                 return False
         finally:
             weaviate_client.close()

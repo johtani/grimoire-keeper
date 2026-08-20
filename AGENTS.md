@@ -38,7 +38,7 @@ uv run pytest --cov=apps --cov-report=html --cov-report=term-missing
 bash scripts/dev.sh
 
 # Weaviate を起動 (インテグレーションテストと API に必要)
-docker compose up -d weaviate
+docker compose -f docker-compose.prod.yml up -d weaviate
 
 # データベーススキーマを初期化
 uv run python scripts/init_database.py init
@@ -160,7 +160,7 @@ uv run pytest apps/api/tests/unit/ -v
   ```bash
   uv run pytest apps/api/tests/unit/ -v
   ```
-- インテグレーションテストは Weaviate の起動が必要 (`docker compose up -d weaviate`)
+- インテグレーションテストは Weaviate の起動が必要 (`docker compose -f docker-compose.prod.yml up -d weaviate`)
 - 変更に関連するテストがない場合は新規作成する
 
 ## ワークスペース構成

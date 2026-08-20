@@ -3,9 +3,11 @@
 import subprocess
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).parents[4]
+
 
 def test_weaviate_healthcheck_and_api_healthy_dependency() -> None:
-    compose = (Path(__file__).parents[4] / "docker-compose.prod.yml").read_text()
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
 
     assert "/v1/.well-known/ready" in compose
     assert "condition: service_healthy" in compose
@@ -14,7 +16,7 @@ def test_weaviate_healthcheck_and_api_healthy_dependency() -> None:
 
 
 def test_worker_overrides_api_healthcheck_and_allows_graceful_stop() -> None:
-    compose = (Path(__file__).parents[4] / "docker-compose.prod.yml").read_text()
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     worker_section = compose.split("  worker:", 1)[1].split("  weaviate:", 1)[0]
 
     assert '"grimoire_api.worker"' in worker_section
@@ -37,6 +39,20 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     assert 'case "${migration_status}"' in deploy
     assert '"${FORCE_SQLITE_BACKUP:-false}"' in deploy
     subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
+
+
+def test_documented_weaviate_commands_reference_tracked_compose_file() -> None:
+    """利用者向けのWeaviate起動案内が実在するComposeファイルを参照する."""
+    compose_file = PROJECT_ROOT / "docker-compose.prod.yml"
+    documented_command = "docker compose -f docker-compose.prod.yml up -d weaviate"
+
+    assert compose_file.is_file()
+    for relative_path in ("README.md", "AGENTS.md", "scripts/init_database.py"):
+        content = (PROJECT_ROOT / relative_path).read_text()
+        assert documented_command in content
+        assert "docker compose up -d weaviate" not in content
+
+    assert "`docker-compose.yml`" not in (PROJECT_ROOT / "README.md").read_text()
 
 
 def test_deploy_removes_orphan_containers_when_recreating_services() -> None:
