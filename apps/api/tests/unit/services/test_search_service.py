@@ -28,28 +28,27 @@ class TestSearchService:
     def search_service(self, mock_weaviate_client: MagicMock) -> SearchService:
         """SearchServiceフィクスチャ."""
         page_repo = MagicMock()
-        page_repo.get_searchable_page_ids = AsyncMock(return_value=[1, 2, 3, 4, 5])
-        page_repo.get_pages_by_ids = AsyncMock(
-            return_value={
-                page_id: Page(
-                    id=page_id,
-                    url=(
-                        "https://example.com"
-                        if page_id == 1
-                        else "https://filtered.com"
-                    ),
-                    title="Test Title" if page_id == 1 else "Filtered Title",
-                    memo=None,
-                    summary=("Test summary" if page_id == 1 else "Filtered summary"),
-                    keywords=["test", "example"],
-                    created_at=datetime(2023, 1, 1),
-                    updated_at=datetime(2023, 1, 1),
-                    weaviate_id="uuid",
-                    status=PageStatus.SUCCEEDED,
-                )
-                for page_id in range(1, 6)
+        pages = {
+            page_id: Page(
+                id=page_id,
+                url=("https://example.com" if page_id == 1 else "https://filtered.com"),
+                title="Test Title" if page_id == 1 else "Filtered Title",
+                memo=None,
+                summary=("Test summary" if page_id == 1 else "Filtered summary"),
+                keywords=["test", "example"],
+                created_at=datetime(2023, 1, 1),
+                updated_at=datetime(2023, 1, 1),
+                weaviate_id="uuid",
+                status=PageStatus.SUCCEEDED,
+            )
+            for page_id in range(1, 6)
+        }
+        page_repo.get_searchable_pages_by_ids = AsyncMock(
+            side_effect=lambda page_ids, *_args: {
+                page_id: pages[page_id] for page_id in page_ids if page_id in pages
             }
         )
+        page_repo.get_pages_by_ids = AsyncMock(return_value=pages)
         return SearchService(weaviate_client=mock_weaviate_client, page_repo=page_repo)
 
     def test_init(self: Any) -> None:
@@ -155,8 +154,9 @@ class TestSearchService:
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "test query"
         assert call_args[1]["target_vector"] == "content_vector"
-        assert call_args[1]["limit"] == 5
-        assert call_args[1]["filters"] is not None  # 成功済みpageIdに限定される
+        assert call_args[1]["limit"] == 100
+        assert call_args[1]["offset"] == 0
+        assert call_args[1]["filters"] is None
 
     @pytest.mark.asyncio
     async def test_vector_search_with_filters(
@@ -204,8 +204,11 @@ class TestSearchService:
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "filtered query"
         assert call_args[1]["target_vector"] == "content_vector"
-        assert call_args[1]["limit"] == 3
-        assert call_args[1]["filters"] is not None
+        assert call_args[1]["limit"] == 100
+        assert call_args[1]["offset"] == 0
+        assert call_args[1]["filters"] is None
+        repo_call = search_service.page_repo.get_searchable_pages_by_ids.call_args
+        assert repo_call.args[1] == filters
 
     @pytest.mark.asyncio
     async def test_vector_search_error(
@@ -249,7 +252,7 @@ class TestSearchService:
 
         assert len(results) == 1
         assert results[0].page_id == 5
-        assert results[0].url == "https://memo-search.com"
+        assert results[0].url == "https://filtered.com"
         assert results[0].score == 0.88
 
         # near_textが正しいパラメータで呼ばれたことを確認
@@ -257,8 +260,9 @@ class TestSearchService:
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "memo query"
         assert call_args[1]["target_vector"] == "memo_vector"
-        assert call_args[1]["limit"] == 3
-        assert call_args[1]["filters"] is not None
+        assert call_args[1]["limit"] == 100
+        assert call_args[1]["offset"] == 0
+        assert call_args[1]["filters"] is None
 
     @pytest.mark.asyncio
     async def test_keyword_search(
@@ -290,8 +294,66 @@ class TestSearchService:
 
         assert len(results) == 1
         assert results[0].page_id == 3
-        assert results[0].url == "https://keyword.com"
+        assert results[0].url == "https://filtered.com"
         assert results[0].score == 0.9  # 1.0 - 0.1
+
+    @pytest.mark.asyncio
+    async def test_search_refills_from_next_bounded_candidate_batch(
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
+    ) -> None:
+        """不適格候補を除外し、固定サイズの次バッチから結果を補充する."""
+
+        def candidate(page_id: int) -> MagicMock:
+            obj = MagicMock()
+            obj.properties = {"pageId": page_id, "chunkId": 0, "content": "text"}
+            obj.metadata.certainty = 0.8
+            return obj
+
+        first_response = MagicMock()
+        first_response.objects = [candidate(page_id) for page_id in range(1000, 1100)]
+        second_response = MagicMock()
+        second_response.objects = [candidate(1), candidate(2)]
+        collection = mock_weaviate_client.collections.get.return_value
+        collection.query.near_text.side_effect = [first_response, second_response]
+
+        results = await search_service.vector_search("query", limit=2)
+
+        assert [result.page_id for result in results] == [1, 2]
+        calls = collection.query.near_text.call_args_list
+        assert [call.kwargs["offset"] for call in calls] == [0, 100]
+        assert all(call.kwargs["limit"] == 100 for call in calls)
+        assert all(call.kwargs["filters"] is None for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_search_stops_at_candidate_scan_limit(
+        self, search_service: SearchService, mock_weaviate_client: MagicMock
+    ) -> None:
+        """大量の不適格候補があっても固定された最大件数で走査を止める."""
+
+        def response_for_batch(batch: int) -> MagicMock:
+            response = MagicMock()
+            response.objects = []
+            for index in range(100):
+                obj = MagicMock()
+                obj.properties = {"pageId": 10_000 + batch * 100 + index}
+                response.objects.append(obj)
+            return response
+
+        collection = mock_weaviate_client.collections.get.return_value
+        collection.query.near_text.side_effect = [
+            response_for_batch(batch) for batch in range(10)
+        ]
+
+        results = await search_service.vector_search("query", limit=5)
+
+        assert results == []
+        assert collection.query.near_text.call_count == 10
+        calls = collection.query.near_text.call_args_list
+        assert calls[-1].kwargs["offset"] == 900
+        assert all(call.kwargs["limit"] == 100 for call in calls)
+        repo_calls = search_service.page_repo.get_searchable_pages_by_ids.call_args_list
+        assert len(repo_calls) == 10
+        assert all(len(call.args[0]) <= 100 for call in repo_calls)
 
     def test_build_weaviate_filter_url(self, search_service: SearchService) -> None:
         """URLフィルター構築テスト."""
@@ -552,7 +614,7 @@ class TestSearchService:
 
         assert len(results) == 1
         assert results[0].page_id == 4
-        assert results[0].url == "https://title-search.com"
+        assert results[0].url == "https://filtered.com"
         assert results[0].score == 0.92
 
         # near_textが正しいパラメータで呼ばれたことを確認
@@ -560,5 +622,6 @@ class TestSearchService:
         call_args = mock_collection.query.near_text.call_args
         assert call_args[1]["query"] == "title query"
         assert call_args[1]["target_vector"] == "title_vector"
-        assert call_args[1]["limit"] == 5
-        assert call_args[1]["filters"] is not None
+        assert call_args[1]["limit"] == 100
+        assert call_args[1]["offset"] == 0
+        assert call_args[1]["filters"] is None

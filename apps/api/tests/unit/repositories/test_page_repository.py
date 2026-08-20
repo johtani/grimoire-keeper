@@ -152,7 +152,7 @@ class TestPageRepository:
         assert pages[first_id].title == "One"
 
     @pytest.mark.asyncio
-    async def test_get_searchable_page_ids_applies_filters(
+    async def test_get_searchable_pages_by_ids_applies_filters(
         self, page_repo: Any
     ) -> None:
         """本文検索用のページ属性・除外キーワードをSQLiteで絞り込む."""
@@ -172,15 +172,17 @@ class TestPageRepository:
         )
         await page_repo.update_status(excluded_id, PageStatus.SUCCEEDED)
 
-        result = await page_repo.get_searchable_page_ids(
+        result = await page_repo.get_searchable_pages_by_ids(
+            [target_id, excluded_id, 999999],
             filters={"url": "docs.example", "keywords": ["python"]},
             exclude_keywords=["legacy"],
         )
 
-        assert result == [target_id]
+        assert set(result) == {target_id}
+        assert result[target_id].title == "Python"
 
     @pytest.mark.asyncio
-    async def test_get_searchable_page_ids_applies_date_range(
+    async def test_get_searchable_pages_by_ids_applies_date_range(
         self, page_repo: Any
     ) -> None:
         """本文検索用の日付範囲で対象ページを絞り込む."""
@@ -190,18 +192,45 @@ class TestPageRepository:
         page = await page_repo.get_page(page_id)
         assert page is not None
 
-        result = await page_repo.get_searchable_page_ids(
+        result = await page_repo.get_searchable_pages_by_ids(
+            [page_id],
             filters={
                 "date_from": page.created_at - timedelta(seconds=1),
                 "date_to": page.created_at + timedelta(seconds=1),
-            }
+            },
         )
-        outside = await page_repo.get_searchable_page_ids(
-            filters={"date_from": datetime.now() + timedelta(days=1)}
+        outside = await page_repo.get_searchable_pages_by_ids(
+            [page_id], filters={"date_from": datetime.now() + timedelta(days=1)}
         )
 
-        assert result == [page_id]
-        assert outside == []
+        assert set(result) == {page_id}
+        assert outside == {}
+
+    @pytest.mark.asyncio
+    async def test_get_searchable_pages_by_ids_rejects_non_succeeded_pages(
+        self, page_repo: Any
+    ) -> None:
+        """候補内でも成功状態でないページは検索対象にしない."""
+        succeeded_id = await page_repo.create_page("https://ok.example", "OK")
+        processing_id = await page_repo.create_page(
+            "https://processing.example", "Processing"
+        )
+        failed_id = await page_repo.create_page("https://failed.example", "Failed")
+        await page_repo.update_status(succeeded_id, PageStatus.SUCCEEDED)
+        await page_repo.update_status(failed_id, PageStatus.FAILED)
+
+        result = await page_repo.get_searchable_pages_by_ids(
+            [succeeded_id, processing_id, failed_id, 999999]
+        )
+
+        assert set(result) == {succeeded_id}
+
+    @pytest.mark.asyncio
+    async def test_get_searchable_pages_by_ids_empty_candidates(
+        self, page_repo: Any
+    ) -> None:
+        """候補が空ならDB問い合わせなしで空の結果を返す."""
+        assert await page_repo.get_searchable_pages_by_ids([]) == {}
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_page(self, page_repo: Any) -> None:

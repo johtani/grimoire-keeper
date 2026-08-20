@@ -131,14 +131,20 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get pages by IDs: {str(e)}")
 
-    async def get_searchable_page_ids(
+    async def get_searchable_pages_by_ids(
         self,
+        page_ids: list[int],
         filters: dict | None = None,
         exclude_keywords: list[str] | None = None,
-    ) -> list[int]:
-        """本文検索のページ属性フィルターに合う成功済みページIDを取得する."""
-        conditions = ["status = ?"]
-        params: list[object] = [PageStatus.SUCCEEDED.value]
+    ) -> dict[int, Page]:
+        """候補IDから検索可能かつページ属性に合うページを取得する."""
+        if not page_ids:
+            return {}
+
+        unique_page_ids = list(dict.fromkeys(page_ids))
+        placeholders = ", ".join("?" for _ in unique_page_ids)
+        conditions = [f"id IN ({placeholders})", "status = ?"]
+        params: list[object] = [*unique_page_ids, PageStatus.SUCCEEDED.value]
         filters = filters or {}
 
         url = filters.get("url")
@@ -187,9 +193,14 @@ class PageRepository:
             params.append(keyword)
 
         try:
-            query = f"SELECT id FROM pages WHERE {' AND '.join(conditions)}"
+            query = f"""
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, status, created_at, updated_at
+            FROM pages WHERE {" AND ".join(conditions)}
+            """
             rows = await self.db.fetch_all(query, tuple(params))
-            return [int(row["id"]) for row in rows]
+            pages = [self._row_to_page(row) for row in rows]
+            return {page.id: page for page in pages if page.id is not None}
         except Exception as e:
             raise DatabaseError(f"Failed to filter searchable pages: {str(e)}")
 
