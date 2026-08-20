@@ -359,7 +359,7 @@ List repair cases, filtered by repair status.
       "reasons": [
         {
           "code": "missing_json",
-          "detail": "Stored source JSON is missing for page 56"
+          "detail": "page 56 JSON is missing_json"
         }
       ],
       "repair_status": "pending",
@@ -457,20 +457,20 @@ when Weaviate is unavailable.
 ```json
 {
   "page_id": 56,
-  "url": "https://example.com/article",
+  "url": "https://example.com/article%3E",
   "repair_status": "pending",
   "reasons": [
     {
-      "code": "url_mismatch",
-      "detail": "Stored URL does not match the page URL"
+      "code": "malformed_url_suffix",
+      "detail": "URL ends with > or %3E"
     }
   ],
   "json_validation": {
     "valid": false,
     "reasons": [
       {
-        "code": "url_mismatch",
-        "detail": "Stored URL does not match the page URL"
+        "code": "malformed_url_suffix",
+        "detail": "URL ends with > or %3E"
       }
     ]
   },
