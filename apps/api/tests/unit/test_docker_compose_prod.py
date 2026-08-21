@@ -24,6 +24,29 @@ def test_worker_overrides_api_healthcheck_and_allows_graceful_stop() -> None:
     assert "stop_grace_period: 20s" in worker_section
 
 
+def test_web_healthcheck_uses_canonical_api_path_through_nginx() -> None:
+    api_client = (PROJECT_ROOT / "apps/web/static/js/api.js").read_text()
+    nginx = (PROJECT_ROOT / "apps/web/nginx.conf").read_text()
+
+    health_check = api_client.split("async healthCheck()", 1)[1].split(
+        "async getSystemInfo()", 1
+    )[0]
+    assert "this.request('/api/v1/health')" in health_check
+    assert "this.request('/health')" not in health_check
+
+    assert "location /api/" in nginx
+    assert "proxy_pass http://api:8000/api/;" in nginx
+    assert "location /health" not in nginx
+    assert "proxy_pass http://api:8000/health" not in nginx
+
+
+def test_deploy_checks_api_health_through_web_proxy() -> None:
+    deploy = (PROJECT_ROOT / "scripts/deploy.sh").read_text()
+
+    assert "curl -f http://localhost:8001/api/v1/health" in deploy
+    assert "curl -f http://localhost:8000/api/v1/health" not in deploy
+
+
 def test_deploy_runs_conditional_backup_before_single_process_migration() -> None:
     """本番デプロイが判定、バックアップ、単独移行、起動の順で行われる."""
     deploy = (Path(__file__).parents[4] / "scripts" / "deploy.sh").read_text()

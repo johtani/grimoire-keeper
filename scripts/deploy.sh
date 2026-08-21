@@ -139,8 +139,8 @@ else
     exit 1
 fi
 
-# API確認
-if curl -f http://localhost:8000/api/v1/health >/dev/null 2>&1; then
+# API確認 (Web UI と同じ nginx 経由)
+if curl -f http://localhost:8001/api/v1/health >/dev/null 2>&1; then
     echo "OK: API起動完了"
 else
     echo "ERROR: API起動失敗"

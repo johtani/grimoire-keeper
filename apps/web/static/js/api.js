@@ -140,7 +140,7 @@ class ApiClient {
     // Health Check
     async healthCheck() {
         try {
-            await this.request('/health');
+            await this.request('/api/v1/health');
             return true;
         } catch {
             return false;
