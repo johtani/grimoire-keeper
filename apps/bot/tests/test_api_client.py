@@ -43,7 +43,7 @@ async def test_search_content_success(api_client):
 
     with patch("httpx.AsyncClient") as mock_client:
         mock_instance = AsyncMock()
-        mock_instance.get.return_value = mock_resp
+        mock_instance.post.return_value = mock_resp
         mock_client.return_value.__aenter__.return_value = mock_instance
 
         result = await api_client.search_content("test query")
@@ -60,6 +60,17 @@ async def test_health_check_success(api_client):
         result = await api_client.health_check()
 
         assert result is True
+
+
+@pytest.mark.asyncio
+async def test_health_check_non_200_response(api_client):
+    """ヘルスチェック非200応答テスト"""
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_get.return_value.status_code = 503
+
+        result = await api_client.health_check()
+
+        assert result is False
 
 
 @pytest.mark.asyncio
