@@ -208,13 +208,16 @@ Weaviateは再構築可能な検索索引として2つのコレクションを�
 
 ### Process model / プロセスモデル
 
-API processes only accept requests and enqueue jobs, so they may be started with
-multiple Uvicorn workers or replicas. Job execution belongs exclusively to the
-dedicated `worker` service. Run exactly one worker process against a SQLite database.
+API processes serve reads and validate mutations. URL-processing mutations only
+persist and enqueue jobs; they do not execute the processing pipeline inline. API
+processes may therefore be started with multiple Uvicorn workers or replicas. Job
+execution belongs exclusively to the dedicated `worker` service. Run exactly one
+worker process against a SQLite database.
 
-API プロセスはリクエスト受付とジョブ登録のみを行うため、複数の Uvicorn worker や
-複数 replica で起動できます。ジョブを実行するのは専用 `worker` サービスだけです。
-同じ SQLite データベースに対して起動する worker プロセスは必ず1つにしてください。
+API プロセスは読み取りAPIの提供と更新リクエストの検証を行います。URL処理の更新は
+永続化とジョブ登録までを担当し、処理パイプラインをインライン実行しません。そのため、
+複数の Uvicorn worker や replica で起動できます。ジョブを実行するのは専用 `worker`
+サービスだけです。同じ SQLite データベースに対する worker プロセスは必ず1つにしてください。
 
 ### URL registration and processing / URL登録と処理
 
