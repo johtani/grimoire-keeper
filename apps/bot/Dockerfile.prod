@@ -26,7 +26,7 @@ RUN uv sync
 
 # ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import asyncio; from src.grimoire_bot.services.api_client import ApiClient; asyncio.run(ApiClient().health_check())" || exit 1
+    CMD python -c "import asyncio, sys; from src.grimoire_bot.services.api_client import ApiClient; sys.exit(not asyncio.run(ApiClient().health_check()))"
 
 # ボット起動
 CMD ["uv", "run", "python", "-m", "src.grimoire_bot.main"]
