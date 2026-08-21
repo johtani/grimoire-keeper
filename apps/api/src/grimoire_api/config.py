@@ -52,18 +52,30 @@ class Settings(BaseSettings):
         extra="ignore",  # 余分な環境変数を無視
     )
 
+    def missing_required_vars(self) -> list[str]:
+        """未設定または現在の構成では無効な必須環境変数を返す."""
+        required_vars = {
+            "JINA_API_KEY": self.JINA_API_KEY,
+            "OPENAI_API_KEY": self.OPENAI_API_KEY,
+        }
+        missing_vars = [
+            name for name, value in required_vars.items() if not value.strip()
+        ]
+
+        llm_api_key = self.LLM_API_KEY.strip()
+        uses_cloud_llm = not self.LLM_API_BASE.strip()
+        if not llm_api_key or (uses_cloud_llm and llm_api_key.lower() == "dummy"):
+            missing_vars.append("LLM_API_KEY")
+
+        return missing_vars
+
     def validate_required_vars(self) -> None:
         """必須環境変数の検証.
 
         Raises:
             SystemExit: 必須環境変数が設定されていない場合
         """
-        required_vars = {
-            "JINA_API_KEY": self.JINA_API_KEY,
-            "OPENAI_API_KEY": self.OPENAI_API_KEY,
-        }
-
-        missing_vars = [name for name, value in required_vars.items() if not value]
+        missing_vars = self.missing_required_vars()
 
         if missing_vars:
             error_msg = (
@@ -80,6 +92,8 @@ class Settings(BaseSettings):
                 "     (GRIMOIRE_KEEPER_プレフィックス付きで登録)\n"
                 "  2. BWS_ACCESS_TOKENを.envに設定\n"
                 "  3. bash scripts/dev.sh でAPIを起動 (bws runがシークレットを注入)\n\n"
+                "LLM_API_BASEが空のクラウドLLM構成では、LLM_API_KEYにdummy以外の"
+                "実キーが必要です。\n"
                 "詳細は docs/development.md を参照してください。\n"
                 "=" * 70
             )
