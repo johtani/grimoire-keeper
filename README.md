@@ -147,30 +147,64 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 ## 🏗️ Architecture / アーキテクチャ
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Client    │───▶│  FastAPI    │───▶│   SQLite    │
-│ クライアント │    │ API process │    │ Pages/Jobs  │
-└─────────────┘    └─────────────┘    └──────┬──────┘
-                           │                  │
-                           │           Persistent queue
-                           │                  ▼
-                           │           ┌─────────────┐
-                           └──────────▶│ Job Worker  │
-                                      └──────┬──────┘
-                                             │
-                              ┌──────────────┼──────────────┐
-                              ▼              ▼              ▼
-                         Jina / LLM      JSON Cache      Weaviate
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ Browser/Web  │  │  Slack Bot   │  │  API Client  │
+│   Web UI     │  │              │  │              │
+└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+       └─────────────────┼─────────────────┘
+                         ▼
+                 ┌───────────────┐
+                 │ FastAPI API   │
+                 │ request layer │
+                 └───────┬───────┘
+                         ▼
+                 ┌───────────────┐
+                 │    SQLite     │
+                 │ pages / jobs │
+                 │ logs / repair│
+                 └───────┬───────┘
+                  persistent queue
+                         ▼
+                 ┌───────────────┐
+                 │  Job Worker   │
+                 │ (one per DB)  │
+                 └───────┬───────┘
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+   Jina AI Reader   LLM via LiteLLM   JSON Cache
+          └──────────────┬──────────────┘
+                         ▼
+                 ┌───────────────┐
+                 │   Weaviate    │
+                 │ Page / Chunk  │
+                 └───────────────┘
 ```
 
 ### Components / コンポーネント
 
-- **FastAPI Backend**: RESTful API for URL processing and search / URL処理と検索のためのRESTful API
-- **SQLite**: Source of truth for pages, current status, jobs, and audit logs / ページ、現在状態、ジョブ、監査ログの正本
-- **JSON Cache**: Replaceable Jina response artifacts used for reprocessing / 再処理に利用するJinaレスポンス成果物
-- **Job Worker**: Dedicated singleton process that resumes queued/interrupted work after startup / 起動後にキュー・中断ジョブを再開する専用の単一プロセス
-- **Weaviate**: Rebuildable semantic-search index / 再構築可能なセマンティック検索索引
-- **External APIs**: Jina AI Reader, Google Gemini, OpenAI Embeddings / 外部API
+- **Web UI**: Nginx-served browser interface for URL registration and search / URL登録・検索用のNginx Web UI
+- **Slack Bot**: Slack interface that calls the FastAPI backend / FastAPIバックエンドを利用するSlackインターフェース
+- **FastAPI Backend**: Request validation and REST APIs for processing, search, retry, and repair management / URL処理・検索・再試行・修復管理のREST API
+- **Job Worker**: Dedicated singleton process that claims persistent jobs and resumes interrupted work after startup / 永続ジョブを取得し、起動時に中断処理を復旧する専用の単一プロセス
+- **JSON Cache**: Replaceable raw Jina response artifacts used for reprocessing / 再処理に利用する交換可能なJina生レスポンス成果物
+- **External APIs**: Jina AI Reader, a LiteLLM-compatible LLM provider, and OpenAI embeddings / Jina AI Reader、LiteLLM互換LLMプロバイダー、OpenAI埋め込み
+
+### Data stores / データストア
+
+SQLite is the source of truth and contains these tables:
+SQLiteは正本として以下のテーブルを保持します。
+
+- `pages`: URL, memo, summary, keywords, processing status, and last successful step / URL、メモ、要約、キーワード、処理状態、最終成功ステップ
+- `jobs`: Persistent `initial`, `retry`, and `reprocess` jobs and their current steps / 永続化された初回・再試行・再処理ジョブと現在ステップ
+- `process_logs`: Per-page processing and failure history / ページ単位の処理・失敗履歴
+- `repair_cases`: Detected repair reasons and `pending` / `resolved` state / 修復理由と未解決・解決済み状態
+- `schema_migrations`: Applied SQLite schema versions / 適用済みSQLiteスキーマバージョン
+
+Weaviate is a rebuildable search index with two collections:
+Weaviateは再構築可能な検索索引として2つのコレクションを保持します。
+
+- `GrimoirePage`: One representative object per page with title, memo, summary, keywords, `title_vector`, and `memo_vector` / ページごとの代表情報とタイトル・メモ用ベクトル
+- `GrimoireContentChunk`: Body chunks with `content_vector` / `content_vector`を持つ本文チャンク
 
 ### Process model / プロセスモデル
 
@@ -182,6 +216,38 @@ API プロセスはリクエスト受付とジョブ登録のみを行うため�
 複数 replica で起動できます。ジョブを実行するのは専用 `worker` サービスだけです。
 同じ SQLite データベースに対して起動する worker プロセスは必ず1つにしてください。
 
+### URL registration and processing / URL登録と処理
+
+1. `POST /api/v1/process-url` returns the existing `page_id` for a duplicate URL.
+   For a new URL, it atomically creates a `pages` row, an initial `process_logs`
+   row, and a queued `jobs` row, then returns `202 Accepted` with `page_id` and
+   `job_id` without running the pipeline inline.
+2. The worker atomically claims the oldest queued job. On startup it returns
+   interrupted `running` jobs to the queue, so work survives API and worker restarts.
+3. The worker downloads content through Jina, stores the raw response in
+   `data/json/{page_id}.json`, generates a summary and keywords through LiteLLM,
+   and writes page and chunk objects to Weaviate.
+4. SQLite records each successful pipeline step (`downloaded`, `llm_processed`,
+   `vectorized`, `completed`). Retry and reprocess jobs start from the selected or
+   last safe step instead of repeating completed work.
+
+`POST /api/v1/process-url` は重複URLなら既存の `page_id` を返し、新規URLならページ・
+開始ログ・永続ジョブを同一トランザクションで作成して `202 Accepted` を返します。workerは
+キューの古いジョブから取得し、Jina取得、JSON保存、LLM要約、Weaviate登録を順に実行します。
+成功ステップはSQLiteへ記録され、再起動や再試行では完了済み工程を安全にスキップできます。
+
+### Search flow / 検索フロー
+
+`POST /api/v1/search` selects the Weaviate collection from `vector_name`:
+`title_vector` and `memo_vector` query `GrimoirePage`, while `content_vector`
+queries `GrimoireContentChunk`. Candidate `pageId` values are loaded from SQLite,
+which supplies the response metadata and applies URL, keyword, date, and excluded
+keyword filters. Keyword search queries the `keywords` property in `GrimoirePage`.
+
+`POST /api/v1/search` は `vector_name` に応じて検索先を選択します。タイトル・メモ検索は
+`GrimoirePage`、本文検索は `GrimoireContentChunk` を利用し、候補ページのメタデータ取得と
+URL・キーワード・日付・除外キーワードのフィルターはSQLiteを正本として行います。
+
 ## 🛠️ Development / 開発
 
 ### Project Structure / プロジェクト構造
@@ -189,12 +255,21 @@ API プロセスはリクエスト受付とジョブ登録のみを行うため�
 ```
 grimoire-keeper/
 ├── apps/
-│   ├── api/           # FastAPI backend / FastAPIバックエンド
-│   └── bot/           # Slack bot / Slackボット
-├── shared/            # Shared utilities / 共有ユーティリティ
-├── docs/              # Documentation / ドキュメント
-├── scripts/           # Utility scripts / ユーティリティスクリプト
-└── tests/             # Test files / テストファイル
+│   ├── api/
+│   │   ├── src/grimoire_api/  # FastAPI, worker, services, repositories
+│   │   └── tests/             # API unit and integration tests
+│   ├── bot/
+│   │   ├── src/grimoire_bot/  # Slack bot
+│   │   └── tests/             # Bot unit tests
+│   └── web/                    # Nginx config and static Web UI
+├── shared/
+│   ├── src/grimoire_shared/   # Shared OpenTelemetry instrumentation
+│   └── tests/                 # Shared package tests
+├── tools/
+│   ├── search_regression/     # Search-result snapshot comparison
+│   └── weaviate_1_38_migration/ # Weaviate migration and validation
+├── docs/                      # Documentation / ドキュメント
+└── scripts/                   # Development, deployment, and DB utilities
 ```
 
 ### Development Workflow / 開発ワークフロー
@@ -204,7 +279,7 @@ grimoire-keeper/
    # Start devcontainer or local environment
    # devcontainerまたはローカル環境の起動
    cp .env.example .env
-   uv sync
+   uv sync --all-packages
    ```
 
 2. **Code Quality / コード品質**
