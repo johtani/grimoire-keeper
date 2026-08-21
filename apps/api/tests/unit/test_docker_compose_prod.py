@@ -24,6 +24,27 @@ def test_worker_overrides_api_healthcheck_and_allows_graceful_stop() -> None:
     assert "stop_grace_period: 20s" in worker_section
 
 
+def test_api_and_worker_receive_canonical_llm_api_key() -> None:
+    """APIとworkerが要約LLM用の正規変数を同じ方法で受け取る."""
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    api_section = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
+    worker_section = compose.split("  worker:", 1)[1].split("  weaviate:", 1)[0]
+
+    expected = "LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}"
+    for service_section in (api_section, worker_section):
+        assert expected in service_section
+        assert "GOOGLE_API_KEY" not in service_section
+        assert "GRIMOIRE_KEEPER_LLM_API_KEY:-dummy" not in service_section
+
+
+def test_dev_script_maps_canonical_llm_api_key() -> None:
+    """開発起動スクリプトも本番Composeと同じLLMキーを渡す."""
+    script = (PROJECT_ROOT / "scripts/dev.sh").read_text()
+
+    assert 'export LLM_API_KEY="${GRIMOIRE_KEEPER_LLM_API_KEY}"' in script
+    assert "GOOGLE_API_KEY" not in script
+
+
 def test_web_healthcheck_uses_canonical_api_path_through_nginx() -> None:
     api_client = (PROJECT_ROOT / "apps/web/static/js/api.js").read_text()
     nginx = (PROJECT_ROOT / "apps/web/nginx.conf").read_text()

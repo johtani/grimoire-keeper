@@ -28,7 +28,7 @@ fi
 echo "Starting development server with secrets from Bitwarden Secrets Manager..."
 bws run -- bash -c '
   export OPENAI_API_KEY="${GRIMOIRE_KEEPER_OPENAI_API_KEY}"
-  export GOOGLE_API_KEY="${GRIMOIRE_KEEPER_GOOGLE_API_KEY}"
   export JINA_API_KEY="${GRIMOIRE_KEEPER_JINA_API_KEY}"
+  export LLM_API_KEY="${GRIMOIRE_KEEPER_LLM_API_KEY}"
   exec uv run --package grimoire-api uvicorn grimoire_api.main:app --reload --host 0.0.0.0 --port 8000
 '

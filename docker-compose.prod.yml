@@ -51,8 +51,8 @@ services:
       - DATABASE_PATH=/data/grimoire.db
       - JSON_STORAGE_PATH=/app/apps/api/data/json
       - OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GRIMOIRE_KEEPER_GOOGLE_API_KEY}
       - JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}
+      - LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}
     env_file:
       - .env
     extra_hosts:
@@ -85,9 +85,8 @@ services:
       - DATABASE_PATH=/data/grimoire.db
       - JSON_STORAGE_PATH=/app/apps/api/data/json
       - OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GRIMOIRE_KEEPER_GOOGLE_API_KEY}
       - JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}
-      - LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY:-dummy}
+      - LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}
     env_file:
       - .env
     extra_hosts:

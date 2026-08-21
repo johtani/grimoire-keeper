@@ -51,13 +51,7 @@ async def check_api() -> bool:
 
 def check_env_vars() -> bool:
     """環境変数チェック."""
-    required_vars = ["OPENAI_API_KEY", "GOOGLE_API_KEY", "JINA_API_KEY"]
-    missing_vars = []
-
-    for var in required_vars:
-        value = getattr(settings, var, "")
-        if not value or value == "":
-            missing_vars.append(var)
+    missing_vars = settings.missing_required_vars()
 
     if missing_vars:
         print(f"❌ 環境変数: 未設定 - {', '.join(missing_vars)}")
