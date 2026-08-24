@@ -57,3 +57,17 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest apps/api/tests/unit/ -v
+
+  web-test:
+    name: Web Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run web tests
+        run: node --test apps/web/tests/*.test.js
