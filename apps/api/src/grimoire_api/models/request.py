@@ -20,10 +20,10 @@ from .database import ReprocessStartStep
 class ProcessUrlRequest(BaseModel):
     """URL処理リクエスト."""
 
+    model_config = ConfigDict(extra="forbid")
+
     url: HttpUrl
     memo: str | None = None
-    slack_channel: str | None = None
-    slack_user: str | None = None
 
     @field_validator("url", mode="before")
     @classmethod

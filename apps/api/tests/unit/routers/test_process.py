@@ -79,6 +79,21 @@ class TestProcessRouter:
             "https://example.com/", "test memo"
         )
 
+    def test_process_url_rejects_unused_slack_fields(self) -> None:
+        """未使用の Slack 固有フィールドを拒否する."""
+        app.dependency_overrides[get_weaviate_client] = lambda: object()
+
+        for field in ("slack_channel", "slack_user"):
+            response = client.post(
+                "/api/v1/process-url",
+                json={"url": "https://example.com", field: "unused"},
+            )
+
+            assert response.status_code == 422
+            detail = response.json()["detail"]
+            assert detail[0]["type"] == "extra_forbidden"
+            assert detail[0]["loc"] == ["body", field]
+
     def test_process_url_rejects_raw_slack_suffix(self) -> None:
         """末尾に Slack の閉じ山括弧がある URL を拒否する."""
         app.dependency_overrides[get_weaviate_client] = lambda: object()
