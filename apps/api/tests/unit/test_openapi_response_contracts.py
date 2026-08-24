@@ -4,6 +4,15 @@ from fastapi.testclient import TestClient
 from grimoire_api.main import app
 
 
+def test_process_url_request_excludes_slack_fields_and_forbids_extras() -> None:
+    """URL 処理リクエストは未使用の Slack 項目を公開・受理しない."""
+    schema = TestClient(app).get("/openapi.json").json()
+    request_schema = schema["components"]["schemas"]["ProcessUrlRequest"]
+
+    assert set(request_schema["properties"]) == {"url", "memo"}
+    assert request_schema["additionalProperties"] is False
+
+
 def test_public_api_success_responses_use_concrete_schemas() -> None:
     """型付きへ移行した API が具体的な OpenAPI スキーマを公開する."""
     schema = TestClient(app).get("/openapi.json").json()
