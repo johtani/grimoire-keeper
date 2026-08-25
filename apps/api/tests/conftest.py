@@ -1,5 +1,6 @@
 """Test configuration and fixtures."""
 
+import asyncio
 import os
 import tempfile
 import warnings
@@ -14,6 +15,23 @@ from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
+
+
+class ResponsiveEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    """スレッドからのwakeup欠落時も定期的に処理を再開するテスト用policy."""
+
+    def new_event_loop(self) -> asyncio.AbstractEventLoop:
+        loop = super().new_event_loop()
+
+        def heartbeat() -> None:
+            if not loop.is_closed():
+                loop.call_later(0.001, heartbeat)
+
+        loop.call_soon(heartbeat)
+        return loop
+
+
+asyncio.set_event_loop_policy(ResponsiveEventLoopPolicy())
 
 # テスト用警告フィルタ
 warnings.filterwarnings("ignore", category=DeprecationWarning)

@@ -1,5 +1,6 @@
 """Test database initialization."""
 
+import asyncio
 import tempfile
 from dataclasses import replace
 from pathlib import Path
@@ -21,6 +22,17 @@ from grimoire_api.utils.exceptions import DatabaseError
 
 class TestDatabaseInitialization:
     """DatabaseConnection.initialize_tables() のテストクラス."""
+
+    @pytest.mark.asyncio
+    async def test_connection_worker_stops_after_context_exit(
+        self, tmp_path: Path
+    ) -> None:
+        """aiosqlite接続の開始とワーカースレッド終了が停止しないことを確認."""
+        async with asyncio.timeout(1):
+            async with aiosqlite.connect(tmp_path / "lifecycle.db") as conn:
+                row = await (await conn.execute("SELECT 1")).fetchone()
+
+        assert row == (1,)
 
     @pytest.mark.asyncio
     async def test_indexes_created(self, temp_db: DatabaseConnection) -> None:
