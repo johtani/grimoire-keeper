@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const contentHtml = (vectorName === 'content_vector' && result.content) ? `
             <div class="search-result-content mt-2">
                 <strong>Content:</strong>
-                <div class="expandable-text text-truncate-2 cursor-pointer" data-full-text="${escapeHtml(result.content)}">
+                <div class="expandable-text text-truncate-2 cursor-pointer">
                     ${escapeHtml(result.content)}
                 </div>
             </div>
@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 ${result.summary ? `
                     <div class="search-result-summary">
                         <strong>Summary:</strong>
-                        <div class="expandable-text text-truncate-2 cursor-pointer" data-full-text="${escapeHtml(result.summary)}">
+                        <div class="expandable-text text-truncate-2 cursor-pointer">
                             ${escapeHtml(result.summary)}
                         </div>
                     </div>
