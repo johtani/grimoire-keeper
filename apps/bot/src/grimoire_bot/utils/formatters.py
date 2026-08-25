@@ -3,33 +3,6 @@
 from typing import Any
 
 
-def format_search_results(results: list[dict[str, Any]], query: str) -> str:
-    """検索結果をフォーマット"""
-    if not results:
-        return f"🔍 '{query}' に一致する結果が見つかりませんでした。"
-
-    response = f"🔍 検索結果 ({len(results)}件):\n\n"
-    for i, item in enumerate(results, 1):
-        title = item.get("title", "No Title")
-        url = item.get("url", "")
-        summary = item.get("summary", "")
-        keywords = item.get("keywords", [])
-
-        # 要約を100文字に制限
-        if len(summary) > 100:
-            summary = summary[:100] + "..."
-
-        response += f"{i}. **{title}**\n"
-        response += f"🔗 {url}\n"
-        if summary:
-            response += f"📝 {summary}\n"
-        if keywords:
-            response += f"🏷️ {', '.join(keywords[:3])}\n"
-        response += "\n"
-
-    return response
-
-
 def format_process_status(result: dict[str, Any], page_id: int) -> str:
     """処理状況をフォーマット"""
     status = result.get("status", "unknown")
