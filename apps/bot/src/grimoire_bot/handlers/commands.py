@@ -32,6 +32,18 @@ search_counter = meter.create_counter(
     "search_requests_total", description="Total number of search requests"
 )
 
+GRIMOIRE_HELP_TEXT = """📚 **Grimoire Keeper 使用方法**
+
+• `/grimoire <URL>` - URLを処理して要約を作成
+• `/grimoire search <検索語>` - コンテンツを検索
+• `/grimoire status <処理ID>` - 処理状況を確認
+• `/grimoire help` - このヘルプを表示
+
+例:
+`/grimoire https://example.com`
+`/grimoire search AI`
+`/grimoire status 123`"""
+
 
 def register_command_handlers(app: AsyncApp) -> None:
     """コマンドハンドラーを登録"""
@@ -70,18 +82,7 @@ def register_command_handlers(app: AsyncApp) -> None:
 
             try:
                 if not text:
-                    help_text = """📚 **Grimoire Keeper 使用方法**
-
-• `/grimoire <URL>` - URLを処理して要約を作成
-• `/grimoire search <検索語>` - コンテンツを検索
-• `/grimoire status <処理ID>` - 処理状況を確認
-• `/grimoire help` - このヘルプを表示
-
-例:
-`/grimoire https://example.com`
-`/grimoire search AI`
-`/grimoire status 123`"""
-                    await respond(help_text)
+                    await respond(GRIMOIRE_HELP_TEXT)
 
                 elif text.startswith("status "):
                     with tracer.start_as_current_span("command_status"):
@@ -114,18 +115,7 @@ def register_command_handlers(app: AsyncApp) -> None:
                             await respond("検索語を入力してください")
 
                 elif text == "help":
-                    help_text = """📚 **Grimoire Keeper 使用方法**
-
-• `/grimoire <URL>` - URLを処理して要約を作成
-• `/grimoire search <検索語>` - コンテンツを検索
-• `/grimoire status <処理ID>` - 処理状況を確認
-• `/grimoire help` - このヘルプを表示
-
-例:
-`/grimoire https://example.com`
-`/grimoire search AI`
-`/grimoire status 123`"""
-                    await respond(help_text)
+                    await respond(GRIMOIRE_HELP_TEXT)
 
                 else:
                     with tracer.start_as_current_span(

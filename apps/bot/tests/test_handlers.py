@@ -1,9 +1,9 @@
 """ハンドラーのテスト"""
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
-from grimoire_bot.handlers.commands import register_command_handlers
+from grimoire_bot.handlers.commands import GRIMOIRE_HELP_TEXT, register_command_handlers
 from grimoire_bot.handlers.events import register_event_handlers
 from slack_bolt import App
 
@@ -46,3 +46,24 @@ def test_grimoire_command_handler():
 
     # コマンドハンドラーが登録されたことを確認
     assert app.command.call_count == 1  # /grimoireコマンド
+
+
+@pytest.mark.asyncio
+async def test_grimoire_help_response_is_same_for_empty_text_and_help():
+    """引数なしとhelpで同じヘルプが返ることを確認"""
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    responses = []
+
+    for text in ("", "help"):
+        ack = AsyncMock()
+        respond = AsyncMock()
+
+        await handler(ack, respond, {"user_id": "U123", "text": text})
+
+        ack.assert_awaited_once_with()
+        respond.assert_awaited_once_with(GRIMOIRE_HELP_TEXT)
+        responses.append(respond.await_args.args[0])
+
+    assert responses[0] == responses[1]
