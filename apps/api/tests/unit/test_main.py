@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 from grimoire_api.main import app, lifespan
 
 
@@ -48,3 +49,40 @@ async def test_lifespan_does_not_start_manager_when_database_init_fails() -> Non
                 pytest.fail("lifespan must not start")
 
     manager_class.assert_not_called()
+
+
+def test_same_origin_request_succeeds_without_cors_headers() -> None:
+    """同一オリジンで利用する通常のAPIリクエストはCORSヘッダーなしで成功する."""
+    response = TestClient(app).get("/")
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "Grimoire Keeper API is running"}
+    assert "access-control-allow-origin" not in response.headers
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_cross_origin_request_is_not_allowed() -> None:
+    """外部オリジンにはCORS許可ヘッダーを返さない."""
+    response = TestClient(app).get("/", headers={"Origin": "https://external.example"})
+
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_cross_origin_preflight_is_not_allowed() -> None:
+    """外部オリジンのpreflightをCORSリクエストとして許可しない."""
+    response = TestClient(app).options(
+        "/api/v1/search",
+        headers={
+            "Origin": "https://external.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+
+    assert response.status_code == 405
+    assert "access-control-allow-origin" not in response.headers
+    assert "access-control-allow-methods" not in response.headers
+    assert "access-control-allow-headers" not in response.headers
+    assert "access-control-allow-credentials" not in response.headers

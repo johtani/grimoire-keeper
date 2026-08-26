@@ -8,7 +8,6 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from grimoire_shared.telemetry import setup_telemetry
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -145,15 +144,6 @@ async def request_validation_handler(
 
 # FastAPI自動計装
 FastAPIInstrumentor.instrument_app(app)
-
-# CORS設定
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ルーター登録
 app.include_router(health.router)
