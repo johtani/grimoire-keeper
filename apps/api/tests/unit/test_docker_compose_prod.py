@@ -15,6 +15,31 @@ def test_weaviate_healthcheck_and_api_healthy_dependency() -> None:
     assert '"-O", "/dev/null"' in compose
 
 
+def test_host_ports_are_loopback_only_and_internal_connections_are_preserved() -> None:
+    """ホスト公開をloopbackに限定し、コンテナ間通信は内部DNSを使う."""
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    web_section = compose.split("  web:", 1)[1].split("  bot:", 1)[0]
+    bot_section = compose.split("  bot:", 1)[1].split("  api:", 1)[0]
+    api_section = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
+    weaviate_section = compose.rsplit("  weaviate:", 1)[1].split("networks:", 1)[0]
+
+    assert '"127.0.0.1:8001:80"' in web_section
+    assert '"127.0.0.1:8000:8000"' in api_section
+    assert '"127.0.0.1:8089:8080"' in weaviate_section
+    assert '"127.0.0.1:50051:50051"' in weaviate_section
+    assert "BACKEND_API_URL=http://api:8000" in bot_section
+    assert "AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'" in weaviate_section
+
+    unrestricted_bindings = (
+        '"8001:80"',
+        '"8000:8000"',
+        '"8089:8080"',
+        '"50051:50051"',
+        "0.0.0.0:",
+    )
+    assert all(binding not in compose for binding in unrestricted_bindings)
+
+
 def test_worker_overrides_api_healthcheck_and_allows_graceful_stop() -> None:
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     worker_section = compose.split("  worker:", 1)[1].split("  weaviate:", 1)[0]

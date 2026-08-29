@@ -164,9 +164,9 @@ else
 fi
 
 echo "デプロイ完了！"
-echo "Web UI: http://localhost:8001"
-echo "API: http://localhost:8000"
-echo "Weaviate: http://localhost:8089"
+echo "Web UI (localhost only): http://localhost:8001"
+echo "API (localhost only): http://localhost:8000"
+echo "Weaviate (localhost only): http://localhost:8089"
 echo ""
 echo "ログ確認:"
 echo "  全体: docker compose -f docker-compose.prod.yml logs -f"
