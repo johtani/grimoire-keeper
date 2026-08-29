@@ -2,7 +2,7 @@ services:
   web:
     image: nginx:alpine
     ports:
-      - "8001:80"
+      - "127.0.0.1:8001:80"
     volumes:
       - ./apps/web/static:/usr/share/nginx/html
       - ./apps/web/nginx.conf:/etc/nginx/conf.d/default.conf
@@ -40,7 +40,7 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_DATE: ${BUILD_DATE:-unknown}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - /opt/grimoire-keeper-data/database:/data
       - /opt/grimoire-keeper-data/json:/app/apps/api/data/json
@@ -101,8 +101,8 @@ services:
   weaviate:
     image: ${WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.38.8}
     ports:
-      - "8089:8080"
-      - "50051:50051"
+      - "127.0.0.1:8089:8080"
+      - "127.0.0.1:50051:50051"
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
