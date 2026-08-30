@@ -61,6 +61,7 @@ jobs:
           --cov=grimoire_api
           --cov-report=term-missing
           --cov-report=xml:coverage-api.xml
+          --cov-fail-under=80
 
   bot-unit-test:
     name: Bot Unit Tests
@@ -88,6 +89,35 @@ jobs:
           --cov=grimoire_bot
           --cov-report=term-missing
           --cov-report=xml:coverage-bot.xml
+          --cov-fail-under=65
+
+  shared-unit-test:
+    name: Shared Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run shared unit tests
+        run: >-
+          uv run pytest shared/tests/ -v
+          --cov=grimoire_shared
+          --cov-report=term-missing
+          --cov-report=xml:coverage-shared.xml
+          --cov-fail-under=90
 
   web-test:
     name: Web Tests

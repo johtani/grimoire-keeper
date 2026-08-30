@@ -311,9 +311,23 @@ uv run pytest apps/api/tests/unit/ -v
 # Integration tests / 統合テスト
 uv run pytest apps/api/tests/integration/ -v
 
-# All tests with coverage / カバレッジ付き全テスト
-uv run pytest --cov=apps --cov-report=html
+# API coverage / API カバレッジ (fail-under: 80%)
+uv run pytest apps/api/tests/unit/ -v --cov=grimoire_api --cov-report=html --cov-fail-under=80
+
+# Bot coverage / Bot カバレッジ (fail-under: 65%)
+uv run pytest apps/bot/tests/ -v --cov=grimoire_bot --cov-report=html --cov-fail-under=65
+
+# Shared coverage / Shared カバレッジ (fail-under: 90%)
+uv run pytest shared/tests/ -v --cov=grimoire_shared --cov-report=html --cov-fail-under=90
 ```
+
+Coverage sources are the production packages `grimoire_api`, `grimoire_bot`, and
+`grimoire_shared`; tests are excluded from the denominator. Hand-written production
+code, including SQLite migrations, remains in scope.
+
+カバレッジの対象は実装パッケージ `grimoire_api`、`grimoire_bot`、
+`grimoire_shared` で、tests は分母から除外します。SQLite マイグレーションを含む
+手書きの本番コードは計測対象に残します。
 
 SQLiteスキーマを変更する場合は、バージョン番号、移行テスト、デプロイ前バックアップ、
 ロールバックを含む[開発ガイドのSQLiteスキーマ変更手順](docs/development.md#sqliteスキーマの変更)
