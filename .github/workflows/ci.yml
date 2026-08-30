@@ -35,8 +35,8 @@ jobs:
       - name: mypy
         run: uv run mypy .
 
-  unit-test:
-    name: Unit Tests
+  api-unit-test:
+    name: API Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -55,8 +55,39 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages
 
-      - name: Run unit tests
-        run: uv run pytest apps/api/tests/unit/ -v
+      - name: Run API unit tests
+        run: >-
+          uv run pytest apps/api/tests/unit/ -v
+          --cov=grimoire_api
+          --cov-report=term-missing
+          --cov-report=xml:coverage-api.xml
+
+  bot-unit-test:
+    name: Bot Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run Bot unit tests
+        run: >-
+          uv run pytest apps/bot/tests/ -v
+          --cov=grimoire_bot
+          --cov-report=term-missing
+          --cov-report=xml:coverage-bot.xml
 
   web-test:
     name: Web Tests

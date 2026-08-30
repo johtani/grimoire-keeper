@@ -1,7 +1,36 @@
 """OpenAPI response schema contract tests."""
 
+import json
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
 from grimoire_api.main import app
+from grimoire_api.models.response import (
+    ProcessStatusResponse,
+    ProcessUrlResponse,
+    SearchResponse,
+)
+from pydantic import BaseModel
+
+BOT_CONTRACT_FIXTURES = Path(__file__).parents[1] / "fixtures" / "bot_contracts"
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "response_model"),
+    [
+        ("process_url.json", ProcessUrlResponse),
+        ("search.json", SearchResponse),
+        ("process_status.json", ProcessStatusResponse),
+    ],
+)
+def test_bot_contract_fixtures_match_api_response_models(
+    fixture_name: str, response_model: type[BaseModel]
+) -> None:
+    """Bot が利用する共有 fixture は API のレスポンス契約に適合する."""
+    payload = json.loads((BOT_CONTRACT_FIXTURES / fixture_name).read_text())
+
+    response_model.model_validate(payload)
 
 
 def test_process_url_request_excludes_slack_fields_and_forbids_extras() -> None:

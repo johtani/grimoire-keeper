@@ -55,8 +55,6 @@ addopts = [
     "--tb=short",
     "-q",
     "--import-mode=importlib",
-    "--cov=apps",
-    "--cov-report=term-missing",
 ]
 env = [
     "PYTHONWARNINGS=ignore",

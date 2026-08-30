@@ -14,9 +14,9 @@ def api_client():
 
 
 @pytest.mark.asyncio
-async def test_process_url_success(api_client):
+async def test_process_url_success(api_client, bot_contract_fixture):
     """URL処理成功テスト"""
-    mock_response = {"status": "processing", "page_id": 123}
+    mock_response = bot_contract_fixture("process_url.json")
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = mock_response
@@ -33,9 +33,9 @@ async def test_process_url_success(api_client):
 
 
 @pytest.mark.asyncio
-async def test_search_content_success(api_client):
+async def test_search_content_success(api_client, bot_contract_fixture):
     """検索成功テスト"""
-    mock_response = {"results": [{"title": "Test", "url": "https://example.com"}]}
+    mock_response = bot_contract_fixture("search.json")
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = mock_response
@@ -47,6 +47,24 @@ async def test_search_content_success(api_client):
         mock_client.return_value.__aenter__.return_value = mock_instance
 
         result = await api_client.search_content("test query")
+
+        assert result == mock_response
+
+
+@pytest.mark.asyncio
+async def test_get_process_status_success(api_client, bot_contract_fixture):
+    """現行 API 契約の処理ステータスをそのまま返すことを確認."""
+    mock_response = bot_contract_fixture("process_status.json")
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = mock_response
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_instance = AsyncMock()
+        mock_instance.get.return_value = mock_resp
+        mock_client.return_value.__aenter__.return_value = mock_instance
+
+        result = await api_client.get_process_status(123)
 
         assert result == mock_response
 
