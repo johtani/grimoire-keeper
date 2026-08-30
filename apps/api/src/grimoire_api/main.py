@@ -23,9 +23,6 @@ from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
 from .utils.exceptions import ResourceConflictError, ResourceNotFoundError
 
-# 警告フィルタを適用
-from .utils.warnings_filter import *  # noqa: F403, F401
-
 logger = logging.getLogger(__name__)
 
 PAGE_RESOURCE_ROUTES = frozenset(
@@ -135,7 +132,7 @@ async def request_validation_handler(
         for error in exc.errors()
     ]
     return _error_response(
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
         "validation_error",
         "Request validation failed",
         details,

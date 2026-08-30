@@ -3,7 +3,6 @@
 import asyncio
 import os
 import tempfile
-import warnings
 from pathlib import Path
 
 # テスト時はOpenTelemetryを無効化 (モジュールインポート前に設定する必要がある)
@@ -32,10 +31,6 @@ class ResponsiveEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
 
 
 asyncio.set_event_loop_policy(ResponsiveEventLoopPolicy())
-
-# テスト用警告フィルタ
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 @pytest_asyncio.fixture

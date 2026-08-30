@@ -166,9 +166,9 @@ async def delete_page(
 async def get_pages(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    sort: str = Query("created_at", regex="^(id|url|title|created_at|updated_at)$"),
-    order: str = Query("desc", regex="^(asc|desc)$"),
-    status: str = Query("all", regex="^(all|completed|processing|failed)$"),
+    sort: str = Query("created_at", pattern="^(id|url|title|created_at|updated_at)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
+    status: str = Query("all", pattern="^(all|completed|processing|failed)$"),
     page_service: PageService = Depends(get_page_service),
 ) -> PageListResponse:
     """ページ一覧取得.
