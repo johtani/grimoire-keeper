@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/api/tests", "apps/bot/tests"]
+testpaths = ["apps/api/tests", "apps/bot/tests", "shared/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -60,6 +60,17 @@ env = [
     "PYTHONWARNINGS=ignore",
     "ENV_FILE=.env.test",
 ]
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+# Tests are never production coverage sources. Hand-written migrations remain included.
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 0
 
 [tool.ruff]
 line-length = 88
