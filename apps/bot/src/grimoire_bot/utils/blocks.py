@@ -97,8 +97,9 @@ def create_search_result_blocks(
 def create_status_blocks(result: dict[str, Any], page_id: int) -> list[dict[str, Any]]:
     """ステータス表示のブロック"""
     status = result.get("status", "unknown")
-    url = result.get("url", "")
-    title = result.get("title", "")
+    page = result.get("page") or {}
+    url = page.get("url", "")
+    title = page.get("title", "")
 
     status_info = {
         "processing": {"emoji": "⏳", "color": "#ffcc00", "text": "処理中"},

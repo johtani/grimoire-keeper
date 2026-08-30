@@ -1,6 +1,6 @@
 """ハンドラーのテスト"""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from grimoire_bot.handlers.commands import GRIMOIRE_HELP_TEXT, register_command_handlers
@@ -67,3 +67,72 @@ async def test_grimoire_help_response_is_same_for_empty_text_and_help():
         responses.append(respond.await_args.args[0])
 
     assert responses[0] == responses[1]
+
+
+@pytest.mark.asyncio
+async def test_search_command_renders_api_contract_fixture(bot_contract_fixture):
+    """検索コマンドが API 契約のレスポンスを Block Kit に変換する."""
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    api_response = bot_contract_fixture("search.json")
+    ack = AsyncMock()
+    respond = AsyncMock()
+
+    with patch("grimoire_bot.handlers.commands.ApiClient") as api_client:
+        api_client.return_value.search_content = AsyncMock(return_value=api_response)
+        await handler(
+            ack,
+            respond,
+            {"user_id": "U123", "text": "search contract testing"},
+        )
+
+    ack.assert_awaited_once_with()
+    blocks = respond.await_args.kwargs["blocks"]
+    assert "Contract Test Article" in blocks[1]["text"]["text"]
+
+
+@pytest.mark.asyncio
+async def test_status_command_renders_nested_page_contract(bot_contract_fixture):
+    """ステータスコマンドが page 配下の API 項目を表示する."""
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    api_response = bot_contract_fixture("process_status.json")
+    ack = AsyncMock()
+    respond = AsyncMock()
+
+    with patch("grimoire_bot.handlers.commands.ApiClient") as api_client:
+        api_client.return_value.get_process_status = AsyncMock(
+            return_value=api_response
+        )
+        await handler(
+            ack,
+            respond,
+            {"user_id": "U123", "text": "status 123"},
+        )
+
+    ack.assert_awaited_once_with()
+    blocks = respond.await_args.kwargs["blocks"]
+    assert "https://example.com/article" in blocks[0]["text"]["text"]
+    assert "Contract Test Article" in blocks[0]["text"]["text"]
+
+
+@pytest.mark.asyncio
+async def test_app_mention_uses_process_url_contract(bot_contract_fixture):
+    """メンションイベントが API 契約の page_id を応答に利用する."""
+    app = Mock(spec=App)
+    register_event_handlers(app)
+    handler = app.event.return_value.call_args_list[0].args[0]
+    api_response = bot_contract_fixture("process_url.json")
+    say = AsyncMock()
+
+    with patch("grimoire_bot.handlers.events.ApiClient") as api_client:
+        api_client.return_value.process_url = AsyncMock(return_value=api_response)
+        await handler(
+            {"user": "U123", "text": "<@BOT> https://example.com/article"},
+            say,
+        )
+
+    assert say.await_count == 2
+    assert "処理ID: 123" in say.await_args_list[1].args[0]
