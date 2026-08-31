@@ -29,14 +29,15 @@ class TestLogRepository:
         assert log_id is not None
 
     @pytest.mark.asyncio
-    async def test_update_status(self, log_repo: Any) -> None:
-        """ステータス更新テスト."""
+    async def test_events_are_appended_instead_of_updated(self, log_repo: Any) -> None:
+        """進捗イベントは既存行を上書きせず追記する."""
         url = "https://example.com"
-        status = "started"
-        log_id = await log_repo.create_log(url, status)
+        first_id = await log_repo.create_log(url, "job_claimed")
+        second_id = await log_repo.create_log(url, "completed")
 
-        new_status = "completed"
-        await log_repo.update_status(log_id, new_status)
+        logs = await log_repo.get_all_logs()
+        assert second_id != first_id
+        assert {log.status for log in logs} >= {"job_claimed", "completed"}
 
     @pytest.mark.asyncio
     async def test_get_logs_by_status(self, log_repo: Any) -> None:
@@ -71,8 +72,12 @@ class TestLogRepository:
     ) -> None:
         """失敗ログが存在する場合 True を返すテスト."""
         page_id = await page_repo.create_page("https://example.com", "example")
-        log_id = await log_repo.create_log("https://example.com", "started", page_id)
-        await log_repo.update_status(log_id, "failed", "some error")
+        await log_repo.create_log(
+            "https://example.com",
+            "failed",
+            page_id,
+            error_message="some error",
+        )
 
         result = await log_repo.has_failed_log(page_id)
         assert result is True
@@ -92,8 +97,7 @@ class TestLogRepository:
     ) -> None:
         """成功ログのみの場合 False を返すテスト."""
         page_id = await page_repo.create_page("https://example.com", "example")
-        log_id = await log_repo.create_log("https://example.com", "started", page_id)
-        await log_repo.update_status(log_id, "completed")
+        await log_repo.create_log("https://example.com", "completed", page_id)
 
         result = await log_repo.has_failed_log(page_id)
         assert result is False

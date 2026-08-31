@@ -104,6 +104,8 @@ class ProcessLog:
 
     id: int | None
     page_id: int | None
+    job_id: int | None
+    attempt: int | None
     url: str
     status: str
     error_message: str | None

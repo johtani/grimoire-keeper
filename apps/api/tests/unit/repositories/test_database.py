@@ -232,7 +232,7 @@ class TestLegacyDatabaseMigration:
 
         assert inspection.current_version == 2
         assert inspection.has_history is False
-        assert inspection.pending_versions == (3, 4, 5)
+        assert inspection.pending_versions == (3, 4, 5, 6)
         assert inspection.backup_required is True
 
         async with aiosqlite.connect(db_path) as conn:
@@ -347,6 +347,37 @@ class TestLegacyDatabaseMigration:
         assert page_row["updated_at"] == "2025-01-01T16:30:00.000Z"
         assert log_row is not None
         assert log_row["created_at"] == "2025-01-01T12:00:00.000Z"
+
+    @pytest.mark.asyncio
+    async def test_legacy_started_log_becomes_terminal_event(
+        self, tmp_path: Path
+    ) -> None:
+        """関連付け不能な旧 started 行は孤立した開始状態として残さない."""
+        db_path = str(tmp_path / "legacy-started.db")
+        await self.create_legacy_schema(db_path, 5)
+        async with aiosqlite.connect(db_path) as conn:
+            page = await conn.execute(
+                "INSERT INTO pages (url, title, status) VALUES (?, ?, ?)",
+                ("https://example.com", "example", "failed"),
+            )
+            page_id = int(page.lastrowid or 0)
+            await conn.execute(
+                "INSERT INTO process_logs (page_id, url, status) VALUES (?, ?, ?)",
+                (page_id, "https://example.com", "started"),
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+
+        log = await db.fetch_one(
+            "SELECT * FROM process_logs WHERE page_id=?", (page_id,)
+        )
+        assert log is not None
+        assert log["status"] == "legacy_orphaned"
+        assert log["job_id"] is None
+        assert log["attempt"] is None
+        assert "recoverable job/attempt" in log["error_message"]
 
     @pytest.mark.asyncio
     async def test_invalid_timestamp_migration_rolls_back_without_data_loss(

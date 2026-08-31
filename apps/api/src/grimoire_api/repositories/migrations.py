@@ -7,7 +7,7 @@ import aiosqlite
 
 from ..utils.exceptions import DatabaseError
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 
 class SchemaMigrationError(DatabaseError):
@@ -61,6 +61,8 @@ BASE_PAGE_COLUMNS = (
 PROCESS_LOG_COLUMNS = (
     "id",
     "page_id",
+    "job_id",
+    "attempt",
     "url",
     "status",
     "error_message",
@@ -220,12 +222,51 @@ async def _migration_5(conn: aiosqlite.Connection) -> None:
             )
 
 
+async def _migration_6(conn: aiosqlite.Connection) -> None:
+    """Turn mutable process logs into job-attempt event history."""
+    await conn.execute("ALTER TABLE process_logs RENAME TO legacy_process_logs")
+    await conn.execute(
+        """CREATE TABLE process_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER,
+            job_id INTEGER,
+            attempt INTEGER,
+            url TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES pages(id),
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            CHECK (attempt IS NULL OR attempt >= 0)
+        )"""
+    )
+    await conn.execute(
+        """INSERT INTO process_logs
+        (id, page_id, job_id, attempt, url, status, error_message, created_at)
+        SELECT id, page_id, NULL, NULL, url,
+               CASE WHEN status = 'started' THEN 'legacy_orphaned' ELSE status END,
+               CASE WHEN status = 'started' AND error_message IS NULL
+                    THEN 'Migrated without a recoverable job/attempt association'
+                    ELSE error_message END,
+               created_at
+        FROM legacy_process_logs"""
+    )
+    await conn.execute("DROP TABLE legacy_process_logs")
+    await conn.execute("CREATE INDEX idx_process_logs_page_id ON process_logs(page_id)")
+    await conn.execute("CREATE INDEX idx_process_logs_status ON process_logs(status)")
+    await conn.execute(
+        "CREATE INDEX idx_process_logs_job_attempt "
+        "ON process_logs(job_id, attempt, created_at, id)"
+    )
+
+
 MIGRATIONS = (
     Migration(1, "create_pages_and_process_logs", _migration_1),
     Migration(2, "add_last_success_step", _migration_2),
     Migration(3, "add_persistent_jobs", _migration_3),
     Migration(4, "add_repair_cases", _migration_4),
     Migration(5, "normalize_timestamps_to_utc", _migration_5),
+    Migration(6, "add_job_attempt_event_history", _migration_6),
 )
 
 
@@ -266,9 +307,18 @@ def _expected_tables(version: int) -> dict[str, tuple[str, ...]]:
     if version >= 3:
         page_columns += ("status",)
 
+    process_log_columns = (
+        PROCESS_LOG_COLUMNS
+        if version >= 6
+        else tuple(
+            column
+            for column in PROCESS_LOG_COLUMNS
+            if column not in {"job_id", "attempt"}
+        )
+    )
     tables = {
         "pages": page_columns,
-        "process_logs": PROCESS_LOG_COLUMNS,
+        "process_logs": process_log_columns,
     }
     if version >= 3:
         tables["jobs"] = JOB_COLUMNS
@@ -300,7 +350,10 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
     for table in set(expected) - {"pages"}:
         cursor = await conn.execute(f'PRAGMA foreign_key_list("{table}")')
         foreign_keys = {(row[3], row[2], row[4]) for row in await cursor.fetchall()}
-        if foreign_keys != {("page_id", "pages", "id")}:
+        expected_foreign_keys = {("page_id", "pages", "id")}
+        if table == "process_logs" and version >= 6:
+            expected_foreign_keys.add(("job_id", "jobs", "id"))
+        if foreign_keys != expected_foreign_keys:
             raise SchemaMigrationError(
                 f"Corrupt SQLite schema: invalid foreign keys on {table}"
             )
@@ -335,6 +388,12 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
             required_indexes["idx_repair_cases_status"] = (
                 "repair_cases",
                 ("status", "detected_at"),
+                False,
+            )
+        if version >= 6:
+            required_indexes["idx_process_logs_job_attempt"] = (
+                "process_logs",
+                ("job_id", "attempt", "created_at", "id"),
                 False,
             )
         missing_indexes = set(required_indexes) - set(actual_indexes)

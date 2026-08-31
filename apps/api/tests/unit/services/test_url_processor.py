@@ -159,7 +159,8 @@ class TestConcurrentUrlProcessor:
             (result["page_id"],),
         )
         log = await temp_db.fetch_one(
-            "SELECT id, page_id, url, status FROM process_logs WHERE id = ?",
+            "SELECT id, page_id, job_id, attempt, url, status "
+            "FROM process_logs WHERE id = ?",
             (result["log_id"],),
         )
         job = await temp_db.fetch_one(
@@ -177,8 +178,10 @@ class TestConcurrentUrlProcessor:
         assert dict(log) == {
             "id": result["log_id"],
             "page_id": result["page_id"],
+            "job_id": result["job_id"],
+            "attempt": 0,
             "url": url,
-            "status": "started",
+            "status": "job_queued",
         }
         assert job is not None
         assert dict(job) == {

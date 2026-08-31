@@ -237,8 +237,12 @@ class RepairService:
             }
         ]
         await self.repair_repo.upsert_pending(page_id, "manual", reasons, current_url)
-        log_id = await self.log_repo.create_log(current_url, "url_updated", page_id)
-        await self.log_repo.update_status(log_id, "url_updated", f"new_url={new_url}")
+        await self.log_repo.create_log(
+            current_url,
+            "url_updated",
+            page_id,
+            error_message=f"new_url={new_url}",
+        )
         return {
             "current_url": current_url,
             "new_url": new_url,
@@ -274,11 +278,11 @@ class RepairService:
             raise
         except Exception as exc:
             try:
-                log_id = await self.log_repo.create_log(
-                    page.url, "repair_delete_failed", page_id
-                )
-                await self.log_repo.update_status(
-                    log_id, "failed", f"repair deletion failed: {exc}"
+                await self.log_repo.create_log(
+                    page.url,
+                    "failed",
+                    page_id,
+                    error_message=f"repair deletion failed: {exc}",
                 )
             except DatabaseError:
                 pass

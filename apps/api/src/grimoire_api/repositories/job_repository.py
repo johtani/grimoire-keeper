@@ -29,12 +29,19 @@ class JobRepository:
                     VALUES (?, ?, 'queued', ?, ?)""",
                     (page_id, kind.value, start_step.value, utc_now_isoformat()),
                 )
+                job_id = int(cursor.lastrowid or 0)
+                await conn.execute(
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, created_at)
+                    SELECT id, ?, 0, url, 'job_queued', ? FROM pages WHERE id=?""",
+                    (job_id, utc_now_isoformat(), page_id),
+                )
                 await conn.execute(
                     "UPDATE pages SET status='queued', updated_at=? WHERE id=?",
                     (utc_now_isoformat(), page_id),
                 )
                 await conn.commit()
-                return int(cursor.lastrowid or 0)
+                return job_id
         except Exception as e:
             raise DatabaseError(f"Failed to enqueue job: {e}")
 
@@ -64,6 +71,12 @@ class JobRepository:
                     "UPDATE pages SET status='processing', updated_at=? WHERE id=?",
                     (stored_now, row["page_id"]),
                 )
+                await conn.execute(
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, created_at)
+                    SELECT id, ?, ?, url, 'job_claimed', ? FROM pages WHERE id=?""",
+                    (row["id"], row["attempt"] + 1, stored_now, row["page_id"]),
+                )
                 await conn.commit()
                 values = dict(row)
                 values.update(
@@ -74,8 +87,27 @@ class JobRepository:
             raise DatabaseError(f"Failed to claim job: {e}")
 
     async def update_step(self, job_id: int, step: ProcessingStep) -> None:
-        await self.db.execute(
-            "UPDATE jobs SET current_step=? WHERE id=?", (step.value, job_id)
+        now = utc_now_isoformat()
+        event = {
+            ProcessingStep.DOWNLOADED: "download_completed",
+            ProcessingStep.LLM_PROCESSED: "llm_completed",
+            ProcessingStep.VECTORIZED: "vectorize_completed",
+            ProcessingStep.COMPLETED: "pipeline_completed",
+        }[step]
+        await self.db.execute_transaction(
+            [
+                (
+                    "UPDATE jobs SET current_step=? WHERE id=?",
+                    (step.value, job_id),
+                ),
+                (
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, created_at)
+                    SELECT j.page_id, j.id, j.attempt, p.url, ?, ?
+                    FROM jobs j JOIN pages p ON p.id=j.page_id WHERE j.id=?""",
+                    (event, now, job_id),
+                ),
+            ]
         )
 
     async def succeed(self, job_id: int, page_id: int) -> None:
@@ -89,6 +121,13 @@ class JobRepository:
                 (
                     "UPDATE pages SET status='succeeded', updated_at=? WHERE id=?",
                     (now, page_id),
+                ),
+                (
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, created_at)
+                    SELECT j.page_id, j.id, j.attempt, p.url, 'succeeded', ?
+                    FROM jobs j JOIN pages p ON p.id=j.page_id WHERE j.id=?""",
+                    (now, job_id),
                 ),
             ]
         )
@@ -106,6 +145,13 @@ class JobRepository:
                     "UPDATE pages SET status='failed', updated_at=? WHERE id=?",
                     (now, page_id),
                 ),
+                (
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, error_message, created_at)
+                    SELECT j.page_id, j.id, j.attempt, p.url, 'failed', ?, ?
+                    FROM jobs j JOIN pages p ON p.id=j.page_id WHERE j.id=?""",
+                    (message, now, job_id),
+                ),
             ]
         )
 
@@ -114,6 +160,16 @@ class JobRepository:
         try:
             async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
+                now = utc_now_isoformat()
+                await conn.execute(
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, error_message, created_at)
+                    SELECT j.page_id, j.id, j.attempt, p.url, 'interrupted',
+                           'Worker restarted while attempt was running', ?
+                    FROM jobs j JOIN pages p ON p.id=j.page_id
+                    WHERE j.status='running'""",
+                    (now,),
+                )
                 cursor = await conn.execute(
                     """UPDATE jobs SET status='queued', started_at=NULL
                     WHERE status='running'"""
