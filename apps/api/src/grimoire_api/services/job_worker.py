@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 
 from ..models.database import PipelineStartStep, RepairStatus
 from ..repositories.job_repository import JobRepository
@@ -25,6 +26,7 @@ class JobWorker:
         processor: BaseProcessorService,
         repair_repo: RepairRepository | None = None,
         poll_interval: float = 0.5,
+        heartbeat: Callable[[], None] | None = None,
     ):
         self.job_repo = job_repo
         self.page_repo = page_repo
@@ -32,6 +34,7 @@ class JobWorker:
         self.processor = processor
         self.repair_repo = repair_repo
         self.poll_interval = poll_interval
+        self.heartbeat = heartbeat
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
 
@@ -72,6 +75,13 @@ class JobWorker:
         if self._task is task:
             self._task = None
 
+    async def wait(self) -> None:
+        """Wait for the claim loop and propagate an unexpected failure."""
+        task = self._task
+        if task is None:
+            raise RuntimeError("Job worker has not been started")
+        await task
+
     @staticmethod
     def _consume_task_result(task: asyncio.Task[None]) -> None:
         """Retrieve a detached task result to avoid unhandled-exception warnings."""
@@ -86,6 +96,8 @@ class JobWorker:
             # stop() と claim の境界で停止要求を受けても、新しいジョブを取得しない。
             if self._stop_event.is_set():
                 break
+            if self.heartbeat is not None:
+                self.heartbeat()
             job = await self.job_repo.claim_next()
             if job is None:
                 try:

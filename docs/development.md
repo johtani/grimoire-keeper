@@ -68,6 +68,11 @@ worker は `BEGIN IMMEDIATE` のトランザクションで queued ジョブを�
 待機します。期限を超えた処理はキャンセルされ、`running` のまま残ったジョブは次回の
 worker 起動時に `queued` へ戻されます。
 
+本番 worker は claim loop を supervisor で監視します。停止要求なしに loop が終了した場合は
+プロセスを非0終了し、Compose の `restart: unless-stopped` で再起動します。コンテナの
+healthcheck は `/tmp/grimoire-worker-health.json` に記録される loop の heartbeat と最終 claim
+時刻を参照します。長時間のジョブ処理中も supervisor が heartbeat を更新します。
+
 `recover_running()` は同じデータベースのすべての running ジョブを復旧対象にするため、
 worker のローリング更新は行いません。次の順序で入れ替えます。
 

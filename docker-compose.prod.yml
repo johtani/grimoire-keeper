@@ -67,7 +67,11 @@ services:
         BUILD_DATE: ${BUILD_DATE:-unknown}
     command: ["uv", "run", "python", "-m", "grimoire_api.worker"]
     healthcheck:
-      disable: true
+      test: ["CMD", "/app/apps/api/.venv/bin/python", "-m", "grimoire_api.worker_health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
     stop_grace_period: 20s
     volumes:
       - /opt/grimoire-keeper-data/database:/data

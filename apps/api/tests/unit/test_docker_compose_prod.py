@@ -43,13 +43,15 @@ def test_host_ports_are_loopback_only_and_internal_connections_are_preserved() -
     assert all(binding not in compose for binding in unrestricted_bindings)
 
 
-def test_worker_overrides_api_healthcheck_and_allows_graceful_stop() -> None:
+def test_worker_has_claim_loop_healthcheck_and_allows_graceful_stop() -> None:
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
 
     assert '"grimoire_api.worker"' in worker_section
-    assert "healthcheck:\n      disable: true" in worker_section
+    assert '"grimoire_api.worker_health"' in worker_section
+    assert "healthcheck:\n      disable: true" not in worker_section
     assert "stop_grace_period: 20s" in worker_section
+    assert "restart: unless-stopped" in worker_section
 
 
 def test_only_worker_receives_processing_credentials() -> None:

@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from grimoire_api.models.database import (
     Job,
@@ -66,6 +66,41 @@ async def test_worker_does_not_claim_after_stop_requested() -> None:
     await worker.run()
 
     job_repo.claim_next.assert_not_awaited()
+
+
+async def test_worker_updates_heartbeat_before_claim() -> None:
+    job_repo = AsyncMock()
+    job_repo.claim_next.return_value = None
+    heartbeat = MagicMock()
+    worker = JobWorker(
+        job_repo,
+        AsyncMock(),
+        AsyncMock(),
+        AsyncMock(),
+        poll_interval=0.01,
+        heartbeat=heartbeat,
+    )
+
+    await worker.start()
+    await asyncio.sleep(0)
+    await worker.stop()
+
+    heartbeat.assert_called()
+
+
+async def test_worker_wait_propagates_claim_loop_failure() -> None:
+    job_repo = AsyncMock()
+    job_repo.claim_next.side_effect = RuntimeError("claim failed")
+    worker = JobWorker(job_repo, AsyncMock(), AsyncMock(), AsyncMock())
+
+    await worker.start()
+
+    try:
+        await worker.wait()
+    except RuntimeError as error:
+        assert str(error) == "claim failed"
+    else:
+        raise AssertionError("claim loop failure must propagate")
 
 
 async def test_worker_cancels_task_after_stop_timeout() -> None:
