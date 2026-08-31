@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import signal
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -27,6 +27,7 @@ from .services.llm_service import LLMService
 from .services.vectorizer import VectorizerService
 from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
+from .worker_health import WorkerHealth
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,9 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
 setup_telemetry("grimoire-worker")
 
 
-def build_job_worker(weaviate_client: Any) -> JobWorker:
+def build_job_worker(
+    weaviate_client: Any, heartbeat: Callable[[], None] | None = None
+) -> JobWorker:
     """Build a job worker with process-local dependencies."""
     db = get_db_connection()
     page_repo = PageRepository(db)
@@ -57,24 +60,62 @@ def build_job_worker(weaviate_client: Any) -> JobWorker:
         file_repo=file_repo,
         job_repo=job_repo,
     )
-    return JobWorker(job_repo, page_repo, log_repo, processor, RepairRepository(db))
+    return JobWorker(
+        job_repo,
+        page_repo,
+        log_repo,
+        processor,
+        RepairRepository(db),
+        heartbeat=heartbeat,
+    )
 
 
 @asynccontextmanager
-async def worker_lifespan() -> AsyncIterator[None]:
+async def worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
     """Manage the dedicated worker and its Weaviate connection."""
+    health = WorkerHealth()
+    health.heartbeat()
     await ensure_database_initialized()
     logger.info("Database initialized successfully")
 
     job_worker: JobWorker | None = None
     retiring_worker: JobWorker | None = None
     pending_worker_start: asyncio.Task[None] | None = None
+    monitor_task: asyncio.Task[None] | None = None
+    health_task: asyncio.Task[None] | None = None
+    failure = asyncio.get_running_loop().create_future()
+
+    async def monitor_job_worker(worker: JobWorker) -> None:
+        try:
+            await worker.wait()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            if job_worker is worker and not failure.done():
+                failure.set_exception(error)
+        else:
+            if job_worker is worker and not failure.done():
+                failure.set_exception(
+                    RuntimeError("Job worker claim loop stopped unexpectedly")
+                )
+
+    async def publish_health(worker: JobWorker) -> None:
+        while job_worker is worker:
+            health.heartbeat()
+            await asyncio.sleep(5)
 
     async def start_job_worker_now(weaviate_client: Any) -> None:
-        nonlocal job_worker
-        worker = build_job_worker(weaviate_client)
+        nonlocal job_worker, monitor_task, health_task
+        worker = build_job_worker(weaviate_client, health.record_claim)
         await worker.start()
         job_worker = worker
+        health.mark_running()
+        monitor_task = asyncio.create_task(
+            monitor_job_worker(worker), name="grimoire-job-worker-supervisor"
+        )
+        health_task = asyncio.create_task(
+            publish_health(worker), name="grimoire-job-worker-health"
+        )
         logger.info("Persistent job worker started")
 
     async def start_job_worker(weaviate_client: Any) -> None:
@@ -110,6 +151,7 @@ async def worker_lifespan() -> AsyncIterator[None]:
 
     async def stop_job_worker() -> None:
         nonlocal job_worker, pending_worker_start, retiring_worker
+        nonlocal monitor_task, health_task
         pending_start = pending_worker_start
         if pending_start is not None:
             pending_worker_start = None
@@ -119,7 +161,17 @@ async def worker_lifespan() -> AsyncIterator[None]:
         if worker is None:
             return
         job_worker = None
+        health.mark_stopped()
+        current_health_task = health_task
+        health_task = None
+        if current_health_task is not None:
+            current_health_task.cancel()
+            await asyncio.gather(current_health_task, return_exceptions=True)
         stopped = await worker.stop(timeout=settings.WEAVIATE_WORKER_STOP_TIMEOUT)
+        current_monitor = monitor_task
+        monitor_task = None
+        if stopped and current_monitor is not None:
+            await asyncio.gather(current_monitor, return_exceptions=True)
         if stopped:
             logger.info("Persistent job worker stopped")
         else:
@@ -140,12 +192,14 @@ async def worker_lifespan() -> AsyncIterator[None]:
     )
     try:
         await manager.start()
-        yield
+        yield failure
     finally:
-        await manager.stop()
-        await stop_job_worker()
-        await get_jina_client().close()
-        logger.info("Worker process shutting down")
+        try:
+            await manager.stop()
+            await stop_job_worker()
+        finally:
+            await get_jina_client().close()
+            logger.info("Worker process shutting down")
 
 
 async def run_worker() -> None:
@@ -156,8 +210,17 @@ async def run_worker() -> None:
     for handled_signal in handled_signals:
         loop.add_signal_handler(handled_signal, shutdown_event.set)
     try:
-        async with worker_lifespan():
-            await shutdown_event.wait()
+        async with worker_lifespan() as worker_failure:
+            shutdown_waiter = asyncio.create_task(shutdown_event.wait())
+            waiters: set[asyncio.Future[Any]] = {shutdown_waiter, worker_failure}
+            done, _ = await asyncio.wait(
+                waiters,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if worker_failure in done:
+                shutdown_waiter.cancel()
+                await asyncio.gather(shutdown_waiter, return_exceptions=True)
+                await worker_failure
     finally:
         for handled_signal in handled_signals:
             loop.remove_signal_handler(handled_signal)
