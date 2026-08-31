@@ -49,6 +49,7 @@ def test_worker_has_claim_loop_healthcheck_and_allows_graceful_stop() -> None:
 
     assert '"grimoire_api.worker"' in worker_section
     assert '"grimoire_api.worker_health"' in worker_section
+    assert '"/app/.venv/bin/python"' in worker_section
     assert "healthcheck:\n      disable: true" not in worker_section
     assert "stop_grace_period: 20s" in worker_section
     assert "restart: unless-stopped" in worker_section

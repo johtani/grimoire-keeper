@@ -67,7 +67,7 @@ services:
         BUILD_DATE: ${BUILD_DATE:-unknown}
     command: ["uv", "run", "python", "-m", "grimoire_api.worker"]
     healthcheck:
-      test: ["CMD", "/app/apps/api/.venv/bin/python", "-m", "grimoire_api.worker_health"]
+      test: ["CMD", "/app/.venv/bin/python", "-m", "grimoire_api.worker_health"]
       interval: 10s
       timeout: 3s
       retries: 3
