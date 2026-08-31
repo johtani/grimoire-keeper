@@ -44,7 +44,6 @@ class TestRunPipelineFrom:
     ) -> None:
         """download から開始した場合に全ステップが実行される."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
         raw_response = {"data": {"title": "Test Title", "content": "Test content"}}
@@ -59,7 +58,7 @@ class TestRunPipelineFrom:
             summary="Test summary", keywords=["test"]
         )
 
-        await base_processor._run_pipeline_from(page_id, log_id, url, "download")
+        await base_processor._run_pipeline_from(page_id, url, "download")
 
         mock_services["jina_client"].fetch_content.assert_called_once_with(url)
         mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
@@ -73,7 +72,6 @@ class TestRunPipelineFrom:
     ) -> None:
         """llm から開始した場合は download ステップをスキップする."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
         mock_services[
@@ -82,7 +80,7 @@ class TestRunPipelineFrom:
             summary="Test summary", keywords=["test"]
         )
 
-        await base_processor._run_pipeline_from(page_id, log_id, url, "llm")
+        await base_processor._run_pipeline_from(page_id, url, "llm")
 
         mock_services["jina_client"].fetch_content.assert_not_called()
         mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
@@ -96,10 +94,9 @@ class TestRunPipelineFrom:
     ) -> None:
         """vectorize から開始した場合は download・llm ステップをスキップする."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
-        await base_processor._run_pipeline_from(page_id, log_id, url, "vectorize")
+        await base_processor._run_pipeline_from(page_id, url, "vectorize")
 
         mock_services["jina_client"].fetch_content.assert_not_called()
         mock_services["llm_service"].generate_summary_keywords.assert_not_called()
@@ -111,10 +108,9 @@ class TestRunPipelineFrom:
     ) -> None:
         """正常完了時に VECTORIZED と COMPLETED の両ステップが更新される."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
-        await base_processor._run_pipeline_from(page_id, log_id, url, "vectorize")
+        await base_processor._run_pipeline_from(page_id, url, "vectorize")
 
         mock_services["page_repo"].update_success_step.assert_any_call(
             page_id, ProcessingStep.VECTORIZED
@@ -122,10 +118,6 @@ class TestRunPipelineFrom:
         mock_services["page_repo"].update_success_step.assert_any_call(
             page_id, ProcessingStep.COMPLETED
         )
-        mock_services["log_repo"].update_status.assert_any_call(
-            log_id, "vectorize_complete"
-        )
-        mock_services["log_repo"].update_status.assert_any_call(log_id, "completed")
 
     @pytest.mark.asyncio
     async def test_vectorize_failure_calls_clear_weaviate_id(
@@ -133,7 +125,6 @@ class TestRunPipelineFrom:
     ) -> None:
         """vectorize 失敗時に clear_weaviate_id が呼ばれて例外が再発生する."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
         mock_services["vectorizer"].vectorize_content.side_effect = Exception(
@@ -141,7 +132,7 @@ class TestRunPipelineFrom:
         )
 
         with pytest.raises(Exception, match="Weaviate error"):
-            await base_processor._run_pipeline_from(page_id, log_id, url, "vectorize")
+            await base_processor._run_pipeline_from(page_id, url, "vectorize")
 
         mock_services["page_repo"].clear_weaviate_id.assert_called_once_with(page_id)
 
@@ -151,7 +142,6 @@ class TestRunPipelineFrom:
     ) -> None:
         """vectorize 失敗時に COMPLETED ステップが更新されない."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
         mock_services["vectorizer"].vectorize_content.side_effect = Exception(
@@ -159,7 +149,7 @@ class TestRunPipelineFrom:
         )
 
         with pytest.raises(Exception):
-            await base_processor._run_pipeline_from(page_id, log_id, url, "vectorize")
+            await base_processor._run_pipeline_from(page_id, url, "vectorize")
 
         completed_calls = [
             c
@@ -174,13 +164,12 @@ class TestRunPipelineFrom:
     ) -> None:
         """download 失敗時に例外が伝播する."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
         mock_services["jina_client"].fetch_content.side_effect = Exception("Jina error")
 
         with pytest.raises(Exception, match="Jina error"):
-            await base_processor._run_pipeline_from(page_id, log_id, url, "download")
+            await base_processor._run_pipeline_from(page_id, url, "download")
 
         mock_services["llm_service"].generate_summary_keywords.assert_not_called()
         mock_services["vectorizer"].vectorize_content.assert_not_called()
@@ -191,7 +180,6 @@ class TestRunPipelineFrom:
     ) -> None:
         """llm 失敗時に例外が伝播する."""
         page_id = 1
-        log_id = 10
         url = "https://example.com"
 
         mock_services["llm_service"].generate_summary_keywords.side_effect = Exception(
@@ -199,6 +187,6 @@ class TestRunPipelineFrom:
         )
 
         with pytest.raises(Exception, match="LLM error"):
-            await base_processor._run_pipeline_from(page_id, log_id, url, "llm")
+            await base_processor._run_pipeline_from(page_id, url, "llm")
 
         mock_services["vectorizer"].vectorize_content.assert_not_called()

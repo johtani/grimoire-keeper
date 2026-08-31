@@ -18,16 +18,33 @@ class LogRepository:
         self.db = db
 
     async def create_log(
-        self, url: str, status: str, page_id: int | None = None
+        self,
+        url: str,
+        status: str,
+        page_id: int | None = None,
+        *,
+        job_id: int | None = None,
+        attempt: int | None = None,
+        error_message: str | None = None,
     ) -> int:
-        """ログ作成."""
+        """Append an immutable process event."""
         try:
             query = """
-            INSERT INTO process_logs (page_id, url, status, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO process_logs
+                (page_id, job_id, attempt, url, status, error_message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """
             lastrowid = await self.db.execute(
-                query, (page_id, url, status, utc_now_isoformat())
+                query,
+                (
+                    page_id,
+                    job_id,
+                    attempt,
+                    url,
+                    status,
+                    error_message,
+                    utc_now_isoformat(),
+                ),
             )
             return lastrowid or 0
         except Exception as e:
@@ -46,6 +63,8 @@ class LogRepository:
                 ProcessLog(
                     id=row["id"],
                     page_id=row["page_id"],
+                    job_id=row["job_id"],
+                    attempt=row["attempt"],
                     url=row["url"],
                     status=row["status"],
                     error_message=row["error_message"],
@@ -55,20 +74,6 @@ class LogRepository:
             ]
         except Exception as e:
             raise DatabaseError(f"Failed to get logs by status: {str(e)}")
-
-    async def update_status(
-        self, log_id: int, status: str, error_message: str | None = None
-    ) -> None:
-        """ステータス更新."""
-        try:
-            query = """
-            UPDATE process_logs
-            SET status = ?, error_message = ?
-            WHERE id = ?
-            """
-            await self.db.execute(query, (status, error_message, log_id))
-        except Exception as e:
-            raise DatabaseError(f"Failed to update status: {str(e)}")
 
     async def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
         """全ログ取得."""
@@ -83,6 +88,8 @@ class LogRepository:
                 ProcessLog(
                     id=row["id"],
                     page_id=row["page_id"],
+                    job_id=row["job_id"],
+                    attempt=row["attempt"],
                     url=row["url"],
                     status=row["status"],
                     error_message=row["error_message"],

@@ -112,21 +112,17 @@ class JobWorker:
     async def _execute(
         self, job_id: int, page_id: int, start_step: PipelineStartStep
     ) -> None:
-        log_id: int | None = None
         try:
             page = await self.page_repo.get_page(page_id)
             if page is None:
                 raise RuntimeError("Page not found")
-            log_id = await self.log_repo.create_log(page.url, "job_started", page_id)
             await self.processor._run_pipeline_from(
-                page_id, log_id, page.url, start_step, job_id
+                page_id, page.url, start_step, job_id
             )
             await self.job_repo.succeed(job_id, page_id)
             await self._resolve_repair_if_valid(page_id)
         except Exception as e:
             logger.exception("Job %s failed", job_id)
-            if log_id is not None:
-                await self.log_repo.update_status(log_id, "failed", str(e))
             await self.job_repo.fail(job_id, page_id, str(e))
 
     async def _resolve_repair_if_valid(self, page_id: int) -> None:

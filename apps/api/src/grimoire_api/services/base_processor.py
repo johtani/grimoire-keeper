@@ -34,7 +34,7 @@ class BaseProcessorService:
         self.job_repo = job_repo
 
     async def _save_download_result(
-        self, log_id: int, page_id: int, result: FetchedDocument
+        self, page_id: int, result: FetchedDocument
     ) -> None:
         """ダウンロード結果保存."""
         try:
@@ -42,14 +42,10 @@ class BaseProcessorService:
             await self.page_repo.update_title_and_step(
                 page_id, result.title, ProcessingStep.DOWNLOADED
             )
-            await self.log_repo.update_status(log_id, "download_complete")
-        except Exception as e:
-            await self.log_repo.update_status(log_id, "download_error", str(e))
+        except Exception:
             raise
 
-    async def _save_llm_result(
-        self, log_id: int, page_id: int, result: SummaryResult
-    ) -> None:
+    async def _save_llm_result(self, page_id: int, result: SummaryResult) -> None:
         """LLM結果保存."""
         try:
             await self.page_repo.update_summary_keywords_and_step(
@@ -58,15 +54,12 @@ class BaseProcessorService:
                 keywords=result.keywords,
                 step=ProcessingStep.LLM_PROCESSED,
             )
-            await self.log_repo.update_status(log_id, "llm_complete")
-        except Exception as e:
-            await self.log_repo.update_status(log_id, "llm_error", str(e))
+        except Exception:
             raise
 
     async def _run_pipeline_from(
         self,
         page_id: int,
-        log_id: int,
         url: str,
         start_point: PipelineStartStep | str,
         job_id: int | None = None,
@@ -75,19 +68,18 @@ class BaseProcessorService:
 
         Args:
             page_id: 処理対象ページID
-            log_id: ログID
             url: 処理対象URL
             start_point: 型制約された開始ポイント
         """
         start_step = PipelineStartStep(start_point)
         if start_step == PipelineStartStep.DOWNLOAD:
             jina_result = await self.jina_client.fetch_content(url)
-            await self._save_download_result(log_id, page_id, jina_result)
+            await self._save_download_result(page_id, jina_result)
             if self.job_repo and job_id:
                 await self.job_repo.update_step(job_id, ProcessingStep.DOWNLOADED)
         if start_step in (PipelineStartStep.DOWNLOAD, PipelineStartStep.LLM):
             llm_result = await self.llm_service.generate_summary_keywords(page_id)
-            await self._save_llm_result(log_id, page_id, llm_result)
+            await self._save_llm_result(page_id, llm_result)
             if self.job_repo and job_id:
                 await self.job_repo.update_step(job_id, ProcessingStep.LLM_PROCESSED)
         if start_step in (
@@ -101,11 +93,9 @@ class BaseProcessorService:
                 await self.page_repo.clear_weaviate_id(page_id)
                 raise
             await self.page_repo.update_success_step(page_id, ProcessingStep.VECTORIZED)
-            await self.log_repo.update_status(log_id, "vectorize_complete")
             if self.job_repo and job_id:
                 await self.job_repo.update_step(job_id, ProcessingStep.VECTORIZED)
 
         await self.page_repo.update_success_step(page_id, ProcessingStep.COMPLETED)
-        await self.log_repo.update_status(log_id, "completed")
         if self.job_repo and job_id:
             await self.job_repo.update_step(job_id, ProcessingStep.COMPLETED)

@@ -55,7 +55,7 @@ class PageRepository:
     async def create_page_with_initial_job(
         self, url: str, title: str, memo: str | None = None
     ) -> tuple[int, int, int]:
-        """Page・開始ログ・初期ジョブを原子的に作成する."""
+        """Page・初期ジョブ・投入イベントを原子的に作成する."""
         try:
             async with self.db.connect() as conn:
                 try:
@@ -71,15 +71,6 @@ class PageRepository:
                     )
                     page_id = int(page_cursor.lastrowid or 0)
 
-                    log_cursor = await conn.execute(
-                        """
-                        INSERT INTO process_logs (page_id, url, status, created_at)
-                        VALUES (?, ?, 'started', ?)
-                        """,
-                        (page_id, url, now),
-                    )
-                    log_id = int(log_cursor.lastrowid or 0)
-
                     job_cursor = await conn.execute(
                         """
                         INSERT INTO jobs
@@ -89,6 +80,13 @@ class PageRepository:
                         (page_id, now),
                     )
                     job_id = int(job_cursor.lastrowid or 0)
+                    log_cursor = await conn.execute(
+                        """INSERT INTO process_logs
+                            (page_id, job_id, attempt, url, status, created_at)
+                        VALUES (?, ?, 0, ?, 'job_queued', ?)""",
+                        (page_id, job_id, url, now),
+                    )
+                    log_id = int(log_cursor.lastrowid or 0)
                     await conn.commit()
                     return page_id, log_id, job_id
                 except Exception:

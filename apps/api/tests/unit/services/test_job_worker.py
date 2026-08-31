@@ -148,14 +148,14 @@ async def test_worker_marks_success() -> None:
     log_repo = AsyncMock()
     processor = AsyncMock()
     page_repo.get_page.return_value = make_page()
-    log_repo.create_log.return_value = 9
     worker = JobWorker(job_repo, page_repo, log_repo, processor)
 
     await worker._execute(3, 2, PipelineStartStep.DOWNLOAD)
 
     processor._run_pipeline_from.assert_awaited_once_with(
-        2, 9, "https://example.com", PipelineStartStep.DOWNLOAD, 3
+        2, "https://example.com", PipelineStartStep.DOWNLOAD, 3
     )
+    log_repo.create_log.assert_not_awaited()
     job_repo.succeed.assert_awaited_once_with(3, 2)
 
 
@@ -165,25 +165,23 @@ async def test_worker_records_failure() -> None:
     log_repo = AsyncMock()
     processor = AsyncMock()
     page_repo.get_page.return_value = make_page()
-    log_repo.create_log.return_value = 9
     processor._run_pipeline_from.side_effect = RuntimeError("boom")
     worker = JobWorker(job_repo, page_repo, log_repo, processor)
 
     await worker._execute(3, 2, PipelineStartStep.DOWNLOAD)
 
-    log_repo.update_status.assert_awaited_once_with(9, "failed", "boom")
+    log_repo.create_log.assert_not_awaited()
     job_repo.fail.assert_awaited_once_with(3, 2, "boom")
 
 
-async def test_worker_records_failure_when_log_creation_fails() -> None:
+async def test_worker_records_failure_when_page_lookup_fails() -> None:
     job_repo = AsyncMock()
     page_repo = AsyncMock()
     log_repo = AsyncMock()
-    page_repo.get_page.return_value = make_page()
-    log_repo.create_log.side_effect = RuntimeError("log unavailable")
+    page_repo.get_page.return_value = None
     worker = JobWorker(job_repo, page_repo, log_repo, AsyncMock())
 
     await worker._execute(3, 2, PipelineStartStep.DOWNLOAD)
 
-    log_repo.update_status.assert_not_awaited()
-    job_repo.fail.assert_awaited_once_with(3, 2, "log unavailable")
+    log_repo.create_log.assert_not_awaited()
+    job_repo.fail.assert_awaited_once_with(3, 2, "Page not found")
