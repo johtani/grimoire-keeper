@@ -5,22 +5,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from grimoire_api.models.database import PageStatus, ProcessingStep
-from grimoire_api.models.external import FetchedDocument, SummaryResult
-from grimoire_api.repositories.job_repository import JobRepository
-from grimoire_api.repositories.log_repository import LogRepository
+from grimoire_api.models.database import PageStatus
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
 from grimoire_api.utils.exceptions import DatabaseError, ResourceNotFoundError
-
-
-def _fetched_document(url: str = "https://example.com") -> FetchedDocument:
-    raw_response = {"data": {"title": "Test Title", "content": "Test content"}}
-    return FetchedDocument.from_jina_response(raw_response, source_url=url)
-
-
-def _summary_result() -> SummaryResult:
-    return SummaryResult(summary="Test summary", keywords=["test", "keyword"])
 
 
 class TestUrlProcessorService:
@@ -34,31 +22,12 @@ class TestUrlProcessorService:
         page_repo.create_page = AsyncMock()
         page_repo.create_page_with_initial_job = AsyncMock()
 
-        log_repo = AsyncMock()
-        log_repo.create_log = AsyncMock()
-
-        return {
-            "jina_client": AsyncMock(),
-            "llm_service": AsyncMock(),
-            "vectorizer": AsyncMock(),
-            "page_repo": page_repo,
-            "log_repo": log_repo,
-            "file_repo": AsyncMock(),
-            "job_repo": AsyncMock(),
-        }
+        return {"page_repo": page_repo}
 
     @pytest.fixture
     def url_processor(self, mock_services: Any) -> Any:
         """URL処理サービスフィクスチャ."""
-        return UrlProcessorService(
-            jina_client=mock_services["jina_client"],
-            llm_service=mock_services["llm_service"],
-            vectorizer=mock_services["vectorizer"],
-            page_repo=mock_services["page_repo"],
-            log_repo=mock_services["log_repo"],
-            file_repo=mock_services["file_repo"],
-            job_repo=mock_services["job_repo"],
-        )
+        return UrlProcessorService(page_repo=mock_services["page_repo"])
 
     @pytest.mark.asyncio
     async def test_prepare_url_processing_success(
@@ -93,189 +62,6 @@ class TestUrlProcessorService:
         )
 
     @pytest.mark.asyncio
-    async def test_process_url_background_success(
-        self, url_processor, mock_services: Any
-    ) -> None:
-        """バックグラウンド処理テスト."""
-        url = "https://example.com"
-        log_id = 1
-        page_id = 2
-
-        # モック設定
-        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
-        mock_services[
-            "llm_service"
-        ].generate_summary_keywords.return_value = _summary_result()
-
-        # 処理実行
-        await url_processor.process_url_background(page_id, log_id, url)
-
-        # 各ステップが呼ばれたことを確認
-        mock_services["jina_client"].fetch_content.assert_called_once_with(url)
-        mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
-            page_id
-        )
-        mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
-
-    @pytest.mark.asyncio
-    async def test_prepare_and_background_full_flow(
-        self, url_processor, mock_services: Any
-    ) -> None:
-        """prepare_url_processing + process_url_background の統合フローテスト."""
-        url = "https://example.com"
-        memo = "Test memo"
-        log_id = 1
-        page_id = 2
-
-        # モック設定
-        mock_services["page_repo"].get_page_by_url.return_value = None  # URL重複なし
-        mock_services["page_repo"].create_page_with_initial_job.return_value = (
-            page_id,
-            log_id,
-            99,
-        )
-        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
-        mock_services[
-            "llm_service"
-        ].generate_summary_keywords.return_value = _summary_result()
-
-        # 処理実行
-        prepare_result = await url_processor.prepare_url_processing(url, memo)
-
-        # prepare結果確認
-        assert prepare_result["status"] == "prepared"
-        assert prepare_result["page_id"] == page_id
-        assert prepare_result["log_id"] == log_id
-        mock_services["page_repo"].create_page_with_initial_job.assert_called_once()
-
-        # バックグラウンド処理実行
-        await url_processor.process_url_background(page_id, log_id, url)
-
-        # 各ステップが呼ばれたことを確認
-        mock_services["jina_client"].fetch_content.assert_called_once_with(url)
-        mock_services["llm_service"].generate_summary_keywords.assert_called_once_with(
-            page_id
-        )
-        mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
-
-    @pytest.mark.asyncio
-    async def test_process_url_background_jina_error(
-        self, url_processor, mock_services
-    ):
-        """Jina AI Readerエラーのテスト."""
-        url = "https://example.com"
-        log_id = 1
-        page_id = 1
-
-        # モック設定
-        mock_services["jina_client"].fetch_content.side_effect = Exception("Jina error")
-
-        # バックグラウンド処理実行（エラーはキャッチされる）
-        await url_processor.process_url_background(page_id, log_id, url)
-
-        # エラーログが記録されることを確認
-        mock_services["log_repo"].update_status.assert_called_with(
-            log_id, "failed", "Jina error"
-        )
-
-    @pytest.mark.asyncio
-    async def test_process_url_background_llm_error(
-        self, url_processor, mock_services: Any
-    ) -> None:
-        """LLMエラーのテスト."""
-        url = "https://example.com"
-        log_id = 1
-        page_id = 2
-
-        # モック設定
-        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
-        mock_services["llm_service"].generate_summary_keywords.side_effect = Exception(
-            "LLM error"
-        )
-
-        # バックグラウンド処理実行（エラーはキャッチされる）
-        await url_processor.process_url_background(page_id, log_id, url)
-
-        # エラーログが記録されることを確認
-        mock_services["log_repo"].update_status.assert_called_with(
-            log_id, "failed", "LLM error"
-        )
-
-    @pytest.mark.asyncio
-    async def test_process_url_background_vectorize_error_clears_weaviate_id(
-        self, url_processor, mock_services: Any
-    ) -> None:
-        """Weaviate失敗時にclear_weaviate_idが呼ばれることを確認."""
-        url = "https://example.com"
-        log_id = 1
-        page_id = 2
-
-        # モック設定
-        mock_services["jina_client"].fetch_content.return_value = _fetched_document(url)
-        mock_services[
-            "llm_service"
-        ].generate_summary_keywords.return_value = _summary_result()
-        mock_services["vectorizer"].vectorize_content.side_effect = Exception(
-            "Weaviate error"
-        )
-
-        # バックグラウンド処理実行（エラーはキャッチされる）
-        await url_processor.process_url_background(page_id, log_id, url)
-
-        # clear_weaviate_idが呼ばれることを確認
-        mock_services["page_repo"].clear_weaviate_id.assert_called_once_with(page_id)
-        # エラーログが記録されることを確認
-        mock_services["log_repo"].update_status.assert_called_with(
-            log_id, "failed", "Weaviate error"
-        )
-
-    @pytest.mark.asyncio
-    async def test_save_download_result(
-        self, url_processor, mock_services: Any
-    ) -> None:
-        """ダウンロード結果保存テスト."""
-        log_id = 1
-        page_id = 2
-        jina_result = _fetched_document()
-
-        # 処理実行
-        await url_processor._save_download_result(log_id, page_id, jina_result)
-
-        # 各メソッドが呼ばれたことを確認
-        mock_services["file_repo"].save_json_file.assert_called_once_with(
-            page_id, jina_result.raw_response
-        )
-        mock_services["page_repo"].update_title_and_step.assert_called_once_with(
-            page_id, "Test Title", ProcessingStep.DOWNLOADED
-        )
-        mock_services["log_repo"].update_status.assert_called_once_with(
-            log_id, "download_complete"
-        )
-
-    @pytest.mark.asyncio
-    async def test_save_llm_result(self, url_processor, mock_services: Any) -> None:
-        """LLM結果保存テスト."""
-        log_id = 1
-        page_id = 2
-        llm_result = _summary_result()
-
-        # 処理実行
-        await url_processor._save_llm_result(log_id, page_id, llm_result)
-
-        # 各メソッドが呼ばれたことを確認
-        mock_services[
-            "page_repo"
-        ].update_summary_keywords_and_step.assert_called_once_with(
-            page_id=page_id,
-            summary="Test summary",
-            keywords=["test", "keyword"],
-            step=ProcessingStep.LLM_PROCESSED,
-        )
-        mock_services["log_repo"].update_status.assert_called_once_with(
-            log_id, "llm_complete"
-        )
-
-    @pytest.mark.asyncio
     async def test_get_processing_status_completed(
         self, url_processor, mock_services: Any
     ) -> None:
@@ -293,17 +79,8 @@ class TestUrlProcessorService:
         mock_page.created_at.isoformat.return_value = "2024-01-01T00:00:00"
         mock_page.status = PageStatus.SUCCEEDED
 
-        # モックログデータ
-        mock_log = MagicMock()
-        mock_log.page_id = page_id
-        mock_log.status = "completed"
-        mock_log.error_message = None
-
         # モック設定
         mock_services["page_repo"].get_page = AsyncMock(return_value=mock_page)
-        mock_services["log_repo"].get_logs_by_status = AsyncMock(
-            return_value=[mock_log]
-        )
 
         # 処理実行
         status = await url_processor.get_processing_status(page_id)
@@ -363,17 +140,7 @@ class TestConcurrentUrlProcessor:
 
         def _make() -> UrlProcessorService:
             page_repo = PageRepository(db=temp_db)
-            log_repo = LogRepository(db=temp_db)
-            job_repo = JobRepository(db=temp_db)
-            return UrlProcessorService(
-                jina_client=AsyncMock(),
-                llm_service=AsyncMock(),
-                vectorizer=AsyncMock(),
-                page_repo=page_repo,
-                log_repo=log_repo,
-                file_repo=AsyncMock(),
-                job_repo=job_repo,
-            )
+            return UrlProcessorService(page_repo=page_repo)
 
         return _make
 

@@ -52,9 +52,14 @@ class Settings(BaseSettings):
         extra="ignore",  # 余分な環境変数を無視
     )
 
-    def missing_required_vars(self) -> list[str]:
-        """未設定または現在の構成では無効な必須環境変数を返す."""
+    def missing_api_required_vars(self) -> list[str]:
+        """Return missing settings required by the SQLite-backed API process."""
+        return ["DATABASE_PATH"] if not self.DATABASE_PATH.strip() else []
+
+    def missing_worker_required_vars(self) -> list[str]:
+        """Return missing settings required by the processing worker."""
         required_vars = {
+            "DATABASE_PATH": self.DATABASE_PATH,
             "JINA_API_KEY": self.JINA_API_KEY,
             "OPENAI_API_KEY": self.OPENAI_API_KEY,
         }
@@ -69,18 +74,24 @@ class Settings(BaseSettings):
 
         return missing_vars
 
-    def validate_required_vars(self) -> None:
-        """必須環境変数の検証.
+    def validate_api_required_vars(self) -> None:
+        """Validate settings required by the API process."""
+        self._validate_required_vars(self.missing_api_required_vars(), "API")
+
+    def validate_worker_required_vars(self) -> None:
+        """Validate settings required by the worker process."""
+        self._validate_required_vars(self.missing_worker_required_vars(), "Worker")
+
+    def _validate_required_vars(self, missing_vars: list[str], process: str) -> None:
+        """Exit with a useful message when process-specific settings are missing.
 
         Raises:
             SystemExit: 必須環境変数が設定されていない場合
         """
-        missing_vars = self.missing_required_vars()
-
         if missing_vars:
             error_msg = (
                 "\n" + "=" * 70 + "\n"
-                "ERROR: 必須環境変数が設定されていません\n"
+                f"ERROR: {process} の必須環境変数が設定されていません\n"
                 "=" * 70 + "\n\n"
                 "以下の環境変数を設定してください:\n\n"
             )

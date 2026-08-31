@@ -13,15 +13,11 @@ async def test_lifespan_starts_and_stops_manager_after_database_init() -> None:
     manager = MagicMock()
     manager.start = AsyncMock()
     manager.stop = AsyncMock()
-    jina_client = MagicMock()
-    jina_client.close = AsyncMock()
-
     with (
         patch(
             "grimoire_api.main.ensure_database_initialized", new=AsyncMock()
         ) as initialize,
         patch("grimoire_api.main.WeaviateConnectionManager", return_value=manager),
-        patch("grimoire_api.main.get_jina_client", return_value=jina_client),
     ):
         async with lifespan(app):
             manager.start.assert_awaited_once()
@@ -29,7 +25,6 @@ async def test_lifespan_starts_and_stops_manager_after_database_init() -> None:
 
     initialize.assert_awaited_once()
     manager.stop.assert_awaited_once()
-    jina_client.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

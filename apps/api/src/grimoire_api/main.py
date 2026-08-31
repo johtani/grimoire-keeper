@@ -15,9 +15,6 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 
 from .config import settings
-from .dependencies import (
-    get_jina_client,
-)
 from .routers import health, pages, process, retry, search, system_info
 from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
@@ -39,7 +36,7 @@ PAGE_RESOURCE_ROUTES = frozenset(
 
 # 環境変数の必須チェック（テスト環境以外）
 if not os.getenv("PYTEST_CURRENT_TEST"):
-    settings.validate_required_vars()
+    settings.validate_api_required_vars()
 
 # OpenTelemetryの初期化
 setup_telemetry("grimoire-api")
@@ -73,8 +70,6 @@ async def lifespan(app: FastAPI) -> Any:
     finally:
         # 終了時処理
         await weaviate_manager.stop()
-        await get_jina_client().close()
-        logger.info("Jina client closed")
         logger.info("Application shutting down")
 
 

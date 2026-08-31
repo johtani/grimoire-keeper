@@ -6,19 +6,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-import weaviate
-from grimoire_api.config import settings
 from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.database import DatabaseConnection
-from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.job_repository import JobRepository
-from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
-from grimoire_api.services.chunking_service import ChunkingService
-from grimoire_api.services.jina_client import JinaClient
-from grimoire_api.services.llm_service import LLMService
 from grimoire_api.services.retry_service import RetryService
-from grimoire_api.services.vectorizer import VectorizerService
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).parent.parent
@@ -41,32 +33,9 @@ async def batch_retry_from_status(
     """
     # 依存関係初期化
     db = DatabaseConnection()
-    file_repo = FileRepository()
     page_repo = PageRepository(db)
-    log_repo = LogRepository(db)
     job_repo = JobRepository(db)
-
-    jina_client = JinaClient()
-    llm_service = LLMService(file_repo)
-    chunking_service = ChunkingService()
-    weaviate_client = weaviate.connect_to_local(
-        host=settings.WEAVIATE_HOST,
-        port=settings.WEAVIATE_PORT,
-        headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
-    )
-    vectorizer = VectorizerService(
-        page_repo, file_repo, chunking_service, weaviate_client
-    )
-
-    retry_service = RetryService(
-        jina_client=jina_client,
-        llm_service=llm_service,
-        vectorizer=vectorizer,
-        page_repo=page_repo,
-        log_repo=log_repo,
-        file_repo=file_repo,
-        job_repo=job_repo,
-    )
+    retry_service = RetryService(page_repo=page_repo, job_repo=job_repo)
 
     try:
         # ステップに対応する成功ステータスを取得
@@ -143,7 +112,8 @@ async def batch_retry_from_status(
         print(f"  Errors: {error_count}")
         print(f"  Total: {len(pages)}")
     finally:
-        weaviate_client.close()
+        # DatabaseConnection opens and closes a connection for each operation.
+        pass
 
 
 def main() -> None:

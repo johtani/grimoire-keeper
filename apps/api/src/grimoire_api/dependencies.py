@@ -169,42 +169,15 @@ def get_search_service(
 
 
 def get_url_processor_service(
-    jina_client: JinaClient = Depends(get_jina_client),
-    llm_service: LLMService = Depends(get_llm_service),
-    vectorizer: VectorizerService = Depends(get_vectorizer_service),
     page_repo: PageRepository = Depends(get_page_repository),
-    log_repo: LogRepository = Depends(get_log_repository),
-    file_repo: FileRepository = Depends(get_file_repository),
-    job_repo: JobRepository = Depends(get_job_repository),
 ) -> UrlProcessorService:
-    """URL 処理サービス依存性注入."""
-    return UrlProcessorService(
-        jina_client=jina_client,
-        llm_service=llm_service,
-        vectorizer=vectorizer,
-        page_repo=page_repo,
-        log_repo=log_repo,
-        file_repo=file_repo,
-        job_repo=job_repo,
-    )
+    """SQLite-only URL job management dependency."""
+    return UrlProcessorService(page_repo=page_repo)
 
 
 def get_retry_service(
-    jina_client: JinaClient = Depends(get_jina_client),
-    llm_service: LLMService = Depends(get_llm_service),
-    vectorizer: VectorizerService = Depends(get_vectorizer_service),
     page_repo: PageRepository = Depends(get_page_repository),
-    log_repo: LogRepository = Depends(get_log_repository),
-    file_repo: FileRepository = Depends(get_file_repository),
     job_repo: JobRepository = Depends(get_job_repository),
 ) -> RetryService:
-    """再処理サービス依存性注入."""
-    return RetryService(
-        jina_client=jina_client,
-        llm_service=llm_service,
-        vectorizer=vectorizer,
-        page_repo=page_repo,
-        log_repo=log_repo,
-        file_repo=file_repo,
-        job_repo=job_repo,
-    )
+    """SQLite-only retry job management dependency."""
+    return RetryService(page_repo=page_repo, job_repo=job_repo)

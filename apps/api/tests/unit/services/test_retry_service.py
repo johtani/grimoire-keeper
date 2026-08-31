@@ -44,12 +44,7 @@ def make_page(
 @pytest.fixture
 def dependencies() -> dict[str, AsyncMock]:
     return {
-        "jina_client": AsyncMock(),
-        "llm_service": AsyncMock(),
-        "vectorizer": AsyncMock(),
         "page_repo": AsyncMock(),
-        "log_repo": AsyncMock(),
-        "file_repo": AsyncMock(),
         "job_repo": AsyncMock(),
     }
 

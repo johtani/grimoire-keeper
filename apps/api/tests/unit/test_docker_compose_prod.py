@@ -6,11 +6,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parents[4]
 
 
-def test_weaviate_healthcheck_and_api_healthy_dependency() -> None:
+def test_weaviate_healthcheck_only_blocks_worker_startup() -> None:
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    api_section = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
+    worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
 
     assert "/v1/.well-known/ready" in compose
-    assert "condition: service_healthy" in compose
+    assert "condition: service_healthy" not in api_section
+    assert "condition: service_healthy" in worker_section
     assert '"--spider"' not in compose
     assert '"-O", "/dev/null"' in compose
 
@@ -42,32 +45,36 @@ def test_host_ports_are_loopback_only_and_internal_connections_are_preserved() -
 
 def test_worker_overrides_api_healthcheck_and_allows_graceful_stop() -> None:
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
-    worker_section = compose.split("  worker:", 1)[1].split("  weaviate:", 1)[0]
+    worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
 
     assert '"grimoire_api.worker"' in worker_section
     assert "healthcheck:\n      disable: true" in worker_section
     assert "stop_grace_period: 20s" in worker_section
 
 
-def test_api_and_worker_receive_canonical_llm_api_key() -> None:
-    """APIとworkerが要約LLM用の正規変数を同じ方法で受け取る."""
+def test_only_worker_receives_processing_credentials() -> None:
+    """AI処理用キーはworkerだけへ渡す."""
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     api_section = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
-    worker_section = compose.split("  worker:", 1)[1].split("  weaviate:", 1)[0]
+    worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
 
-    expected = "LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}"
-    for service_section in (api_section, worker_section):
-        assert expected in service_section
-        assert "GOOGLE_API_KEY" not in service_section
-        assert "GRIMOIRE_KEEPER_LLM_API_KEY:-dummy" not in service_section
+    processing_keys = (
+        "OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}",
+        "JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}",
+        "LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}",
+    )
+    assert all(key not in api_section for key in processing_keys)
+    assert all(key in worker_section for key in processing_keys)
 
 
-def test_dev_script_maps_canonical_llm_api_key() -> None:
-    """開発起動スクリプトも本番Composeと同じLLMキーを渡す."""
+def test_dev_api_script_does_not_require_worker_credentials() -> None:
+    """開発APIはBitwardenやAI処理用キーなしで起動する."""
     script = (PROJECT_ROOT / "scripts/dev.sh").read_text()
 
-    assert 'export LLM_API_KEY="${GRIMOIRE_KEEPER_LLM_API_KEY}"' in script
-    assert "GOOGLE_API_KEY" not in script
+    assert "bws run" not in script
+    assert "BWS_ACCESS_TOKEN" not in script
+    assert "GRIMOIRE_KEEPER_" not in script
+    assert "uvicorn grimoire_api.main:app" in script
 
 
 def test_web_healthcheck_uses_canonical_api_path_through_nginx() -> None:

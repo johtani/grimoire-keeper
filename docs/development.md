@@ -13,6 +13,11 @@ API はジョブを SQLite の `jobs` テーブルへ登録するだけなので
 worker は同じ SQLite に対して必ず1プロセスだけ起動してください。本番 Compose でも
 `worker` サービスを scale せず、replica 数を1に保ちます。
 
+APIプロセスに必須なのはSQLiteの `DATABASE_PATH` だけです。Jina、LLM、Weaviateが停止中、
+または処理用APIキーが未設定でも、URL登録、状態確認、リトライ受付は利用できます。登録済みの
+ジョブはSQLiteに保持され、必要な外部サービスを設定したworkerが復旧した後に処理されます。
+検索などWeaviateを直接利用するAPIは、Weaviate停止中は縮退応答または503を返します。
+
 ## Web UI と CORS
 
 同梱の Web UI は nginx の `/api/` リバースプロキシを通して API にアクセスする
@@ -43,13 +48,16 @@ Weaviate は個人利用かつ外部ネットワークから到達不能であ�
 
 要約LLMの認証情報には、プロバイダー共通の `LLM_API_KEY` を使用します。
 Bitwarden Secrets Manager には `GRIMOIRE_KEEPER_LLM_API_KEY` という名前で登録し、
-`scripts/dev.sh` と `docker-compose.prod.yml` が `LLM_API_KEY` へ変換して API と worker
-へ渡します。`OPENAI_API_KEY` は Weaviate の埋め込み用であり、要約LLM用とは別です。
+本番では `docker-compose.prod.yml` がWorkerへ `LLM_API_KEY` を渡します。開発時のWorkerは、
+同じ名前の環境変数を設定したシェルから起動してください。`OPENAI_API_KEY` は Weaviate の
+埋め込み用であり、要約LLM用とは別です。`scripts/dev.sh` はAPIだけを起動するため、これらの
+処理用キーやBitwardenへの接続を必要としません。
 
 ローカルの OpenAI 互換サーバーを使う場合は `LLM_API_BASE` にそのURLを設定します。
 認証不要のサーバーでは `LLM_API_KEY=dummy` を使用できます。GeminiなどのクラウドLLMを
 使う場合は `LLM_API_BASE` を空にし、`LLM_API_KEY` に実際のプロバイダーAPIキーを設定します。
-クラウド構成でキーが空、または `dummy` の場合、APIとworkerは起動時に停止します。
+クラウド構成でキーが空、または `dummy` の場合、workerは起動時に停止します。APIはAI処理用
+キーを検証せず、SQLiteを使う受付・参照APIを継続します。
 
 `GOOGLE_API_KEY` は `LLMService` から参照される互換変数ではありません。既存環境で
 Googleのキーをこの名前で管理している場合は、同じ値を
