@@ -68,6 +68,12 @@ worker は `BEGIN IMMEDIATE` のトランザクションで queued ジョブを�
 待機します。期限を超えた処理はキャンセルされ、`running` のまま残ったジョブは次回の
 worker 起動時に `queued` へ戻されます。
 
+worker は起動時に `DATABASE_PATH` の正規化パスへ `.worker.lock` を付けたファイルを使い、
+OS の排他ファイルロックを取得します。同じ SQLite と JSON ストレージを扱う二つ目の worker
+は、DB 初期化や中断ジョブの復旧を行う前に非0終了します。ロックはファイルの有無ではなく
+カーネルが管理するため、worker のクラッシュ後は自動的に解放されます。ロックファイル自体が
+残っていても stale lock にはならず、次の worker はそのままロックを再取得できます。
+
 本番 worker は claim loop を supervisor で監視します。停止要求なしに loop が終了した場合は
 プロセスを非0終了し、Compose の `restart: unless-stopped` で再起動します。コンテナの
 healthcheck は `/tmp/grimoire-worker-health.json` に記録される loop の heartbeat と最終 claim

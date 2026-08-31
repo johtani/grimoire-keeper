@@ -28,6 +28,7 @@ from .services.vectorizer import VectorizerService
 from .services.weaviate_connection import WeaviateConnectionManager
 from .utils.database_init import ensure_database_initialized
 from .worker_health import WorkerHealth
+from .worker_lock import WorkerLock
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,14 @@ def build_job_worker(
 @asynccontextmanager
 async def worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
     """Manage the dedicated worker and its Weaviate connection."""
+    with WorkerLock(settings.DATABASE_PATH):
+        async with _locked_worker_lifespan() as failure:
+            yield failure
+
+
+@asynccontextmanager
+async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
+    """Manage worker resources after obtaining the process-level lock."""
     health = WorkerHealth()
     health.heartbeat()
     await ensure_database_initialized()

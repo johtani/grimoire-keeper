@@ -4,7 +4,38 @@ import asyncio
 import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from grimoire_api.worker import run_worker, worker_lifespan
+from grimoire_api.worker_lock import WorkerAlreadyRunningError
+
+
+@pytest.fixture(autouse=True)
+def worker_database_path(tmp_path, monkeypatch) -> None:
+    """各lifespan testのlock fileを一時ディレクトリに隔離する."""
+    monkeypatch.setattr(
+        "grimoire_api.worker.settings.DATABASE_PATH", str(tmp_path / "grimoire.db")
+    )
+
+
+async def test_worker_lifespan_does_not_initialize_when_lock_is_held() -> None:
+    """二重起動時はDB初期化や外部接続へ進まない."""
+    lock = MagicMock()
+    lock.__enter__.side_effect = WorkerAlreadyRunningError("already running")
+    manager_class = MagicMock()
+
+    with (
+        patch("grimoire_api.worker.WorkerLock", return_value=lock),
+        patch(
+            "grimoire_api.worker.ensure_database_initialized", new=AsyncMock()
+        ) as initialize,
+        patch("grimoire_api.worker.WeaviateConnectionManager", manager_class),
+    ):
+        with pytest.raises(WorkerAlreadyRunningError, match="already running"):
+            async with worker_lifespan():
+                raise AssertionError("worker lifespan must not start")
+
+    initialize.assert_not_awaited()
+    manager_class.assert_not_called()
 
 
 async def test_worker_lifespan_starts_and_stops_dedicated_worker() -> None:
