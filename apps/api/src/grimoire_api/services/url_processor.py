@@ -3,41 +3,20 @@
 from typing import Any
 
 from ..models.database import PageStatus
-from ..repositories.file_repository import FileRepository
-from ..repositories.job_repository import JobRepository
-from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.datetime import utc_isoformat
 from ..utils.exceptions import GrimoireAPIError, ResourceNotFoundError
-from .base_processor import BaseProcessorService
-from .jina_client import JinaClient
-from .llm_service import LLMService
-from .vectorizer import VectorizerService
 
 
-class UrlProcessorService(BaseProcessorService):
-    """URL処理サービス."""
+class UrlProcessorService:
+    """SQLite-backed URL job registration and status service."""
 
     def __init__(
         self,
-        jina_client: JinaClient,
-        llm_service: LLMService,
-        vectorizer: VectorizerService,
         page_repo: PageRepository,
-        log_repo: LogRepository,
-        file_repo: FileRepository,
-        job_repo: JobRepository | None = None,
     ):
         """初期化."""
-        super().__init__(
-            jina_client=jina_client,
-            llm_service=llm_service,
-            vectorizer=vectorizer,
-            page_repo=page_repo,
-            log_repo=log_repo,
-            file_repo=file_repo,
-            job_repo=job_repo,
-        )
+        self.page_repo = page_repo
 
     async def prepare_url_processing(
         self, url: str, memo: str | None = None
@@ -85,15 +64,6 @@ class UrlProcessorService(BaseProcessorService):
                         "message": "URL already exists in the database",
                     }
             raise GrimoireAPIError(f"URL processing preparation failed: {str(e)}")
-
-    async def process_url_background(self, page_id: int, log_id: int, url: str) -> None:
-        """バックグラウンド処理."""
-        try:
-            await self._run_pipeline_from(
-                page_id=page_id, log_id=log_id, url=url, start_point="download"
-            )
-        except Exception as e:
-            await self.log_repo.update_status(log_id, "failed", str(e))
 
     async def get_processing_status(self, page_id: int) -> dict[str, Any]:
         """処理状況取得."""

@@ -1,11 +1,17 @@
 """Tests for process router."""
 
-from unittest.mock import AsyncMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from grimoire_api.dependencies import get_url_processor_service, get_weaviate_client
+from grimoire_api.dependencies import (
+    get_page_repository,
+    get_url_processor_service,
+    get_weaviate_client,
+)
 from grimoire_api.main import app
+from grimoire_api.models.database import PageStatus
 from grimoire_api.utils.exceptions import ResourceNotFoundError
 
 client = TestClient(app)
@@ -116,8 +122,12 @@ class TestProcessRouter:
 
         assert response.status_code == 422
 
-    def test_process_url_weaviate_unavailable(self) -> None:
-        """Weaviate未接続時に503が返ることのテスト."""
+    def test_process_url_does_not_resolve_weaviate_dependency(self) -> None:
+        """Weaviate未接続でもSQLiteへのURL登録を受け付ける."""
+        page_repo = AsyncMock()
+        page_repo.get_page_by_url.return_value = None
+        page_repo.create_page_with_initial_job.return_value = (1, 10, 100)
+        app.dependency_overrides[get_page_repository] = lambda: page_repo
 
         def raise_503() -> None:
             raise HTTPException(status_code=503, detail="Weaviate is not available")
@@ -129,8 +139,9 @@ class TestProcessRouter:
             json={"url": "https://example.com"},
         )
 
-        assert response.status_code == 503
-        assert response.json()["detail"] == "Weaviate is not available"
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        page_repo.create_page_with_initial_job.assert_awaited_once()
 
     def test_process_url_error(self) -> None:
         """URL処理エラー時のテスト."""
@@ -172,6 +183,33 @@ class TestProcessRouter:
         assert data["status"] == "completed"
         assert data["page"]["id"] == 1
         assert data["page"]["created_at"] == "2025-01-01T12:00:00Z"
+
+    def test_process_status_does_not_resolve_weaviate_dependency(self) -> None:
+        """Weaviate未接続でもSQLiteから状態を取得する."""
+        page = MagicMock(
+            id=1,
+            url="https://example.com",
+            title="Example",
+            memo=None,
+            summary=None,
+            keywords=[],
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            status=PageStatus.QUEUED,
+        )
+        page_repo = AsyncMock()
+        page_repo.get_page.return_value = page
+        app.dependency_overrides[get_page_repository] = lambda: page_repo
+
+        def raise_503() -> None:
+            raise HTTPException(status_code=503, detail="Weaviate is not available")
+
+        app.dependency_overrides[get_weaviate_client] = raise_503
+
+        response = client.get("/api/v1/process-status/1")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "queued"
+        page_repo.get_page.assert_awaited_once_with(1)
 
     def test_get_process_status_not_found(self) -> None:
         mock_processor = AsyncMock()

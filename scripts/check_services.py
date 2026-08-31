@@ -51,7 +51,7 @@ async def check_api() -> bool:
 
 def check_env_vars() -> bool:
     """環境変数チェック."""
-    missing_vars = settings.missing_required_vars()
+    missing_vars = settings.missing_worker_required_vars()
 
     if missing_vars:
         print(f"❌ 環境変数: 未設定 - {', '.join(missing_vars)}")

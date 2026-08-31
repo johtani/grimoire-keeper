@@ -10,9 +10,7 @@ from ..models.database import (
     ProcessingStep,
     ReprocessStartStep,
 )
-from ..repositories.file_repository import FileRepository
 from ..repositories.job_repository import JobRepository
-from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.exceptions import (
     DatabaseError,
@@ -20,37 +18,21 @@ from ..utils.exceptions import (
     ResourceConflictError,
     ResourceNotFoundError,
 )
-from .base_processor import BaseProcessorService
-from .jina_client import JinaClient
-from .llm_service import LLMService
-from .vectorizer import VectorizerService
 
 logger = logging.getLogger(__name__)
 
 
-class RetryService(BaseProcessorService):
-    """再処理サービス."""
+class RetryService:
+    """SQLite-backed retry job registration service."""
 
     def __init__(
         self,
-        jina_client: JinaClient,
-        llm_service: LLMService,
-        vectorizer: VectorizerService,
         page_repo: PageRepository,
-        log_repo: LogRepository,
-        file_repo: FileRepository,
-        job_repo: JobRepository | None = None,
+        job_repo: JobRepository,
     ):
         """初期化."""
-        super().__init__(
-            jina_client=jina_client,
-            llm_service=llm_service,
-            vectorizer=vectorizer,
-            page_repo=page_repo,
-            log_repo=log_repo,
-            file_repo=file_repo,
-            job_repo=job_repo,
-        )
+        self.page_repo = page_repo
+        self.job_repo = job_repo
 
     async def get_retry_start_point(self, page_id: int) -> PipelineStartStep:
         """再処理開始ポイントを取得."""
@@ -81,8 +63,6 @@ class RetryService(BaseProcessorService):
 
             start_point = await self.get_retry_start_point(page_id)
 
-            if self.job_repo is None:
-                raise GrimoireAPIError("Job repository is not configured")
             job_id = await self._enqueue_job(page_id, JobKind.RETRY, start_point)
 
             return {
@@ -114,8 +94,6 @@ class RetryService(BaseProcessorService):
                 start_point = await self.get_retry_start_point(page_id)
             else:
                 start_point = PipelineStartStep(requested_step.value)
-            if self.job_repo is None:
-                raise GrimoireAPIError("Job repository is not configured")
             job_id = await self._enqueue_job(page_id, JobKind.REPROCESS, start_point)
 
             return {
@@ -138,8 +116,6 @@ class RetryService(BaseProcessorService):
         start_point: PipelineStartStep,
     ) -> int:
         """Enqueue a job and turn an active-job uniqueness race into a conflict."""
-        if self.job_repo is None:
-            raise GrimoireAPIError("Job repository is not configured")
         try:
             return await self.job_repo.enqueue(page_id, kind, start_point)
         except DatabaseError:
@@ -187,19 +163,3 @@ class RetryService(BaseProcessorService):
 
         except Exception as e:
             raise GrimoireAPIError(f"Batch retry failed: {str(e)}")
-
-    async def _execute_retry_from_point(
-        self,
-        page_id: int,
-        log_id: int,
-        url: str,
-        start_point: PipelineStartStep,
-    ) -> None:
-        """指定ポイントから再処理実行."""
-        try:
-            await self._run_pipeline_from(
-                page_id=page_id, log_id=log_id, url=url, start_point=start_point
-            )
-        except Exception as e:
-            await self.log_repo.update_status(log_id, "failed", str(e))
-            raise

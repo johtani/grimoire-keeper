@@ -31,7 +31,7 @@ from .utils.database_init import ensure_database_initialized
 logger = logging.getLogger(__name__)
 
 if not os.getenv("PYTEST_CURRENT_TEST"):
-    settings.validate_required_vars()
+    settings.validate_worker_required_vars()
 
 setup_telemetry("grimoire-worker")
 
