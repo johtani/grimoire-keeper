@@ -3,7 +3,7 @@
 import asyncio
 import os
 
-from grimoire_shared.telemetry import setup_telemetry
+from grimoire_shared.telemetry import redact_http_url, setup_telemetry
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
@@ -14,10 +14,11 @@ from .handlers.events import register_event_handlers
 from .handlers.modals import register_modal_handlers
 
 # OpenTelemetryの初期化
-setup_telemetry("grimoire-bot")
+telemetry_is_enabled = setup_telemetry("grimoire-bot")
 
 # 自動計装の設定
-HTTPXClientInstrumentor().instrument()
+if telemetry_is_enabled:
+    HTTPXClientInstrumentor().instrument(request_hook=redact_http_url)
 
 # Slack App初期化
 app = AsyncApp(

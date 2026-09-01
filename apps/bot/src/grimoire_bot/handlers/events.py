@@ -51,4 +51,12 @@ def register_event_handlers(app: AsyncApp) -> None:
         body: dict[str, Any], logger: logging.Logger
     ) -> None:
         """メッセージイベント（ログ用）"""
-        logger.info(body)
+        event = body.get("event", {})
+        logger.info(
+            "Slack message event received",
+            extra={
+                "event": "slack.message.received",
+                "slack_event_type": event.get("type", "unknown"),
+                "has_text": bool(event.get("text")),
+            },
+        )

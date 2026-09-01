@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 from grimoire_shared import telemetry
@@ -11,7 +11,21 @@ def test_setup_telemetry_returns_early_when_disabled(
     monkeypatch.setenv("OTEL_SDK_DISABLED", "TRUE")
     monkeypatch.setattr(telemetry.Resource, "create", resource_create)
 
-    telemetry.setup_telemetry("test-service")
+    assert telemetry.setup_telemetry("test-service") is False
+
+    resource_create.assert_not_called()
+
+
+def test_setup_telemetry_returns_early_without_explicit_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resource_create = MagicMock()
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.delenv("OTEL_ENABLED", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.setattr(telemetry.Resource, "create", resource_create)
+
+    assert telemetry.setup_telemetry("test-service") is False
 
     resource_create.assert_not_called()
 
@@ -52,13 +66,14 @@ def test_setup_telemetry_configures_tracing_and_metrics(
     monkeypatch.setattr(telemetry.trace, "set_tracer_provider", set_tracer_provider)
     monkeypatch.setattr(telemetry.metrics, "set_meter_provider", set_meter_provider)
 
-    telemetry.setup_telemetry("test-service", "2.0.0")
+    assert telemetry.setup_telemetry("test-service", "2.0.0") is True
 
     resource_create.assert_called_once_with(
         {
             "service.name": "test-service",
             "service.version": "2.0.0",
             "service.namespace": "grimoire-keeper",
+            "service.component": "test-service",
         }
     )
     span_exporter_factory.assert_called_once_with(
@@ -76,6 +91,19 @@ def test_setup_telemetry_configures_tracing_and_metrics(
         resource=resource, metric_readers=[metric_reader]
     )
     set_meter_provider.assert_called_once_with(meter_provider)
+
+
+def test_redact_http_url_replaces_sensitive_attributes() -> None:
+    span = MagicMock()
+    span.is_recording.return_value = True
+
+    telemetry.redact_http_url(span, object())
+
+    assert span.set_attribute.call_args_list == [
+        call("url.full", "[REDACTED]"),
+        call("http.url", "[REDACTED]"),
+        call("http.target", "[REDACTED]"),
+    ]
 
 
 def test_get_tracer(monkeypatch: pytest.MonkeyPatch) -> None:

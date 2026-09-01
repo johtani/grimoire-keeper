@@ -16,6 +16,8 @@ from ..utils.metrics import (
     url_processing_job_attempts,
     url_processing_job_completions,
     url_processing_job_duration,
+    worker_job_claims,
+    worker_loop_heartbeats,
 )
 from .base_processor import BaseProcessorService
 from .repair_service import validate_stored_source
@@ -51,6 +53,16 @@ class JobWorker:
         interrupted_jobs = await self.job_repo.recover_running()
         for job in interrupted_jobs:
             self._record_interrupted_attempt(job)
+            logger.info(
+                "Interrupted job recovered",
+                extra={
+                    "event": "worker.job.recovered",
+                    "job_id": job.id,
+                    "page_id": job.page_id,
+                    "job_kind": job.kind.value,
+                    "attempt": job.attempt,
+                },
+            )
         self._stop_event.clear()
         self._task = asyncio.create_task(self.run(), name="grimoire-job-worker")
 
@@ -117,6 +129,18 @@ class JobWorker:
                 except TimeoutError:
                     pass
                 continue
+            worker_job_claims.add(1, {"job_kind": job.kind.value})
+            logger.info(
+                "Job claimed",
+                extra={
+                    "event": "worker.job.claimed",
+                    "job_id": job.id,
+                    "page_id": job.page_id,
+                    "job_kind": job.kind.value,
+                    "attempt": job.attempt,
+                    "start_step": job.start_step.value,
+                },
+            )
             await self._execute(job)
 
     async def _execute(self, job: Job) -> None:
@@ -134,7 +158,17 @@ class JobWorker:
             outcome = "succeeded"
             await self._resolve_repair_if_valid(job.page_id)
         except Exception as e:
-            logger.exception("Job %s failed", job.id)
+            logger.error(
+                "Job attempt failed",
+                extra={
+                    "event": "worker.job.failed",
+                    "job_id": job.id,
+                    "page_id": job.page_id,
+                    "job_kind": job.kind.value,
+                    "attempt": job.attempt,
+                    "error_type": type(e).__name__,
+                },
+            )
             finalized = await self.job_repo.fail(job.id, job.page_id, str(e))
         finally:
             if finalized:
@@ -147,6 +181,23 @@ class JobWorker:
                 url_processing_job_duration.record(
                     max((utc_now() - job.created_at).total_seconds(), 0), attributes
                 )
+                logger.info(
+                    "Job attempt completed",
+                    extra={
+                        "event": "worker.job.completed",
+                        "job_id": job.id,
+                        "page_id": job.page_id,
+                        "job_kind": job.kind.value,
+                        "attempt": job.attempt,
+                        "outcome": outcome,
+                        "duration_seconds": time.perf_counter() - attempt_started,
+                    },
+                )
+
+    @staticmethod
+    def record_loop_heartbeat() -> None:
+        """Record a low-cardinality claim-loop liveness metric."""
+        worker_loop_heartbeats.add(1, {"status": "running"})
 
     @staticmethod
     def _record_interrupted_attempt(job: Job) -> None:

@@ -112,6 +112,13 @@ async def test_worker_updates_heartbeat_before_claim() -> None:
     heartbeat.assert_called()
 
 
+def test_worker_records_loop_heartbeat_metric() -> None:
+    with patch("grimoire_api.services.job_worker.worker_loop_heartbeats") as heartbeats:
+        JobWorker.record_loop_heartbeat()
+
+    heartbeats.add.assert_called_once_with(1, {"status": "running"})
+
+
 async def test_worker_wait_propagates_claim_loop_failure() -> None:
     job_repo = AsyncMock()
     job_repo.claim_next.side_effect = RuntimeError("claim failed")

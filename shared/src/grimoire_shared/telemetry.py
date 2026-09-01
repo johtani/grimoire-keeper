@@ -12,11 +12,19 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
-def setup_telemetry(service_name: str, service_version: str = "0.1.0") -> None:
-    """OpenTelemetryの初期化"""
-
+def telemetry_enabled() -> bool:
+    """Return whether telemetry export was explicitly configured."""
     if os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true":
-        return
+        return False
+    enabled = os.getenv("OTEL_ENABLED", "false").lower() == "true"
+    return enabled or bool(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+
+
+def setup_telemetry(service_name: str, service_version: str = "0.1.0") -> bool:
+    """OpenTelemetryを初期化し、有効な場合はTrueを返す."""
+
+    if not telemetry_enabled():
+        return False
 
     # OTel Collectorのエンドポイント
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
@@ -27,6 +35,7 @@ def setup_telemetry(service_name: str, service_version: str = "0.1.0") -> None:
             "service.name": service_name,
             "service.version": service_version,
             "service.namespace": "grimoire-keeper",
+            "service.component": service_name.removeprefix("grimoire-"),
         }
     )
 
@@ -44,6 +53,16 @@ def setup_telemetry(service_name: str, service_version: str = "0.1.0") -> None:
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
+    return True
+
+
+def redact_http_url(span: trace.Span, request: object) -> None:
+    """Remove request URLs from automatically generated HTTP client spans."""
+    del request
+    if not span.is_recording():
+        return
+    for attribute in ("url.full", "http.url", "http.target"):
+        span.set_attribute(attribute, "[REDACTED]")
 
 
 def get_tracer(name: str) -> trace.Tracer:

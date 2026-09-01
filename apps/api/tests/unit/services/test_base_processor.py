@@ -1,7 +1,7 @@
 """Test BaseProcessorService._run_pipeline_from."""
 
 from typing import Any
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from grimoire_api.models.database import ProcessingStep
@@ -101,6 +101,23 @@ class TestRunPipelineFrom:
         mock_services["jina_client"].fetch_content.assert_not_called()
         mock_services["llm_service"].generate_summary_keywords.assert_not_called()
         mock_services["vectorizer"].vectorize_content.assert_called_once_with(page_id)
+
+    @pytest.mark.asyncio
+    async def test_records_each_step_duration_without_sensitive_attributes(
+        self, base_processor: BaseProcessorService, mock_services: Any
+    ) -> None:
+        with patch(
+            "grimoire_api.services.base_processor.worker_pipeline_step_duration"
+        ) as duration:
+            await base_processor._run_pipeline_from(
+                1, "https://example.com/private", "vectorize", 3
+            )
+
+        assert duration.record.call_count == 2
+        for metric_call in duration.record.call_args_list:
+            attributes = metric_call.args[1]
+            assert set(attributes) == {"step", "outcome"}
+            assert "example.com" not in str(attributes)
 
     @pytest.mark.asyncio
     async def test_completion_steps_called_after_success(

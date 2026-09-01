@@ -1,6 +1,6 @@
 """ハンドラーのテスト"""
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from grimoire_bot.handlers.commands import GRIMOIRE_HELP_TEXT, register_command_handlers
@@ -93,6 +93,40 @@ async def test_search_command_renders_api_contract_fixture(bot_contract_fixture)
 
 
 @pytest.mark.asyncio
+async def test_search_command_does_not_record_search_terms_in_spans(
+    bot_contract_fixture,
+):
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    parent_span = MagicMock()
+    search_span = MagicMock()
+    contexts = [
+        MagicMock(__enter__=Mock(return_value=parent_span), __exit__=Mock()),
+        MagicMock(__enter__=Mock(return_value=search_span), __exit__=Mock()),
+    ]
+
+    with (
+        patch("grimoire_bot.handlers.commands.tracer") as tracer,
+        patch("grimoire_bot.handlers.commands.ApiClient") as api_client,
+    ):
+        tracer.start_as_current_span.side_effect = contexts
+        api_client.return_value.search_content = AsyncMock(
+            return_value=bot_contract_fixture("search.json")
+        )
+        await handler(
+            AsyncMock(),
+            AsyncMock(),
+            {"user_id": "U123", "text": "search private terms"},
+        )
+
+    recorded = str(parent_span.set_attribute.call_args_list)
+    recorded += str(search_span.set_attribute.call_args_list)
+    assert "private terms" not in recorded
+    search_span.set_attribute.assert_any_call("search.query_length", 13)
+
+
+@pytest.mark.asyncio
 async def test_status_command_renders_nested_page_contract(bot_contract_fixture):
     """ステータスコマンドが page 配下の API 項目を表示する."""
     app = Mock(spec=App)
@@ -136,3 +170,26 @@ async def test_app_mention_uses_process_url_contract(bot_contract_fixture):
 
     assert say.await_count == 2
     assert "処理ID: 123" in say.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+async def test_message_event_log_does_not_include_payload() -> None:
+    app = Mock(spec=App)
+    register_event_handlers(app)
+    handler = app.event.return_value.call_args_list[1].args[0]
+    logger = MagicMock()
+
+    await handler(
+        {"event": {"type": "message", "text": "private memo"}},
+        logger,
+    )
+
+    assert "private memo" not in str(logger.info.call_args)
+    logger.info.assert_called_once_with(
+        "Slack message event received",
+        extra={
+            "event": "slack.message.received",
+            "slack_event_type": "message",
+            "has_text": True,
+        },
+    )

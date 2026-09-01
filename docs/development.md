@@ -112,6 +112,22 @@ worker のローリング更新は行いません。次の順序で入れ替え�
 worker を複数プロセスへ水平スケールするには、所有 worker ID、lease、有効期限、heartbeat
 を導入する別対応が必要です。
 
+### OpenTelemetry と Worker の診断
+
+OpenTelemetry exporter は opt-in です。`OTEL_EXPORTER_OTLP_ENDPOINT` を設定するか、
+`OTEL_ENABLED=true` を明示した場合だけ有効になります。どちらも未設定なら provider と
+自動計装を作成しないため、collector のない環境で export retry は発生しません。
+`OTEL_SDK_DISABLED=true` は他の設定より優先して無効化します。
+
+プロセスはそれぞれ `grimoire-api`、`grimoire-bot`、`grimoire-worker` を
+`service.name` に設定し、`service.component` でも識別できます。API は FastAPI、HTTPX、
+SQLite、Bot は HTTPX、Worker は HTTPX と SQLite を自動計装します。
+
+Worker は起動、claim、中断ジョブ復旧、pipeline step、完了、heartbeat を構造化ログに記録し、
+claim 数、heartbeat 数、step／attempt／logical job の所要時間を metric に記録します。
+ログの `page_id` と `job_id` は追跡用途に限り、metric label には使用しません。URL、memo、
+検索語、Slack payload は span／ログへ記録せず、HTTPX span の URL 属性も redaction します。
+
 ## SQLiteスキーマの変更
 
 SQLiteのスキーマは
