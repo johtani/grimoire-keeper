@@ -8,7 +8,9 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from grimoire_shared.telemetry import setup_telemetry
+from grimoire_shared.telemetry import redact_http_url, setup_telemetry
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
 
 from .config import settings
 from .dependencies import (
@@ -35,7 +37,10 @@ logger = logging.getLogger(__name__)
 if not os.getenv("PYTEST_CURRENT_TEST"):
     settings.validate_worker_required_vars()
 
-setup_telemetry("grimoire-worker")
+telemetry_is_enabled = setup_telemetry("grimoire-worker")
+if telemetry_is_enabled:
+    HTTPXClientInstrumentor().instrument(request_hook=redact_http_url)
+    SQLite3Instrumentor().instrument()
 
 
 def build_job_worker(
@@ -84,6 +89,7 @@ async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
     """Manage worker resources after obtaining the process-level lock."""
     health = WorkerHealth()
     health.heartbeat()
+    logger.info("Worker process starting", extra={"event": "worker.starting"})
     await ensure_database_initialized()
     logger.info("Database initialized successfully")
 
@@ -109,8 +115,16 @@ async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
                 )
 
     async def publish_health(worker: JobWorker) -> None:
+        heartbeat_count = 0
         while job_worker is worker:
             health.heartbeat()
+            worker.record_loop_heartbeat()
+            heartbeat_count += 1
+            if heartbeat_count == 1 or heartbeat_count % 12 == 0:
+                logger.info(
+                    "Worker claim loop heartbeat",
+                    extra={"event": "worker.heartbeat", "status": "running"},
+                )
             await asyncio.sleep(5)
 
     async def start_job_worker_now(weaviate_client: Any) -> None:
@@ -125,7 +139,10 @@ async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
         health_task = asyncio.create_task(
             publish_health(worker), name="grimoire-job-worker-health"
         )
-        logger.info("Persistent job worker started")
+        logger.info(
+            "Persistent job worker started",
+            extra={"event": "worker.started", "status": "running"},
+        )
 
     async def start_job_worker(weaviate_client: Any) -> None:
         nonlocal pending_worker_start, retiring_worker
@@ -182,7 +199,10 @@ async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
         if stopped and current_monitor is not None:
             await asyncio.gather(current_monitor, return_exceptions=True)
         if stopped:
-            logger.info("Persistent job worker stopped")
+            logger.info(
+                "Persistent job worker stopped",
+                extra={"event": "worker.stopped", "status": "stopped"},
+            )
         else:
             retiring_worker = worker
             logger.warning("Persistent job worker is still retiring")
@@ -208,7 +228,10 @@ async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
             await stop_job_worker()
         finally:
             await get_jina_client().close()
-            logger.info("Worker process shutting down")
+            logger.info(
+                "Worker process shutting down",
+                extra={"event": "worker.shutdown"},
+            )
 
 
 async def run_worker() -> None:

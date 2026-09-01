@@ -174,13 +174,16 @@ class TestJinaClient:
         client = JinaClient(api_key="test_key")
         test_url = "https://example.com"
 
-        request_error = httpx.RequestError("Connection failed")
+        request_error = httpx.RequestError(f"Connection failed for {test_url}/private")
         mock_http_client = AsyncMock()
         mock_http_client.get = AsyncMock(side_effect=request_error)
         client._client = mock_http_client
 
-        with pytest.raises(JinaClientError, match="Jina API request error"):
+        with pytest.raises(JinaClientError, match="Jina API request error") as exc_info:
             await client.fetch_content(test_url)
+
+        assert test_url not in str(exc_info.value)
+        assert "private" not in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_health_check_success(self: Any) -> None:

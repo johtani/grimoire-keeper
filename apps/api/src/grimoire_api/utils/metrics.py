@@ -39,6 +39,22 @@ url_processing_job_duration = meter.create_histogram(
     unit="s",
 )
 
+worker_job_claims = meter.create_counter(
+    "worker_job_claims_total",
+    description="Total number of jobs claimed by the worker",
+)
+
+worker_loop_heartbeats = meter.create_counter(
+    "worker_loop_heartbeats_total",
+    description="Total number of worker claim-loop heartbeats",
+)
+
+worker_pipeline_step_duration = meter.create_histogram(
+    "worker_pipeline_step_duration_seconds",
+    description="Duration of worker pipeline steps",
+    unit="s",
+)
+
 # 検索メトリクス
 search_requests = meter.create_counter(
     "search_requests_total", description="Total number of search requests"

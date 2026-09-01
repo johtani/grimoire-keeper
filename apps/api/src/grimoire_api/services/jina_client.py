@@ -1,6 +1,7 @@
 """Jina AI Reader client."""
 
 import httpx
+from opentelemetry.instrumentation.utils import suppress_http_instrumentation
 from pydantic import ValidationError
 
 from ..config import settings
@@ -60,7 +61,13 @@ class JinaClient:
 
         client = await self._get_client()
         try:
-            response = await client.get(f"{self.base_url}/{url}", headers=self._headers)
+            # The target URL is embedded in the Jina request path. HTTPX records
+            # transport exceptions after request hooks run, so suppress automatic
+            # spans here to prevent exception events from leaking that URL.
+            with suppress_http_instrumentation():
+                response = await client.get(
+                    f"{self.base_url}/{url}", headers=self._headers
+                )
             response.raise_for_status()
             raw_response = response.json()
             if not isinstance(raw_response, dict):
@@ -72,7 +79,9 @@ class JinaClient:
                 f"Jina API HTTP error {e.response.status_code}"
             ) from None
         except httpx.RequestError as e:
-            raise JinaClientError(f"Jina API request error: {str(e)}") from None
+            raise JinaClientError(
+                f"Jina API request error ({type(e).__name__})"
+            ) from None
         except (ValidationError, ValueError, TypeError) as e:
             fields = (
                 sorted(

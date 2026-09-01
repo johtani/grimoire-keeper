@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from grimoire_shared.telemetry import setup_telemetry
+from grimoire_shared.telemetry import redact_http_url, setup_telemetry
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
@@ -39,11 +39,12 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
     settings.validate_api_required_vars()
 
 # OpenTelemetryの初期化
-setup_telemetry("grimoire-api")
+telemetry_is_enabled = setup_telemetry("grimoire-api")
 
 # 自動計装の設定
-HTTPXClientInstrumentor().instrument()
-SQLite3Instrumentor().instrument()
+if telemetry_is_enabled:
+    HTTPXClientInstrumentor().instrument(request_hook=redact_http_url)
+    SQLite3Instrumentor().instrument()
 
 
 @asynccontextmanager
@@ -135,7 +136,8 @@ async def request_validation_handler(
 
 
 # FastAPI自動計装
-FastAPIInstrumentor.instrument_app(app)
+if telemetry_is_enabled:
+    FastAPIInstrumentor.instrument_app(app)
 
 # ルーター登録
 app.include_router(health.router)

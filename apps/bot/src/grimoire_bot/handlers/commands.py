@@ -64,7 +64,7 @@ def register_command_handlers(app: AsyncApp) -> None:
             await ack()
 
             text = command["text"].strip()
-            span.set_attribute("command.text", text)
+            span.set_attribute("command.text_length", len(text))
 
             # コマンドタイプを判定
             if not text:
@@ -100,7 +100,7 @@ def register_command_handlers(app: AsyncApp) -> None:
                 elif text.startswith("search "):
                     with tracer.start_as_current_span("command_search") as search_span:
                         query = text[7:].strip()
-                        search_span.set_attribute("search.query", query)
+                        search_span.set_attribute("search.query_length", len(query))
                         if query:
                             api_client = ApiClient()
                             result = await api_client.search_content(query, limit=5)
@@ -122,8 +122,8 @@ def register_command_handlers(app: AsyncApp) -> None:
                         "command_process_url"
                     ) as url_span:
                         url, memo = parse_url_and_memo(text)
-                        url_span.set_attribute("url.value", url or "")
-                        url_span.set_attribute("url.memo", memo or "")
+                        url_span.set_attribute("url.present", bool(url))
+                        url_span.set_attribute("memo.present", bool(memo))
 
                         if url:
                             api_client = ApiClient()
@@ -149,7 +149,7 @@ def register_command_handlers(app: AsyncApp) -> None:
                     1, {"command_type": command_type, "status": "error"}
                 )
                 span.set_attribute("error", True)
-                span.set_attribute("error.message", str(e))
+                span.set_attribute("error.type", type(e).__name__)
                 await respond(f"エラー: {str(e)}")
 
             finally:
