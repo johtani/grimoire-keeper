@@ -160,6 +160,111 @@ class TestForeignKeyConstraints:
         )
 
 
+class TestStateCheckConstraints:
+    """永続状態と処理ステップをDBレベルで制約する."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("query", "params"),
+        [
+            ("UPDATE pages SET status=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE pages SET last_success_step=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE jobs SET kind=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE jobs SET status=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE jobs SET current_step=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE jobs SET start_step=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE jobs SET attempt=? WHERE id=?", (-1, 1)),
+            ("UPDATE repair_cases SET status=? WHERE id=?", ("invalid", 1)),
+            ("UPDATE process_logs SET status=? WHERE id=?", ("invalid", 1)),
+        ],
+    )
+    async def test_rejects_invalid_persisted_values(
+        self, temp_db: DatabaseConnection, query: str, params: tuple
+    ) -> None:
+        page_id = await temp_db.execute(
+            "INSERT INTO pages (url, title) VALUES (?, ?)",
+            ("https://example.com", "example"),
+        )
+        await temp_db.execute(
+            "INSERT INTO jobs (page_id, kind, start_step) VALUES (?, ?, ?)",
+            (page_id, "initial", "download"),
+        )
+        await temp_db.execute(
+            "INSERT INTO repair_cases (page_id, source, reasons) VALUES (?, ?, ?)",
+            (page_id, "test", "[]"),
+        )
+        await temp_db.execute(
+            "INSERT INTO process_logs (page_id, url, status) VALUES (?, ?, ?)",
+            (page_id, "https://example.com", "failed"),
+        )
+
+        with pytest.raises(DatabaseError, match="CHECK constraint failed"):
+            await temp_db.execute(query, params)
+
+    @pytest.mark.asyncio
+    async def test_accepts_nullable_steps(self, temp_db: DatabaseConnection) -> None:
+        page_id = await temp_db.execute(
+            "INSERT INTO pages (url, title, last_success_step) VALUES (?, ?, NULL)",
+            ("https://example.com", "example"),
+        )
+        await temp_db.execute(
+            "INSERT INTO jobs (page_id, kind, start_step, current_step) "
+            "VALUES (?, ?, ?, NULL)",
+            (page_id, "initial", "download"),
+        )
+
+
+class TestQueryIndexes:
+    """主要repositoryクエリが実クエリ向けindexを利用する."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("query", "params", "index_name"),
+        [
+            (
+                "SELECT * FROM jobs WHERE status='queued' "
+                "ORDER BY created_at, id LIMIT 1",
+                (),
+                "idx_jobs_status_created",
+            ),
+            (
+                "SELECT * FROM jobs WHERE page_id=? "
+                "ORDER BY created_at DESC, id DESC LIMIT 1",
+                (1,),
+                "idx_jobs_page_created",
+            ),
+            (
+                "SELECT error_message FROM process_logs "
+                "WHERE page_id=? AND status='failed' "
+                "ORDER BY created_at DESC LIMIT 1",
+                (1,),
+                "idx_process_logs_page_id",
+            ),
+            (
+                "SELECT * FROM process_logs WHERE status=? ORDER BY created_at DESC",
+                ("failed",),
+                "idx_process_logs_status",
+            ),
+            (
+                "SELECT * FROM repair_cases WHERE status=? "
+                "ORDER BY detected_at DESC, id DESC",
+                ("pending",),
+                "idx_repair_cases_status",
+            ),
+        ],
+    )
+    async def test_query_plan_uses_expected_index(
+        self,
+        temp_db: DatabaseConnection,
+        query: str,
+        params: tuple,
+        index_name: str,
+    ) -> None:
+        rows = await temp_db.fetch_all(f"EXPLAIN QUERY PLAN {query}", params)
+
+        assert any(index_name in row["detail"] for row in rows)
+
+
 class TestReadOnlyDatabaseConnection:
     """DatabaseConnectionの読み取り専用接続を検証する."""
 
@@ -232,7 +337,7 @@ class TestLegacyDatabaseMigration:
 
         assert inspection.current_version == 2
         assert inspection.has_history is False
-        assert inspection.pending_versions == (3, 4, 5, 6)
+        assert inspection.pending_versions == (3, 4, 5, 6, 7)
         assert inspection.backup_required is True
 
         async with aiosqlite.connect(db_path) as conn:
@@ -378,6 +483,82 @@ class TestLegacyDatabaseMigration:
         assert log["job_id"] is None
         assert log["attempt"] is None
         assert "recoverable job/attempt" in log["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_version_6_data_is_preserved_by_constraint_migration(
+        self, tmp_path: Path
+    ) -> None:
+        """制約追加時に親子関係とイベント履歴を保持する."""
+        db_path = str(tmp_path / "version-6-data.db")
+        await self.create_legacy_schema(db_path, 6)
+        async with aiosqlite.connect(db_path) as conn:
+            page = await conn.execute(
+                "INSERT INTO pages "
+                "(url, title, status, last_success_step) VALUES (?, ?, ?, ?)",
+                ("https://example.com", "example", "failed", "downloaded"),
+            )
+            page_id = int(page.lastrowid or 0)
+            job = await conn.execute(
+                "INSERT INTO jobs "
+                "(page_id, kind, status, start_step, current_step, attempt) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (page_id, "retry", "failed", "llm", "downloaded", 2),
+            )
+            job_id = int(job.lastrowid or 0)
+            await conn.execute(
+                "INSERT INTO repair_cases "
+                "(page_id, source, reasons, status) VALUES (?, ?, ?, ?)",
+                (page_id, "test", "[]", "pending"),
+            )
+            await conn.execute(
+                "INSERT INTO process_logs "
+                "(page_id, job_id, attempt, url, status) VALUES (?, ?, ?, ?, ?)",
+                (page_id, job_id, 2, "https://example.com", "failed"),
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        await db.initialize_tables()
+
+        page = await db.fetch_one("SELECT * FROM pages WHERE id=?", (page_id,))
+        job = await db.fetch_one("SELECT * FROM jobs WHERE id=?", (job_id,))
+        log = await db.fetch_one("SELECT * FROM process_logs WHERE job_id=?", (job_id,))
+        repair = await db.fetch_one(
+            "SELECT * FROM repair_cases WHERE page_id=?", (page_id,)
+        )
+        assert page is not None and page["last_success_step"] == "downloaded"
+        assert job is not None and job["attempt"] == 2
+        assert log is not None and log["page_id"] == page_id
+        assert repair is not None and repair["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_invalid_version_6_state_rolls_back_constraint_migration(
+        self, tmp_path: Path
+    ) -> None:
+        """不正な既存値はデータと履歴を変更せず移行を拒否する."""
+        db_path = str(tmp_path / "invalid-version-6-state.db")
+        await self.create_legacy_schema(db_path, 6)
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "INSERT INTO pages (url, title, status) VALUES (?, ?, ?)",
+                ("https://example.com", "example", "unknown"),
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        with pytest.raises(aiosqlite.IntegrityError, match="CHECK constraint failed"):
+            await db.initialize_tables()
+
+        row = await db.fetch_one("SELECT status FROM pages")
+        assert row is not None and row["status"] == "unknown"
+        async with db.connect() as conn:
+            assert await get_schema_version(conn) == 6
+            tables = await (
+                await conn.execute(
+                    "SELECT name FROM sqlite_master WHERE name LIKE 'new_%'"
+                )
+            ).fetchall()
+        assert tables == []
 
     @pytest.mark.asyncio
     async def test_invalid_timestamp_migration_rolls_back_without_data_loss(

@@ -7,7 +7,7 @@ import aiosqlite
 
 from ..utils.exceptions import DatabaseError
 
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 
 
 class SchemaMigrationError(DatabaseError):
@@ -260,6 +260,121 @@ async def _migration_6(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_7(conn: aiosqlite.Connection) -> None:
+    """Constrain persisted states and align indexes with repository queries."""
+    await conn.execute(
+        """CREATE TABLE new_pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            memo TEXT,
+            summary TEXT,
+            keywords TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            weaviate_id TEXT,
+            last_success_step TEXT DEFAULT NULL
+                CHECK (last_success_step IS NULL OR last_success_step IN
+                    ('downloaded', 'llm_processed', 'vectorized', 'completed')),
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'processing', 'succeeded', 'failed'))
+        )"""
+    )
+    await conn.execute(
+        """CREATE TABLE new_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('initial', 'retry', 'reprocess')),
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+            current_step TEXT CHECK (current_step IS NULL OR current_step IN
+                ('downloaded', 'llm_processed', 'vectorized', 'completed')),
+            start_step TEXT NOT NULL
+                CHECK (start_step IN ('download', 'llm', 'vectorize')),
+            attempt INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            finished_at TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES new_pages(id)
+        )"""
+    )
+    await conn.execute(
+        """CREATE TABLE new_repair_cases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL UNIQUE,
+            source TEXT NOT NULL,
+            report_url TEXT,
+            reasons TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'resolved')),
+            detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES new_pages(id)
+        )"""
+    )
+    await conn.execute(
+        """CREATE TABLE new_process_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER,
+            job_id INTEGER,
+            attempt INTEGER,
+            url TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN (
+                'started', 'completed', 'legacy_orphaned', 'job_queued',
+                'job_claimed', 'download_completed', 'llm_completed',
+                'vectorize_completed', 'pipeline_completed', 'succeeded',
+                'failed', 'interrupted', 'url_updated')),
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES new_pages(id),
+            FOREIGN KEY (job_id) REFERENCES new_jobs(id),
+            CHECK (attempt IS NULL OR attempt >= 0)
+        )"""
+    )
+
+    for table in ("pages", "jobs", "repair_cases", "process_logs"):
+        columns = ", ".join(_expected_tables(6)[table])
+        await conn.execute(
+            f'INSERT INTO "new_{table}" ({columns}) SELECT {columns} FROM "{table}"'
+        )
+
+    for table in ("process_logs", "repair_cases", "jobs", "pages"):
+        await conn.execute(f'DROP TABLE "{table}"')
+    for table in ("pages", "jobs", "repair_cases", "process_logs"):
+        await conn.execute(f'ALTER TABLE "new_{table}" RENAME TO "{table}"')
+
+    await conn.execute(
+        "CREATE INDEX idx_pages_last_success_step ON pages(last_success_step)"
+    )
+    await conn.execute("CREATE INDEX idx_pages_status ON pages(status)")
+    await conn.execute(
+        "CREATE INDEX idx_jobs_status_created ON jobs(status, created_at, id)"
+    )
+    await conn.execute(
+        "CREATE UNIQUE INDEX idx_jobs_active_page ON jobs(page_id) "
+        "WHERE status IN ('queued', 'running')"
+    )
+    await conn.execute(
+        "CREATE INDEX idx_jobs_page_created ON jobs(page_id, created_at DESC, id DESC)"
+    )
+    await conn.execute(
+        "CREATE INDEX idx_repair_cases_status "
+        "ON repair_cases(status, detected_at DESC, id DESC)"
+    )
+    await conn.execute(
+        "CREATE INDEX idx_process_logs_page_id "
+        "ON process_logs(page_id, status, created_at DESC)"
+    )
+    await conn.execute(
+        "CREATE INDEX idx_process_logs_status ON process_logs(status, created_at DESC)"
+    )
+    await conn.execute(
+        "CREATE INDEX idx_process_logs_job_attempt "
+        "ON process_logs(job_id, attempt, created_at, id)"
+    )
+
+
 MIGRATIONS = (
     Migration(1, "create_pages_and_process_logs", _migration_1),
     Migration(2, "add_last_success_step", _migration_2),
@@ -267,6 +382,7 @@ MIGRATIONS = (
     Migration(4, "add_repair_cases", _migration_4),
     Migration(5, "normalize_timestamps_to_utc", _migration_5),
     Migration(6, "add_job_attempt_event_history", _migration_6),
+    Migration(7, "add_state_constraints_and_query_indexes", _migration_7),
 )
 
 
@@ -281,6 +397,15 @@ async def _table_names(conn: aiosqlite.Connection) -> set[str]:
 async def _column_names(conn: aiosqlite.Connection, table: str) -> tuple[str, ...]:
     cursor = await conn.execute(f'PRAGMA table_info("{table}")')
     return tuple(row[1] for row in await cursor.fetchall())
+
+
+async def _table_sql(conn: aiosqlite.Connection, table: str) -> str:
+    row = await (
+        await conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        )
+    ).fetchone()
+    return " ".join(str(row[0]).split()) if row and row[0] else ""
 
 
 async def _validate_history_table(conn: aiosqlite.Connection) -> None:
@@ -347,6 +472,34 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 f"has columns {actual_columns}, expected {columns}"
             )
 
+    if version >= 7:
+        required_checks = {
+            "pages": (
+                "last_success_step IS NULL OR last_success_step IN",
+                "status IN ('queued', 'processing', 'succeeded', 'failed')",
+            ),
+            "jobs": (
+                "kind IN ('initial', 'retry', 'reprocess')",
+                "status IN ('queued', 'running', 'succeeded', 'failed')",
+                "current_step IS NULL OR current_step IN",
+                "start_step IN ('download', 'llm', 'vectorize')",
+                "attempt >= 0",
+            ),
+            "repair_cases": ("status IN ('pending', 'resolved')",),
+            "process_logs": (
+                "status IN (",
+                "'legacy_orphaned'",
+                "'url_updated'",
+                "attempt IS NULL OR attempt >= 0",
+            ),
+        }
+        for table, checks in required_checks.items():
+            sql = await _table_sql(conn, table)
+            if any(check not in sql for check in checks):
+                raise SchemaMigrationError(
+                    f"Corrupt SQLite schema: invalid CHECK constraints on {table}"
+                )
+
     for table in set(expected) - {"pages"}:
         cursor = await conn.execute(f'PRAGMA foreign_key_list("{table}")')
         foreign_keys = {(row[3], row[2], row[4]) for row in await cursor.fetchall()}
@@ -396,6 +549,31 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 ("job_id", "attempt", "created_at", "id"),
                 False,
             )
+        if version >= 7:
+            required_indexes.update(
+                {
+                    "idx_process_logs_page_id": (
+                        "process_logs",
+                        ("page_id", "status", "created_at"),
+                        False,
+                    ),
+                    "idx_process_logs_status": (
+                        "process_logs",
+                        ("status", "created_at"),
+                        False,
+                    ),
+                    "idx_jobs_page_created": (
+                        "jobs",
+                        ("page_id", "created_at", "id"),
+                        False,
+                    ),
+                    "idx_repair_cases_status": (
+                        "repair_cases",
+                        ("status", "detected_at", "id"),
+                        False,
+                    ),
+                }
+            )
         missing_indexes = set(required_indexes) - set(actual_indexes)
         if missing_indexes:
             raise SchemaMigrationError(
@@ -427,6 +605,12 @@ async def _detect_legacy_version(conn: aiosqlite.Connection) -> int:
     tables = await _table_names(conn)
     if not tables:
         return 0
+
+    latest_tables = set(_expected_tables(LATEST_SCHEMA_VERSION))
+    if tables == latest_tables:
+        pages_sql = await _table_sql(conn, "pages")
+        if "last_success_step IS NULL OR last_success_step IN" in pages_sql:
+            return LATEST_SCHEMA_VERSION
 
     for version in range(1, LATEST_SCHEMA_VERSION + 1):
         expected = _expected_tables(version)
