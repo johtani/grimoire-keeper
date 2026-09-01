@@ -1,7 +1,7 @@
 """Tests for process router."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -32,16 +32,32 @@ class TestProcessRouter:
         }
         app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
 
-        response = client.post(
-            "/api/v1/process-url",
-            json={"url": "https://example.com"},
-        )
+        with (
+            patch(
+                "grimoire_api.routers.process.url_processing_api_requests"
+            ) as requests,
+            patch(
+                "grimoire_api.routers.process.url_processing_api_duration"
+            ) as duration,
+        ):
+            response = client.post(
+                "/api/v1/process-url",
+                json={"url": "https://example.com"},
+            )
 
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "queued"
         assert data["job_id"] == 100
         assert data["page_id"] == 1
+        requests.add.assert_called_once_with(
+            1, {"outcome": "queued", "has_memo": False}
+        )
+        assert duration.record.call_count == 1
+        assert duration.record.call_args.args[1] == {
+            "outcome": "queued",
+            "has_memo": False,
+        }
 
     def test_process_url_already_exists(self) -> None:
         """既存URLの重複リクエストのテスト."""
@@ -53,15 +69,21 @@ class TestProcessRouter:
         }
         app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
 
-        response = client.post(
-            "/api/v1/process-url",
-            json={"url": "https://example.com"},
-        )
+        with patch(
+            "grimoire_api.routers.process.url_processing_api_requests"
+        ) as requests:
+            response = client.post(
+                "/api/v1/process-url",
+                json={"url": "https://example.com"},
+            )
 
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "already_exists"
         assert data["page_id"] == 42
+        requests.add.assert_called_once_with(
+            1, {"outcome": "duplicate", "has_memo": False}
+        )
 
     def test_process_url_with_memo(self) -> None:
         """メモ付きURL処理リクエストのテスト."""
@@ -151,12 +173,18 @@ class TestProcessRouter:
         )
         app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
 
-        response = client.post(
-            "/api/v1/process-url",
-            json={"url": "https://example.com"},
-        )
+        with patch(
+            "grimoire_api.routers.process.url_processing_api_requests"
+        ) as requests:
+            response = client.post(
+                "/api/v1/process-url",
+                json={"url": "https://example.com"},
+            )
 
         assert response.status_code == 500
+        requests.add.assert_called_once_with(
+            1, {"outcome": "failed", "has_memo": False}
+        )
 
     def test_get_process_status(self) -> None:
         """処理状況取得のテスト."""

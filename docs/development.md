@@ -18,6 +18,29 @@ APIプロセスに必須なのはSQLiteの `DATABASE_PATH` だけです。Jina�
 ジョブはSQLiteに保持され、必要な外部サービスを設定したworkerが復旧した後に処理されます。
 検索などWeaviateを直接利用するAPIは、Weaviate停止中は縮退応答または503を返します。
 
+### URL 処理メトリクス
+
+URL 処理では受付、attempt、logical job completion を別の計測単位として扱います。
+`job_id` と `attempt` は重複防止の実行境界に使いますが、高カーディナリティを避けるため
+metric label には含めません。
+
+| metric 名 | 種類 | 1カウント／計測の単位 | label |
+| --- | --- | --- | --- |
+| `url_processing_api_requests_total` | counter | `POST /process-url` の受付1回 | `outcome`: `queued` / `duplicate` / `failed`、`has_memo`: boolean |
+| `url_processing_api_duration_seconds` | histogram | API受付の開始から応答生成まで | API counter と同じ |
+| `url_processing_job_attempts_total` | counter | claim された attempt の終端状態遷移1回 | `outcome`: `succeeded` / `failed` / `interrupted`、`job_kind`: `initial` / `retry` / `reprocess` |
+| `url_processing_job_attempt_duration_seconds` | histogram | Worker が attempt を開始してから終端状態へ更新するまで | attempt counter と同じ |
+| `url_processing_job_completions_total` | counter | logical job (`jobs.id`) の終端状態遷移1回 | attempt counter と同じ |
+| `url_processing_job_duration_seconds` | histogram | logical job の登録から終端状態への更新まで | attempt counter と同じ |
+
+重複URLの受付は `outcome=duplicate` の API メトリクスだけを記録し、job メトリクスは
+増加しません。リトライは新しい logical job として登録され、`job_kind=retry` で初回処理と
+区別します。同一ジョブの終端更新が再度呼ばれた場合は状態遷移を成立させず、attempt と
+completion のどちらも再計上しません。
+Worker 再起動時に回収した running attempt は `outcome=interrupted` として一度だけ記録し、
+同じ `job_id` を再claimした実行は新しい attempt として数えます。この時点では logical job が
+終端状態ではないため completion は増加しません。
+
 ## Web UI と CORS
 
 同梱の Web UI は nginx の `/api/` リバースプロキシを通して API にアクセスする

@@ -10,7 +10,10 @@ from ..models.request import ProcessUrlRequest
 from ..models.response import ErrorResponse, ProcessStatusResponse, ProcessUrlResponse
 from ..services.url_processor import UrlProcessorService
 from ..utils.exceptions import ResourceNotFoundError
-from ..utils.metrics import url_processing_duration, url_processing_requests
+from ..utils.metrics import (
+    url_processing_api_duration,
+    url_processing_api_requests,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["process"])
 
@@ -36,23 +39,22 @@ async def process_url(
     Raises:
         HTTPException: 処理エラー
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
+    outcome = "failed"
+    has_memo = bool(request.memo)
 
     try:
         result = await processor.prepare_url_processing(str(request.url), request.memo)
 
-        has_memo = bool(request.memo)
-        url_processing_requests.add(1, {"has_memo": str(has_memo)})
-
         if result["status"] == "already_exists":
-            url_processing_requests.add(1, {"status": "already_exists"})
+            outcome = "duplicate"
             return ProcessUrlResponse(
                 status=result["status"],
                 page_id=result["page_id"],
                 message=result["message"],
             )
 
-        url_processing_requests.add(1, {"status": "queued"})
+        outcome = "queued"
         return ProcessUrlResponse(
             status="queued",
             page_id=result["page_id"],
@@ -61,12 +63,15 @@ async def process_url(
         )
 
     except Exception as e:
-        url_processing_requests.add(1, {"status": "error"})
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:
-        duration = time.time() - start_time
-        url_processing_duration.record(duration)
+        attributes: dict[str, str | bool] = {
+            "outcome": outcome,
+            "has_memo": has_memo,
+        }
+        url_processing_api_requests.add(1, attributes)
+        url_processing_api_duration.record(time.perf_counter() - start_time, attributes)
 
 
 @router.get(

@@ -110,56 +110,59 @@ class JobRepository:
             ]
         )
 
-    async def succeed(self, job_id: int, page_id: int) -> None:
-        now = utc_now_isoformat()
-        await self.db.execute_transaction(
-            [
-                (
-                    "UPDATE jobs SET status='succeeded', finished_at=? WHERE id=?",
-                    (now, job_id),
-                ),
-                (
-                    "UPDATE pages SET status='succeeded', updated_at=? WHERE id=?",
-                    (now, page_id),
-                ),
-                (
-                    """INSERT INTO process_logs
-                    (page_id, job_id, attempt, url, status, created_at)
-                    SELECT j.page_id, j.id, j.attempt, p.url, 'succeeded', ?
-                    FROM jobs j JOIN pages p ON p.id=j.page_id WHERE j.id=?""",
-                    (now, job_id),
-                ),
-            ]
-        )
+    async def succeed(self, job_id: int, page_id: int) -> bool:
+        """実行中ジョブを成功に遷移し、初回の終端更新かを返す."""
+        return await self._finish(job_id, page_id, "succeeded")
 
-    async def fail(self, job_id: int, page_id: int, message: str) -> None:
-        now = utc_now_isoformat()
-        await self.db.execute_transaction(
-            [
-                (
-                    """UPDATE jobs SET status='failed', error_message=?,
-                    finished_at=? WHERE id=?""",
-                    (message, now, job_id),
-                ),
-                (
-                    "UPDATE pages SET status='failed', updated_at=? WHERE id=?",
-                    (now, page_id),
-                ),
-                (
-                    """INSERT INTO process_logs
-                    (page_id, job_id, attempt, url, status, error_message, created_at)
-                    SELECT j.page_id, j.id, j.attempt, p.url, 'failed', ?, ?
-                    FROM jobs j JOIN pages p ON p.id=j.page_id WHERE j.id=?""",
-                    (message, now, job_id),
-                ),
-            ]
-        )
+    async def fail(self, job_id: int, page_id: int, message: str) -> bool:
+        """実行中ジョブを失敗に遷移し、初回の終端更新かを返す."""
+        return await self._finish(job_id, page_id, "failed", message)
 
-    async def recover_running(self) -> int:
-        """プロセス中断で残った running ジョブを再実行可能にする."""
+    async def _finish(
+        self,
+        job_id: int,
+        page_id: int,
+        status: str,
+        message: str | None = None,
+    ) -> bool:
+        """終端状態、ページ状態、イベントを一度だけ原子的に更新する."""
+        now = utc_now_isoformat()
         try:
             async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
+                cursor = await conn.execute(
+                    """UPDATE jobs SET status=?, error_message=?, finished_at=?
+                    WHERE id=? AND page_id=? AND status='running'""",
+                    (status, message, now, job_id, page_id),
+                )
+                if cursor.rowcount == 0:
+                    await conn.commit()
+                    return False
+                await conn.execute(
+                    "UPDATE pages SET status=?, updated_at=? WHERE id=?",
+                    (status, now, page_id),
+                )
+                await conn.execute(
+                    """INSERT INTO process_logs
+                    (page_id, job_id, attempt, url, status, error_message, created_at)
+                    SELECT j.page_id, j.id, j.attempt, p.url, ?, ?, ?
+                    FROM jobs j JOIN pages p ON p.id=j.page_id WHERE j.id=?""",
+                    (status, message, now, job_id),
+                )
+                await conn.commit()
+                return True
+        except Exception as e:
+            raise DatabaseError(f"Failed to finish job: {e}")
+
+    async def recover_running(self) -> list[Job]:
+        """中断された attempt を返し、running ジョブを再実行可能にする."""
+        try:
+            async with self.db.connect() as conn:
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("BEGIN IMMEDIATE")
+                rows = await (
+                    await conn.execute("SELECT * FROM jobs WHERE status='running'")
+                ).fetchall()
                 now = utc_now_isoformat()
                 await conn.execute(
                     """INSERT INTO process_logs
@@ -170,7 +173,7 @@ class JobRepository:
                     WHERE j.status='running'""",
                     (now,),
                 )
-                cursor = await conn.execute(
+                await conn.execute(
                     """UPDATE jobs SET status='queued', started_at=NULL
                     WHERE status='running'"""
                 )
@@ -179,7 +182,7 @@ class JobRepository:
                     (SELECT page_id FROM jobs WHERE status='queued')"""
                 )
                 await conn.commit()
-                return cursor.rowcount
+                return [self._row_to_job(row) for row in rows]
         except Exception as e:
             raise DatabaseError(f"Failed to recover jobs: {e}")
 

@@ -2,13 +2,21 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 
-from ..models.database import PipelineStartStep, RepairStatus
+from ..models.database import Job, RepairStatus
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..repositories.repair_repository import RepairRepository
+from ..utils.datetime import utc_now
+from ..utils.metrics import (
+    url_processing_job_attempt_duration,
+    url_processing_job_attempts,
+    url_processing_job_completions,
+    url_processing_job_duration,
+)
 from .base_processor import BaseProcessorService
 from .repair_service import validate_stored_source
 
@@ -40,7 +48,9 @@ class JobWorker:
 
     async def start(self) -> None:
         """中断ジョブを復旧してポーリングを開始する."""
-        await self.job_repo.recover_running()
+        interrupted_jobs = await self.job_repo.recover_running()
+        for job in interrupted_jobs:
+            self._record_interrupted_attempt(job)
         self._stop_event.clear()
         self._task = asyncio.create_task(self.run(), name="grimoire-job-worker")
 
@@ -107,23 +117,46 @@ class JobWorker:
                 except TimeoutError:
                     pass
                 continue
-            await self._execute(job.id, job.page_id, job.start_step)
+            await self._execute(job)
 
-    async def _execute(
-        self, job_id: int, page_id: int, start_step: PipelineStartStep
-    ) -> None:
+    async def _execute(self, job: Job) -> None:
+        attempt_started = time.perf_counter()
+        outcome = "failed"
+        finalized = False
         try:
-            page = await self.page_repo.get_page(page_id)
+            page = await self.page_repo.get_page(job.page_id)
             if page is None:
                 raise RuntimeError("Page not found")
             await self.processor._run_pipeline_from(
-                page_id, page.url, start_step, job_id
+                job.page_id, page.url, job.start_step, job.id
             )
-            await self.job_repo.succeed(job_id, page_id)
-            await self._resolve_repair_if_valid(page_id)
+            finalized = await self.job_repo.succeed(job.id, job.page_id)
+            outcome = "succeeded"
+            await self._resolve_repair_if_valid(job.page_id)
         except Exception as e:
-            logger.exception("Job %s failed", job_id)
-            await self.job_repo.fail(job_id, page_id, str(e))
+            logger.exception("Job %s failed", job.id)
+            finalized = await self.job_repo.fail(job.id, job.page_id, str(e))
+        finally:
+            if finalized:
+                attributes = {"outcome": outcome, "job_kind": job.kind.value}
+                url_processing_job_attempts.add(1, attributes)
+                url_processing_job_attempt_duration.record(
+                    time.perf_counter() - attempt_started, attributes
+                )
+                url_processing_job_completions.add(1, attributes)
+                url_processing_job_duration.record(
+                    max((utc_now() - job.created_at).total_seconds(), 0), attributes
+                )
+
+    @staticmethod
+    def _record_interrupted_attempt(job: Job) -> None:
+        """復旧トランザクションで確定した中断 attempt を一度だけ記録する."""
+        attributes = {"outcome": "interrupted", "job_kind": job.kind.value}
+        url_processing_job_attempts.add(1, attributes)
+        if job.started_at is not None:
+            url_processing_job_attempt_duration.record(
+                max((utc_now() - job.started_at).total_seconds(), 0), attributes
+            )
 
     async def _resolve_repair_if_valid(self, page_id: int) -> None:
         """正常な保存JSONとWeaviate登録を確認して修復済みにする."""

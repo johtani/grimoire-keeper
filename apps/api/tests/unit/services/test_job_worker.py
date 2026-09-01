@@ -1,8 +1,8 @@
 """Persistent job worker tests."""
 
 import asyncio
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from grimoire_api.models.database import (
     Job,
@@ -15,18 +15,18 @@ from grimoire_api.models.database import (
 from grimoire_api.services.job_worker import JobWorker
 
 
-def make_job() -> Job:
+def make_job(kind: JobKind = JobKind.INITIAL, attempt: int = 1) -> Job:
     return Job(
         id=3,
         page_id=2,
-        kind=JobKind.INITIAL,
+        kind=kind,
         status=JobStatus.RUNNING,
         current_step=None,
         start_step=PipelineStartStep.DOWNLOAD,
-        attempt=1,
+        attempt=attempt,
         error_message=None,
-        created_at=datetime.now(),
-        started_at=datetime.now(),
+        created_at=datetime.now(UTC),
+        started_at=datetime.now(UTC),
         finished_at=None,
     )
 
@@ -50,12 +50,36 @@ def make_page() -> Page:
 async def test_worker_recovers_on_start() -> None:
     job_repo = AsyncMock()
     worker = JobWorker(job_repo, AsyncMock(), AsyncMock(), AsyncMock())
+    job_repo.recover_running.return_value = []
     job_repo.claim_next.return_value = None
 
     await worker.start()
     await worker.stop()
 
     job_repo.recover_running.assert_awaited_once()
+
+
+async def test_worker_counts_recovered_attempt_without_completing_job() -> None:
+    job_repo = AsyncMock()
+    job_repo.recover_running.return_value = [make_job(attempt=1)]
+    job_repo.claim_next.return_value = None
+    worker = JobWorker(job_repo, AsyncMock(), AsyncMock(), AsyncMock())
+
+    with (
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_attempts"
+        ) as attempts,
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_completions"
+        ) as completions,
+    ):
+        await worker.start()
+        await worker.stop()
+
+    attempts.add.assert_called_once_with(
+        1, {"outcome": "interrupted", "job_kind": "initial"}
+    )
+    completions.add.assert_not_called()
 
 
 async def test_worker_does_not_claim_after_stop_requested() -> None:
@@ -148,15 +172,27 @@ async def test_worker_marks_success() -> None:
     log_repo = AsyncMock()
     processor = AsyncMock()
     page_repo.get_page.return_value = make_page()
+    job_repo.succeed.return_value = True
     worker = JobWorker(job_repo, page_repo, log_repo, processor)
 
-    await worker._execute(3, 2, PipelineStartStep.DOWNLOAD)
+    with (
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_attempts"
+        ) as attempts,
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_completions"
+        ) as completions,
+    ):
+        await worker._execute(make_job())
 
     processor._run_pipeline_from.assert_awaited_once_with(
         2, "https://example.com", PipelineStartStep.DOWNLOAD, 3
     )
     log_repo.create_log.assert_not_awaited()
     job_repo.succeed.assert_awaited_once_with(3, 2)
+    attributes = {"outcome": "succeeded", "job_kind": "initial"}
+    attempts.add.assert_called_once_with(1, attributes)
+    completions.add.assert_called_once_with(1, attributes)
 
 
 async def test_worker_records_failure() -> None:
@@ -166,12 +202,24 @@ async def test_worker_records_failure() -> None:
     processor = AsyncMock()
     page_repo.get_page.return_value = make_page()
     processor._run_pipeline_from.side_effect = RuntimeError("boom")
+    job_repo.fail.return_value = True
     worker = JobWorker(job_repo, page_repo, log_repo, processor)
 
-    await worker._execute(3, 2, PipelineStartStep.DOWNLOAD)
+    with (
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_attempts"
+        ) as attempts,
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_completions"
+        ) as completions,
+    ):
+        await worker._execute(make_job(kind=JobKind.RETRY, attempt=2))
 
     log_repo.create_log.assert_not_awaited()
     job_repo.fail.assert_awaited_once_with(3, 2, "boom")
+    attributes = {"outcome": "failed", "job_kind": "retry"}
+    attempts.add.assert_called_once_with(1, attributes)
+    completions.add.assert_called_once_with(1, attributes)
 
 
 async def test_worker_records_failure_when_page_lookup_fails() -> None:
@@ -179,9 +227,31 @@ async def test_worker_records_failure_when_page_lookup_fails() -> None:
     page_repo = AsyncMock()
     log_repo = AsyncMock()
     page_repo.get_page.return_value = None
+    job_repo.fail.return_value = True
     worker = JobWorker(job_repo, page_repo, log_repo, AsyncMock())
 
-    await worker._execute(3, 2, PipelineStartStep.DOWNLOAD)
+    await worker._execute(make_job())
 
     log_repo.create_log.assert_not_awaited()
     job_repo.fail.assert_awaited_once_with(3, 2, "Page not found")
+
+
+async def test_worker_does_not_count_duplicate_job_completion() -> None:
+    job_repo = AsyncMock()
+    page_repo = AsyncMock()
+    page_repo.get_page.return_value = make_page()
+    job_repo.succeed.return_value = False
+    worker = JobWorker(job_repo, page_repo, AsyncMock(), AsyncMock())
+
+    with (
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_attempts"
+        ) as attempts,
+        patch(
+            "grimoire_api.services.job_worker.url_processing_job_completions"
+        ) as completions,
+    ):
+        await worker._execute(make_job())
+
+    attempts.add.assert_not_called()
+    completions.add.assert_not_called()

@@ -68,7 +68,8 @@ async def test_recover_running_jobs(temp_db, page_repo) -> None:
     claimed = await repo.claim_next()
     assert claimed is not None
 
-    assert await repo.recover_running() == 1
+    interrupted = await repo.recover_running()
+    assert [(job.id, job.attempt) for job in interrupted] == [(claimed.id, 1)]
 
     recovered = await repo.claim_next()
     assert recovered is not None
@@ -118,6 +119,23 @@ async def test_success_and_failure_update_page_status(temp_db, page_repo) -> Non
         (retry_id, 1, "succeeded"),
     ]
     assert events[2]["error_message"] == "boom"
+
+
+async def test_terminal_transition_is_recorded_only_once(temp_db, page_repo) -> None:
+    repo = JobRepository(temp_db)
+    page_id = await page_repo.create_page("https://once.example.com", "title")
+    job_id = await repo.enqueue(page_id, JobKind.INITIAL, PipelineStartStep.DOWNLOAD)
+    await repo.claim_next()
+
+    assert await repo.succeed(job_id, page_id)
+    assert not await repo.succeed(job_id, page_id)
+    assert not await repo.fail(job_id, page_id, "late failure")
+
+    events = await temp_db.fetch_all(
+        "SELECT status FROM process_logs WHERE job_id=? AND status IN (?, ?)",
+        (job_id, "succeeded", "failed"),
+    )
+    assert [event["status"] for event in events] == ["succeeded"]
 
 
 async def test_step_events_share_claimed_attempt(temp_db, page_repo) -> None:
