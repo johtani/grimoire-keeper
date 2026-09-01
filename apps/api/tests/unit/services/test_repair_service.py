@@ -18,7 +18,7 @@ from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.repair_service import RepairService
 from grimoire_api.utils.exceptions import (
-    DatabaseError,
+    DuplicateUrlError,
     RepairDeletionConflictError,
     RepairDeletionError,
     VectorizerError,
@@ -161,7 +161,7 @@ async def test_repository_preserves_database_error_for_duplicate(
 ) -> None:
     first = await repair_service.page_repo.create_page("https://a.example", "a")
     await repair_service.page_repo.create_page("https://b.example", "b")
-    with pytest.raises(DatabaseError, match="already belongs"):
+    with pytest.raises(DuplicateUrlError):
         await repair_service.page_repo.update_url_if_current(
             first, "https://a.example", "https://b.example"
         )

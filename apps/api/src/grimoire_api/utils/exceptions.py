@@ -43,6 +43,10 @@ class DatabaseError(GrimoireAPIError):
     pass
 
 
+class DuplicateUrlError(DatabaseError):
+    """A page URL conflicts with an existing page."""
+
+
 class FileOperationError(GrimoireAPIError):
     """File operation error."""
 

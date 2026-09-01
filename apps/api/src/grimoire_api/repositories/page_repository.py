@@ -1,17 +1,38 @@
 """Page repository."""
 
 import json
+import sqlite3
 from collections.abc import Awaitable, Callable
 
 import aiosqlite
 
 from ..models.database import Page, PageStatus, ProcessingStep
 from ..utils.datetime import as_utc, utc_isoformat, utc_now_isoformat
-from ..utils.exceptions import DatabaseError, RepairDeletionConflictError
+from ..utils.exceptions import (
+    DatabaseError,
+    DuplicateUrlError,
+    RepairDeletionConflictError,
+)
 from .database import DatabaseConnection
 
 _ALLOWED_SORT_FIELDS = frozenset({"id", "url", "title", "created_at", "updated_at"})
 _ALLOWED_ORDER = frozenset({"ASC", "DESC"})
+
+
+def _is_unique_constraint_error(exc: BaseException) -> bool:
+    """例外チェーン内のSQLite UNIQUE制約違反をerror codeで判定する."""
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if (
+            isinstance(current, aiosqlite.IntegrityError)
+            and getattr(current, "sqlite_errorcode", None)
+            == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class PageRepository:
@@ -50,7 +71,9 @@ class PageRepository:
             lastrowid = await self.db.execute(query, (url, title, memo, now, now))
             return lastrowid or 0
         except Exception as e:
-            raise DatabaseError(f"Failed to create page: {str(e)}")
+            if _is_unique_constraint_error(e):
+                raise DuplicateUrlError("URL already exists") from e
+            raise DatabaseError(f"Failed to create page: {str(e)}") from e
 
     async def create_page_with_initial_job(
         self, url: str, title: str, memo: str | None = None
@@ -93,6 +116,8 @@ class PageRepository:
                     await conn.rollback()
                     raise
         except Exception as e:
+            if _is_unique_constraint_error(e):
+                raise DuplicateUrlError("URL already exists") from e
             raise DatabaseError(
                 f"Failed to create page with initial job: {str(e)}"
             ) from e
@@ -274,7 +299,7 @@ class PageRepository:
                 ).fetchone()
                 if duplicate:
                     await conn.rollback()
-                    raise DatabaseError("URL already belongs to another page")
+                    raise DuplicateUrlError("URL already exists")
                 cursor = await conn.execute(
                     """UPDATE pages SET url=?, status='failed', updated_at=?
                     WHERE id=? AND url=?""",
@@ -282,9 +307,13 @@ class PageRepository:
                 )
                 await conn.commit()
                 return cursor.rowcount == 1
+        except DuplicateUrlError:
+            raise
         except DatabaseError:
             raise
         except Exception as e:
+            if _is_unique_constraint_error(e):
+                raise DuplicateUrlError("URL already exists") from e
             raise DatabaseError(f"Failed to update page URL: {e}") from e
 
     async def update_title_and_step(

@@ -8,7 +8,12 @@ import pytest
 from grimoire_api.models.database import PageStatus
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.url_processor import UrlProcessorService
-from grimoire_api.utils.exceptions import DatabaseError, ResourceNotFoundError
+from grimoire_api.utils.exceptions import (
+    DatabaseError,
+    DuplicateUrlError,
+    GrimoireAPIError,
+    ResourceNotFoundError,
+)
 
 
 class TestUrlProcessorService:
@@ -129,6 +134,41 @@ class TestUrlProcessorService:
         # 新規作成が呼ばれないことを確認
         mock_services["page_repo"].create_page.assert_not_called()
         mock_services["page_repo"].create_page_with_initial_job.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_duplicate_uses_typed_repository_error(
+        self, url_processor, mock_services: Any
+    ) -> None:
+        """並行作成の重複を例外メッセージに依存せず処理する."""
+        url = "https://example.com/concurrent"
+        mock_services["page_repo"].get_page_by_url.side_effect = [None, 123]
+        mock_services[
+            "page_repo"
+        ].create_page_with_initial_job.side_effect = DuplicateUrlError(
+            "driver-specific text"
+        )
+
+        result = await url_processor.prepare_url_processing(url)
+
+        assert result["status"] == "already_exists"
+        assert result["page_id"] == 123
+
+    @pytest.mark.asyncio
+    async def test_database_error_message_is_not_used_for_duplicate_detection(
+        self, url_processor, mock_services: Any
+    ) -> None:
+        """UNIQUE風の文字列だけでは重複として扱わない."""
+        mock_services["page_repo"].get_page_by_url.return_value = None
+        mock_services[
+            "page_repo"
+        ].create_page_with_initial_job.side_effect = DatabaseError(
+            "UNIQUE constraint failed: pages.url"
+        )
+
+        with pytest.raises(GrimoireAPIError) as exc_info:
+            await url_processor.prepare_url_processing("https://example.com")
+
+        assert "preparation failed" in str(exc_info.value)
 
 
 class TestConcurrentUrlProcessor:

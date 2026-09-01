@@ -54,7 +54,7 @@ class DatabaseConnection:
                     await conn.execute(query, params)
                 await conn.commit()
         except Exception as e:
-            raise DatabaseError(f"Transaction execution error: {str(e)}")
+            raise DatabaseError(f"Transaction execution error: {str(e)}") from e
 
     async def execute(self, query: str, params: tuple = ()) -> int | None:
         """クエリ実行.
@@ -72,7 +72,7 @@ class DatabaseConnection:
                 await conn.commit()
                 return cursor.lastrowid
         except Exception as e:
-            raise DatabaseError(f"Query execution error: {str(e)}")
+            raise DatabaseError(f"Query execution error: {str(e)}") from e
 
     async def fetch_one(self, query: str, params: tuple = ()) -> aiosqlite.Row | None:
         """単一行取得.
@@ -90,7 +90,7 @@ class DatabaseConnection:
                 async with conn.execute(query, params) as cursor:
                     return await cursor.fetchone()
         except Exception as e:
-            raise DatabaseError(f"Fetch one error: {str(e)}")
+            raise DatabaseError(f"Fetch one error: {str(e)}") from e
 
     async def fetch_all(self, query: str, params: tuple = ()) -> list[aiosqlite.Row]:
         """全行取得.
@@ -108,7 +108,7 @@ class DatabaseConnection:
                 async with conn.execute(query, params) as cursor:
                     return list(await cursor.fetchall())
         except Exception as e:
-            raise DatabaseError(f"Fetch all error: {str(e)}")
+            raise DatabaseError(f"Fetch all error: {str(e)}") from e
 
     async def initialize_tables(self) -> None:
         """データベースを最新のスキーマへ移行する."""
