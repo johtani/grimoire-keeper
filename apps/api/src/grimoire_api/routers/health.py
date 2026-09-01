@@ -3,11 +3,13 @@
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from ..config import settings
 from ..dependencies import get_db_connection
+from ..models.response import COMMON_ERROR_RESPONSES
+from ..utils.exceptions import ServiceUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +41,10 @@ class LivenessResponse(BaseModel):
     build_date: str
 
 
-router = APIRouter(prefix="/api/v1", tags=["health"])
+router = APIRouter(prefix="/api/v1", tags=["health"], responses=COMMON_ERROR_RESPONSES)
 
 
-async def _readiness_check(request: Request, response: Response) -> HealthResponse:
+async def _readiness_check(request: Request) -> HealthResponse:
     """DB と Weaviate の readiness を確認する."""
     try:
         database_ready = await get_db_connection().fetch_one("SELECT 1") is not None
@@ -54,15 +56,16 @@ async def _readiness_check(request: Request, response: Response) -> HealthRespon
     weaviate_ready = (
         manager is not None and await manager.get_ready_client() is not None
     )
-    ready = database_ready and weaviate_ready
-    if not ready:
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-
     unavailable = []
     if not database_ready:
         unavailable.append("database")
     if not weaviate_ready:
         unavailable.append("Weaviate")
+    ready = database_ready and weaviate_ready
+    if not ready:
+        raise ServiceUnavailableError(
+            f"Unavailable dependencies: {', '.join(unavailable)}"
+        )
 
     return HealthResponse(
         status="healthy" if ready else "unhealthy",
@@ -91,31 +94,13 @@ async def liveness_check() -> LivenessResponse:
     )
 
 
-@router.get(
-    "/health/ready",
-    response_model=HealthResponse,
-    responses={
-        status.HTTP_503_SERVICE_UNAVAILABLE: {
-            "model": HealthResponse,
-            "description": "SQLite or Weaviate is unavailable",
-        }
-    },
-)
-async def readiness_check(request: Request, response: Response) -> HealthResponse:
+@router.get("/health/ready", response_model=HealthResponse)
+async def readiness_check(request: Request) -> HealthResponse:
     """依存サービスを含めてリクエスト受付可能か確認する."""
-    return await _readiness_check(request, response)
+    return await _readiness_check(request)
 
 
-@router.get(
-    "/health",
-    response_model=HealthResponse,
-    responses={
-        status.HTTP_503_SERVICE_UNAVAILABLE: {
-            "model": HealthResponse,
-            "description": "SQLite or Weaviate is unavailable",
-        }
-    },
-)
-async def health_check(request: Request, response: Response) -> HealthResponse:
+@router.get("/health", response_model=HealthResponse)
+async def health_check(request: Request) -> HealthResponse:
     """後方互換のため readiness と同じ結果を返す."""
-    return await _readiness_check(request, response)
+    return await _readiness_check(request)

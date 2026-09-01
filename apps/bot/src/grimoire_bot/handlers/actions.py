@@ -26,7 +26,7 @@ def register_action_handlers(app: AsyncApp) -> None:
             response = format_process_status(result, int(page_id))
             await respond(response)
         except Exception as e:
-            error_msg = format_error_message(str(e), "ステータス確認")
+            error_msg = format_error_message(e, "ステータス確認")
             await respond(error_msg)
 
     @app.action("search_similar")
@@ -53,5 +53,5 @@ def register_action_handlers(app: AsyncApp) -> None:
 
             await respond(response)
         except Exception as e:
-            error_msg = format_error_message(str(e), "類似検索")
+            error_msg = format_error_message(e, "類似検索")
             await respond(error_msg)

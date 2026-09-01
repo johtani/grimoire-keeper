@@ -67,9 +67,10 @@ class TestPagesRouter:
         response = client.get("/api/v1/pages/999")
 
         assert response.status_code == 404
-        assert response.json() == {
-            "error": {"code": "not_found", "message": "Page 999 not found"}
-        }
+        error = response.json()["error"]
+        assert error["code"] == "not_found"
+        assert error["message"] == "The requested resource was not found"
+        assert error["request_id"] == response.headers["X-Request-ID"]
 
     def test_get_page_rejects_invalid_page_id(self) -> None:
         response = client.get("/api/v1/pages/0")
@@ -234,7 +235,8 @@ class TestPagesRouter:
         assert response.status_code == 409
         assert response.json()["error"] == {
             "code": "conflict",
-            "message": "URL already exists",
+            "message": "The request conflicts with the current resource state",
+            "request_id": response.headers["X-Request-ID"],
         }
 
     def test_list_pending_repairs(self) -> None:

@@ -47,6 +47,8 @@ class TestRetryRouter:
         response = client.post("/api/v1/retry/1")
 
         assert response.status_code == 500
+        assert response.json()["error"]["code"] == "internal_error"
+        assert "retry failed" not in response.text
 
     @pytest.mark.parametrize(
         ("path", "service_method", "error", "status_code", "code"),
@@ -89,7 +91,11 @@ class TestRetryRouter:
         response = client.post(path)
 
         assert response.status_code == status_code
-        assert response.json()["error"] == {"code": code, "message": str(error)}
+        response_error = response.json()["error"]
+        assert response_error["code"] == code
+        assert response_error["message"] == error.public_message
+        assert response_error["request_id"] == response.headers["X-Request-ID"]
+        assert str(error) not in response.text
 
     def test_reprocess_page_success(self) -> None:
         """ページ再処理成功のテスト."""

@@ -3,19 +3,23 @@
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Path, status
 
 from ..dependencies import get_url_processor_service
 from ..models.request import ProcessUrlRequest
-from ..models.response import ErrorResponse, ProcessStatusResponse, ProcessUrlResponse
+from ..models.response import (
+    COMMON_ERROR_RESPONSES,
+    ErrorResponse,
+    ProcessStatusResponse,
+    ProcessUrlResponse,
+)
 from ..services.url_processor import UrlProcessorService
-from ..utils.exceptions import ResourceNotFoundError
 from ..utils.metrics import (
     url_processing_api_duration,
     url_processing_api_requests,
 )
 
-router = APIRouter(prefix="/api/v1", tags=["process"])
+router = APIRouter(prefix="/api/v1", tags=["process"], responses=COMMON_ERROR_RESPONSES)
 
 
 @router.post(
@@ -62,9 +66,6 @@ async def process_url(
             message="URL processing queued",
         )
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
     finally:
         attributes: dict[str, str | bool] = {
             "outcome": outcome,
@@ -92,11 +93,5 @@ async def get_process_status(
     Returns:
         処理状況
     """
-    try:
-        status = await processor.get_processing_status(page_id)
-        return ProcessStatusResponse.model_validate(status)
-
-    except ResourceNotFoundError:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    process_status = await processor.get_processing_status(page_id)
+    return ProcessStatusResponse.model_validate(process_status)

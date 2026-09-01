@@ -118,9 +118,9 @@ class TestProcessRouter:
             )
 
             assert response.status_code == 422
-            detail = response.json()["detail"]
-            assert detail[0]["type"] == "extra_forbidden"
-            assert detail[0]["loc"] == ["body", field]
+            details = response.json()["error"]["details"]
+            assert details[0]["type"] == "extra_forbidden"
+            assert details[0]["location"] == ["body", field]
 
     def test_process_url_rejects_raw_slack_suffix(self) -> None:
         """末尾に Slack の閉じ山括弧がある URL を拒否する."""
@@ -131,8 +131,8 @@ class TestProcessRouter:
         )
 
         assert response.status_code == 422
-        assert "detail" in response.json()
-        assert "error" not in response.json()
+        assert response.json()["error"]["code"] == "validation_error"
+        assert "details" in response.json()["error"]
 
     def test_process_url_rejects_encoded_slack_suffix(self) -> None:
         """末尾のエンコード済み閉じ山括弧も拒否する."""
@@ -182,6 +182,8 @@ class TestProcessRouter:
             )
 
         assert response.status_code == 500
+        assert response.json()["error"]["code"] == "internal_error"
+        assert "processing error" not in response.text
         requests.add.assert_called_once_with(
             1, {"outcome": "failed", "has_memo": False}
         )
@@ -249,9 +251,10 @@ class TestProcessRouter:
         response = client.get("/api/v1/process-status/999")
 
         assert response.status_code == 404
-        assert response.json() == {
-            "error": {"code": "not_found", "message": "Page 999 not found"}
-        }
+        error = response.json()["error"]
+        assert error["code"] == "not_found"
+        assert error["message"] == "The requested resource was not found"
+        assert error["request_id"] == response.headers["X-Request-ID"]
 
     def test_get_process_status_rejects_invalid_page_id(self) -> None:
         response = client.get("/api/v1/process-status/0")

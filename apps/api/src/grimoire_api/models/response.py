@@ -38,6 +38,7 @@ class APIError(BaseModel):
 
     code: str
     message: str
+    request_id: str
     details: list[dict[str, Any]] | None = None
 
 
@@ -45,6 +46,12 @@ class ErrorResponse(BaseModel):
     """Common error response envelope."""
 
     error: APIError
+
+
+COMMON_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status_code: {"model": ErrorResponse}
+    for status_code in (400, 401, 403, 404, 405, 409, 422, 500, 503)
+}
 
 
 class RetryStatus(str, Enum):

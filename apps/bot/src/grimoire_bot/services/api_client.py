@@ -6,6 +6,21 @@ from typing import Any, cast
 import httpx
 
 
+class ApiClientError(Exception):
+    """Safe structured error returned by the backend API."""
+
+    def __init__(
+        self,
+        code: str,
+        request_id: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(code)
+        self.code = code
+        self.request_id = request_id
+        self.status_code = status_code
+
+
 class ApiClient:
     """グリモワールAPI連携クライアント"""
 
@@ -13,37 +28,50 @@ class ApiClient:
         self.base_url = os.environ.get("BACKEND_API_URL", "http://localhost:8000")
         self.timeout = 30.0
 
+    async def _request(
+        self, method: str, path: str, json: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                if method == "GET":
+                    response = await client.get(f"{self.base_url}{path}")
+                else:
+                    response = await client.post(f"{self.base_url}{path}", json=json)
+        except httpx.RequestError as exc:
+            raise ApiClientError("connection_error") from exc
+
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            try:
+                error = response.json().get("error", {})
+            except (ValueError, AttributeError):
+                error = {}
+            raise ApiClientError(
+                code=error.get("code", "api_error"),
+                request_id=error.get("request_id"),
+                status_code=response.status_code,
+            ) from exc
+        return cast(dict[str, Any], response.json())
+
     async def process_url(self, url: str, memo: str | None = None) -> dict[str, Any]:
         """URL処理リクエスト"""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            payload = {"url": url}
-            if memo:
-                payload["memo"] = memo
-
-            response = await client.post(
-                f"{self.base_url}/api/v1/process-url", json=payload
-            )
-            response.raise_for_status()
-            return cast(dict[str, Any], response.json())
+        payload = {"url": url}
+        if memo:
+            payload["memo"] = memo
+        return await self._request("POST", "/api/v1/process-url", payload)
 
     async def search_content(self, query: str, limit: int = 5) -> dict[str, Any]:
         """コンテンツ検索"""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/api/v1/search",
-                json={"query": query, "limit": limit, "vector_name": "title_vector"},
-            )
-            response.raise_for_status()
-            return cast(dict[str, Any], response.json())
+        return await self._request(
+            "POST",
+            "/api/v1/search",
+            {"query": query, "limit": limit, "vector_name": "title_vector"},
+        )
 
     async def get_process_status(self, page_id: int) -> dict[str, Any]:
         """処理状況確認"""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(
-                f"{self.base_url}/api/v1/process-status/{page_id}"
-            )
-            response.raise_for_status()
-            return cast(dict[str, Any], response.json())
+        return await self._request("GET", f"/api/v1/process-status/{page_id}")
 
     async def health_check(self) -> bool:
         """ヘルスチェック"""

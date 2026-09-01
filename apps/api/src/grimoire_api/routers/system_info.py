@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 
 from ..config import settings
 from ..models.response import (
+    COMMON_ERROR_RESPONSES,
     ExternalServiceInfo,
     SystemInfoResponse,
     VectorizerInfo,
@@ -18,7 +19,9 @@ from ..models.response import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["system-info"])
+router = APIRouter(
+    prefix="/api/v1", tags=["system-info"], responses=COMMON_ERROR_RESPONSES
+)
 
 
 def _vectorizer_name(value: Any) -> str:

@@ -1,14 +1,14 @@
 """Search router."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from ..dependencies import get_search_service
 from ..models.request import SearchRequest
-from ..models.response import SearchResponse
+from ..models.response import COMMON_ERROR_RESPONSES, SearchResponse
 from ..services.search_service import SearchService
 from ..utils.metrics import search_requests, search_results_count
 
-router = APIRouter(prefix="/api/v1", tags=["search"])
+router = APIRouter(prefix="/api/v1", tags=["search"], responses=COMMON_ERROR_RESPONSES)
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -58,9 +58,9 @@ async def search(
             query=request.query,
         )
 
-    except Exception as e:
+    except Exception:
         search_requests.add(1, {"search_type": "vector", "status": "error"})
-        raise HTTPException(status_code=500, detail=str(e))
+        raise
 
 
 @router.post("/search/keywords", response_model=SearchResponse)
@@ -82,17 +82,13 @@ async def search_by_keywords(
     Raises:
         HTTPException: 検索エラー
     """
-    try:
-        results = await search_service.keyword_search(
-            keywords=keywords,
-            limit=limit,
-        )
+    results = await search_service.keyword_search(
+        keywords=keywords,
+        limit=limit,
+    )
 
-        return SearchResponse(
-            results=results,
-            total=len(results),
-            query=" ".join(keywords),
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return SearchResponse(
+        results=results,
+        total=len(results),
+        query=" ".join(keywords),
+    )

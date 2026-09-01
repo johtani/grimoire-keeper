@@ -108,7 +108,8 @@ class TestSearchRouter:
         )
 
         assert response.status_code == 503
-        assert response.json()["detail"] == "Weaviate is not available"
+        assert response.json()["error"]["code"] == "service_unavailable"
+        assert "Weaviate" not in response.text
 
     def test_search_with_filters_and_vector(self) -> None:
         """フィルターとベクトル指定での検索テスト."""

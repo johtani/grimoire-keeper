@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from grimoire_bot.services.api_client import ApiClient
+from grimoire_bot.services.api_client import ApiClient, ApiClientError
 
 
 @pytest.fixture
@@ -67,6 +67,37 @@ async def test_get_process_status_success(api_client, bot_contract_fixture):
         result = await api_client.get_process_status(123)
 
         assert result == mock_response
+
+
+@pytest.mark.asyncio
+async def test_api_error_preserves_code_and_request_id_without_internal_message(
+    api_client,
+):
+    request = httpx.Request("POST", "http://localhost:8000/api/v1/search")
+    response = httpx.Response(500, request=request)
+    mock_resp = MagicMock(status_code=500)
+    mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "secret connection detail", request=request, response=response
+    )
+    mock_resp.json.return_value = {
+        "error": {
+            "code": "internal_error",
+            "message": "An internal error occurred",
+            "request_id": "request-1234",
+        }
+    }
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_instance = AsyncMock()
+        mock_instance.post.return_value = mock_resp
+        mock_client.return_value.__aenter__.return_value = mock_instance
+
+        with pytest.raises(ApiClientError) as exc_info:
+            await api_client.search_content("test query")
+
+    assert exc_info.value.code == "internal_error"
+    assert exc_info.value.request_id == "request-1234"
+    assert "secret" not in str(exc_info.value)
 
 
 @pytest.mark.asyncio

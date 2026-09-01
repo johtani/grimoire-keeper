@@ -1,5 +1,28 @@
 // API Client for Grimoire Keeper
 
+const API_ERROR_MESSAGES = {
+    bad_request: 'リクエストを処理できませんでした。',
+    unauthorized: '認証が必要です。',
+    forbidden: 'この操作は許可されていません。',
+    not_found: '対象が見つかりませんでした。',
+    method_not_allowed: 'この操作は利用できません。',
+    conflict: '現在の状態では操作を実行できません。',
+    validation_error: '入力内容を確認してください。',
+    service_unavailable: 'サービスを一時的に利用できません。',
+    internal_error: 'サーバーでエラーが発生しました。'
+};
+
+class ApiError extends Error {
+    constructor(code, message, requestId, status) {
+        const requestInfo = requestId ? ` (リクエストID: ${requestId})` : '';
+        super(`${message}${requestInfo}`);
+        this.name = 'ApiError';
+        this.code = code;
+        this.requestId = requestId;
+        this.status = status;
+    }
+}
+
 class ApiClient {
     constructor() {
         // nginxプロキシ経由でAPIにアクセス
@@ -21,10 +44,17 @@ class ApiClient {
             
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                const errorMessage = errorData?.error?.message
-                    || errorData?.detail
-                    || `HTTP ${response.status}: ${response.statusText}`;
-                throw new Error(errorMessage);
+                const apiError = errorData?.error || {};
+                const errorCode = apiError.code || 'api_error';
+                const errorMessage = API_ERROR_MESSAGES[errorCode]
+                    || apiError.message
+                    || 'APIリクエストに失敗しました。';
+                throw new ApiError(
+                    errorCode,
+                    errorMessage,
+                    apiError.request_id,
+                    response.status
+                );
             }
 
             // Content-Typeをチェックしてレスポンスを適切に処理

@@ -7,6 +7,7 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.context.say.async_say import AsyncSay
 
 from ..services.api_client import ApiClient
+from ..utils.formatters import format_error_message
 from ..utils.parsers import parse_url_and_memo
 
 
@@ -42,7 +43,7 @@ def register_event_handlers(app: AsyncApp) -> None:
                 )
                 await say(message)
             except Exception as e:
-                await say(f"<@{user}> エラーが発生しました: {str(e)}")
+                await say(f"<@{user}> {format_error_message(e, 'URL処理')}")
         else:
             await say(f"<@{user}> URLが見つかりません。有効なURLを教えてください。")
 

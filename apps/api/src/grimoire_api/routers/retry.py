@@ -2,15 +2,19 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Path, status
 
 from ..dependencies import get_retry_service
 from ..models.request import ReprocessRequest, RetryAllRequest
-from ..models.response import BatchRetryResponse, ErrorResponse, RetryResponse
+from ..models.response import (
+    COMMON_ERROR_RESPONSES,
+    BatchRetryResponse,
+    ErrorResponse,
+    RetryResponse,
+)
 from ..services.retry_service import RetryService
-from ..utils.exceptions import ResourceConflictError, ResourceNotFoundError
 
-router = APIRouter(prefix="/api/v1", tags=["retry"])
+router = APIRouter(prefix="/api/v1", tags=["retry"], responses=COMMON_ERROR_RESPONSES)
 
 
 @router.post(
@@ -37,13 +41,8 @@ async def retry_page(
     Returns:
         再処理結果
     """
-    try:
-        result = await retry_service.retry_single_page(page_id)
-        return RetryResponse.model_validate(result)
-    except (ResourceNotFoundError, ResourceConflictError):
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    result = await retry_service.retry_single_page(page_id)
+    return RetryResponse.model_validate(result)
 
 
 @router.post(
@@ -72,14 +71,9 @@ async def reprocess_page(
     Returns:
         再処理結果
     """
-    try:
-        from_step = request.from_step if request else "auto"
-        result = await retry_service.reprocess_page(page_id, from_step)
-        return RetryResponse.model_validate(result)
-    except (ResourceNotFoundError, ResourceConflictError):
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    from_step = request.from_step if request else "auto"
+    result = await retry_service.reprocess_page(page_id, from_step)
+    return RetryResponse.model_validate(result)
 
 
 @router.post(
@@ -101,13 +95,10 @@ async def retry_all_failed(
     Returns:
         再処理結果
     """
-    try:
-        if request:
-            result = await retry_service.retry_all_failed(
-                max_retries=request.max_retries,
-            )
-        else:
-            result = await retry_service.retry_all_failed()
-        return BatchRetryResponse.model_validate(result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if request:
+        result = await retry_service.retry_all_failed(
+            max_retries=request.max_retries,
+        )
+    else:
+        result = await retry_service.retry_all_failed()
+    return BatchRetryResponse.model_validate(result)

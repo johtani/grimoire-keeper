@@ -4,19 +4,33 @@
 class GrimoireAPIError(Exception):
     """Base exception for Grimoire API."""
 
-    pass
+    code = "internal_error"
+    public_message = "An internal error occurred"
+    status_code = 500
 
 
 class ResourceNotFoundError(GrimoireAPIError):
     """A requested API resource does not exist."""
 
     code = "not_found"
+    public_message = "The requested resource was not found"
+    status_code = 404
 
 
 class ResourceConflictError(GrimoireAPIError):
     """A request conflicts with the current resource state."""
 
     code = "conflict"
+    public_message = "The request conflicts with the current resource state"
+    status_code = 409
+
+
+class ServiceUnavailableError(GrimoireAPIError):
+    """A required service is temporarily unavailable."""
+
+    code = "service_unavailable"
+    public_message = "The service is temporarily unavailable"
+    status_code = 503
 
 
 class JinaClientError(GrimoireAPIError):
