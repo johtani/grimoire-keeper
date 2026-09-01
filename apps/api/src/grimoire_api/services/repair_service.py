@@ -17,6 +17,7 @@ from ..repositories.page_repository import PageRepository
 from ..repositories.repair_repository import RepairRepository
 from ..utils.exceptions import (
     DatabaseError,
+    DuplicateUrlError,
     FileOperationError,
     GrimoireAPIError,
     RepairDeletionConflictError,
@@ -221,10 +222,8 @@ class RepairService:
             updated = await self.page_repo.update_url_if_current(
                 page_id, current_url, new_url
             )
-        except DatabaseError as exc:
-            if "already belongs" in str(exc):
-                raise FileExistsError("URL already exists") from exc
-            raise
+        except DuplicateUrlError as exc:
+            raise FileExistsError("URL already exists") from exc
         if not updated:
             raise RuntimeError("Current URL does not match")
         reasons = [
