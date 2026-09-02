@@ -120,8 +120,17 @@ body {
     color: var(--dark-color);
 }
 
+.status-queued {
+    background-color: var(--secondary-color);
+}
+
 .status-failed {
     background-color: var(--danger-color);
+}
+
+.status-cancelled,
+.status-unknown {
+    background-color: var(--dark-color);
 }
 
 .page-url {
@@ -230,6 +239,27 @@ body {
 
 .progress {
     height: 0.5rem;
+}
+
+.progress-state-queued {
+    background-color: var(--secondary-color);
+}
+
+.progress-state-processing {
+    background-color: var(--warning-color);
+}
+
+.progress-state-completed {
+    background-color: var(--success-color);
+}
+
+.progress-state-failed {
+    background-color: var(--danger-color);
+}
+
+.progress-state-cancelled,
+.progress-state-unknown {
+    background-color: var(--dark-color);
 }
 
 .recent-pages .page-item {
