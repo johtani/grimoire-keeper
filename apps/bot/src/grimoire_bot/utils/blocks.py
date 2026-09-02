@@ -32,6 +32,47 @@ def create_url_processing_blocks(page_id: int, url: str) -> list[dict[str, Any]]
     ]
 
 
+def create_existing_url_blocks(
+    result: ProcessStatusResponse, page_id: int, url: str
+) -> list[dict[str, Any]]:
+    """登録済み URL と現在の処理状態を案内するブロック."""
+    status_info = {
+        "queued": ("⏸️", "待機中"),
+        "processing": ("⏳", "処理中"),
+        "completed": ("✅", "完了"),
+        "failed": ("❌", "失敗"),
+        "error": ("❌", "エラー"),
+    }
+    status = result.status.value
+    emoji, status_text = status_info.get(status, ("❓", status))
+    page_url = result.page.url if result.page else url
+
+    text = (
+        "♻️ *このURLは登録済みです*\n\n"
+        f"🔗 {page_url}\n"
+        f"📋 処理ID: `{page_id}`\n"
+        f"{emoji} ステータス: *{status_text}*"
+    )
+    if status in {"failed", "error"}:
+        text += f"\n🔄 再処理: `POST /api/v1/retry/{page_id}`"
+
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "📊 ステータス確認"},
+                    "action_id": "check_status",
+                    "value": str(page_id),
+                    "style": "primary",
+                }
+            ],
+        },
+    ]
+
+
 def create_search_result_blocks(
     results: list[dict[str, Any]], query: str
 ) -> list[dict[str, Any]]:

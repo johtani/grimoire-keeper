@@ -3,6 +3,7 @@
 import pytest
 from grimoire_bot.models.api import ProcessStatusResponse
 from grimoire_bot.utils.blocks import (
+    create_existing_url_blocks,
     create_search_result_blocks,
     create_status_blocks,
     create_url_processing_blocks,
@@ -19,6 +20,43 @@ def test_create_url_processing_blocks():
     assert "123" in blocks[0]["text"]["text"]
     assert blocks[1]["type"] == "actions"
     assert blocks[1]["elements"][0]["action_id"] == "check_status"
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_status"),
+    [
+        ("process_status_queued.json", "待機中"),
+        ("process_status_processing.json", "処理中"),
+        ("process_status_completed.json", "完了"),
+        ("process_status_failed.json", "失敗"),
+    ],
+)
+def test_create_existing_url_blocks_shows_current_status(
+    bot_contract_fixture, fixture_name, expected_status
+):
+    """登録済み URL は現在の処理状態とページ ID を表示する."""
+    result = ProcessStatusResponse.model_validate(bot_contract_fixture(fixture_name))
+
+    blocks = create_existing_url_blocks(result, result.page.id, result.page.url)
+
+    text = blocks[0]["text"]["text"]
+    assert "このURLは登録済みです" in text
+    assert str(result.page.id) in text
+    assert expected_status in text
+    assert blocks[1]["elements"][0]["action_id"] == "check_status"
+
+
+def test_create_existing_url_blocks_shows_retry_for_failed_page(
+    bot_contract_fixture,
+):
+    """失敗した既存ページには具体的な再処理方法を表示する."""
+    result = ProcessStatusResponse.model_validate(
+        bot_contract_fixture("process_status_failed.json")
+    )
+
+    blocks = create_existing_url_blocks(result, result.page.id, result.page.url)
+
+    assert f"POST /api/v1/retry/{result.page.id}" in blocks[0]["text"]["text"]
 
 
 def test_create_search_result_blocks_with_results(bot_contract_fixture):

@@ -156,6 +156,93 @@ async def test_status_command_renders_nested_page_contract(bot_contract_fixture)
 
 
 @pytest.mark.asyncio
+async def test_process_url_command_renders_queued_contract(bot_contract_fixture):
+    """新規 URL は処理開始として表示し、状態を追加取得しない."""
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    respond = AsyncMock()
+
+    with patch("grimoire_bot.handlers.commands.ApiClient") as api_client:
+        api_client.return_value.process_url = AsyncMock(
+            return_value=bot_contract_fixture("process_url.json")
+        )
+        await handler(
+            AsyncMock(),
+            respond,
+            {"user_id": "U123", "text": "https://example.com/article"},
+        )
+
+    blocks = respond.await_args.kwargs["blocks"]
+    assert "URL処理を開始しました" in blocks[0]["text"]["text"]
+    api_client.return_value.get_process_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_fixture", "expected_status"),
+    [
+        ("process_status_queued.json", "待機中"),
+        ("process_status_processing.json", "処理中"),
+        ("process_status_completed.json", "完了"),
+        ("process_status_failed.json", "失敗"),
+    ],
+)
+async def test_process_url_command_renders_existing_page_status(
+    bot_contract_fixture, status_fixture, expected_status
+):
+    """既存 URL は新規処理ではなく現在のページ状態として案内する."""
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    status_response = ProcessStatusResponse.model_validate(
+        bot_contract_fixture(status_fixture)
+    )
+    respond = AsyncMock()
+
+    with patch("grimoire_bot.handlers.commands.ApiClient") as api_client:
+        api_client.return_value.process_url = AsyncMock(
+            return_value=bot_contract_fixture("process_url_already_exists.json")
+        )
+        api_client.return_value.get_process_status = AsyncMock(
+            return_value=status_response
+        )
+        await handler(
+            AsyncMock(),
+            respond,
+            {"user_id": "U123", "text": "https://example.com/article"},
+        )
+
+    blocks = respond.await_args.kwargs["blocks"]
+    text = blocks[0]["text"]["text"]
+    assert "このURLは登録済みです" in text
+    assert "URL処理を開始しました" not in text
+    assert expected_status in text
+    api_client.return_value.get_process_status.assert_awaited_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_process_url_command_rejects_unknown_response_status():
+    """未知の API 応答を新規登録成功として表示しない."""
+    app = Mock(spec=App)
+    register_command_handlers(app)
+    handler = app.command.return_value.call_args.args[0]
+    respond = AsyncMock()
+
+    with patch("grimoire_bot.handlers.commands.ApiClient") as api_client:
+        api_client.return_value.process_url = AsyncMock(
+            return_value={"status": "unknown", "page_id": 123}
+        )
+        await handler(
+            AsyncMock(),
+            respond,
+            {"user_id": "U123", "text": "https://example.com/article"},
+        )
+
+    assert "エラー" in respond.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_app_mention_uses_process_url_contract(bot_contract_fixture):
     """メンションイベントが API 契約の page_id を応答に利用する."""
     app = Mock(spec=App)
