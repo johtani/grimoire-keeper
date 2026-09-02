@@ -136,8 +136,8 @@ def capture_snapshot(
                 if key not in {"name", "type"}
             }
         else:
-            endpoint = f"{base_url}/api/v1/search/keywords?limit={query['limit']}"
-            payload = query["keywords"]
+            endpoint = f"{base_url}/api/v1/search/keywords"
+            payload = {"keywords": query["keywords"], "limit": query["limit"]}
 
         response = requester(endpoint, payload, timeout)
         results = response.get("results")

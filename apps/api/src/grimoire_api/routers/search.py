@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from ..dependencies import get_search_service
-from ..models.request import SearchRequest
+from ..models.request import KeywordSearchRequest, SearchRequest
 from ..models.response import COMMON_ERROR_RESPONSES, SearchResponse
 from ..services.search_service import SearchService
 from ..utils.metrics import search_requests, search_results_count
@@ -65,15 +65,13 @@ async def search(
 
 @router.post("/search/keywords", response_model=SearchResponse)
 async def search_by_keywords(
-    keywords: list[str],
-    limit: int = 5,
+    request: KeywordSearchRequest,
     search_service: SearchService = Depends(get_search_service),
 ) -> SearchResponse:
     """キーワード検索エンドポイント.
 
     Args:
-        keywords: キーワードリスト
-        limit: 結果件数制限
+        request: キーワード検索リクエスト
         search_service: 検索サービス
 
     Returns:
@@ -83,12 +81,12 @@ async def search_by_keywords(
         HTTPException: 検索エラー
     """
     results = await search_service.keyword_search(
-        keywords=keywords,
-        limit=limit,
+        keywords=request.keywords,
+        limit=request.limit,
     )
 
     return SearchResponse(
         results=results,
         total=len(results),
-        query=" ".join(keywords),
+        query=" ".join(request.keywords),
     )

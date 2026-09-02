@@ -205,3 +205,68 @@ class TestSearchRouter:
         )
 
         assert response.status_code == 200
+
+    def test_keyword_search_normalizes_and_deduplicates_keywords(self) -> None:
+        """キーワードを正規化し、入力順を維持して重複を除去する."""
+        mock_service = AsyncMock()
+        mock_service.keyword_search.return_value = []
+        app.dependency_overrides[get_search_service] = lambda: mock_service
+
+        response = client.post(
+            "/api/v1/search/keywords",
+            json={"keywords": [" first ", "second", "first"], "limit": 10},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["query"] == "first second"
+        mock_service.keyword_search.assert_awaited_once_with(
+            keywords=["first", "second"], limit=10
+        )
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {},
+            {"keywords": []},
+            {"keywords": [" "]},
+            {"keywords": ["k"] * 21},
+            {"keywords": ["k" * 101]},
+            {"keywords": [1]},
+            {"keywords": "keyword"},
+            {"keywords": ["keyword"], "limit": 0},
+            {"keywords": ["keyword"], "limit": 101},
+            {"keywords": ["keyword"], "limit": "5"},
+            {"keywords": ["keyword"], "extra": True},
+        ],
+    )
+    def test_keyword_search_rejects_invalid_request(
+        self, payload: dict[str, object]
+    ) -> None:
+        """制約に違反するキーワード検索入力は 422 になる."""
+        app.dependency_overrides[get_search_service] = lambda: AsyncMock()
+
+        response = client.post("/api/v1/search/keywords", json=payload)
+
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize(
+        ("keywords", "limit"),
+        [
+            (["k"], 1),
+            (["k" * 100] * 20, 100),
+        ],
+    )
+    def test_keyword_search_accepts_boundaries(
+        self, keywords: list[str], limit: int
+    ) -> None:
+        """キーワード検索の件数・文字数・limit の境界値を受理する."""
+        mock_service = AsyncMock()
+        mock_service.keyword_search.return_value = []
+        app.dependency_overrides[get_search_service] = lambda: mock_service
+
+        response = client.post(
+            "/api/v1/search/keywords",
+            json={"keywords": keywords, "limit": limit},
+        )
+
+        assert response.status_code == 200
