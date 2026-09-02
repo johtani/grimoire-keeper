@@ -20,6 +20,7 @@ BOT_CONTRACT_FIXTURES = Path(__file__).parents[1] / "fixtures" / "bot_contracts"
     ("fixture_name", "response_model"),
     [
         ("process_url.json", ProcessUrlResponse),
+        ("process_url_already_exists.json", ProcessUrlResponse),
         ("search.json", SearchResponse),
         ("process_status.json", ProcessStatusResponse),
         ("process_status_queued.json", ProcessStatusResponse),

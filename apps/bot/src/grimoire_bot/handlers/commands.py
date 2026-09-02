@@ -8,6 +8,7 @@ from slack_bolt.context.respond.async_respond import AsyncRespond
 
 from ..services.api_client import ApiClient
 from ..utils.blocks import (
+    create_existing_url_blocks,
     create_search_result_blocks,
     create_status_blocks,
     create_url_processing_blocks,
@@ -134,9 +135,25 @@ def register_command_handlers(app: AsyncApp) -> None:
                             api_client = ApiClient()
                             process_result = await api_client.process_url(url, memo)
                             page_id = int(process_result.get("page_id", 0))
+                            process_status = process_result.get("status")
                             url_span.set_attribute("process.page_id", page_id)
+                            url_span.set_attribute(
+                                "process.status", str(process_status)
+                            )
                             url_processing_counter.add(1, {"has_memo": str(bool(memo))})
-                            blocks = create_url_processing_blocks(page_id, url)
+                            if process_status == "queued":
+                                blocks = create_url_processing_blocks(page_id, url)
+                            elif process_status == "already_exists":
+                                status_result = await api_client.get_process_status(
+                                    page_id
+                                )
+                                blocks = create_existing_url_blocks(
+                                    status_result, page_id, url
+                                )
+                            else:
+                                raise ValueError(
+                                    "Unexpected process URL response status"
+                                )
                             await respond(blocks=blocks)
                         else:
                             await respond(
