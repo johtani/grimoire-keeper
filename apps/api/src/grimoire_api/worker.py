@@ -19,11 +19,13 @@ from .dependencies import (
     get_file_repository,
     get_jina_client,
 )
+from .repositories.cleanup_job_repository import CleanupJobRepository
 from .repositories.job_repository import JobRepository
 from .repositories.log_repository import LogRepository
 from .repositories.page_repository import PageRepository
 from .repositories.repair_repository import RepairRepository
 from .services.base_processor import BaseProcessorService
+from .services.deletion_worker import DeletionWorker
 from .services.job_worker import JobWorker
 from .services.llm_service import LLMService
 from .services.vectorizer import VectorizerService
@@ -66,6 +68,8 @@ def build_job_worker(
         file_repo=file_repo,
         job_repo=job_repo,
     )
+    vectorizer = processor.vectorizer
+    deletion_worker = DeletionWorker(CleanupJobRepository(db), file_repo, vectorizer)
     return JobWorker(
         job_repo,
         page_repo,
@@ -73,6 +77,7 @@ def build_job_worker(
         processor,
         RepairRepository(db),
         heartbeat=heartbeat,
+        deletion_worker=deletion_worker,
     )
 
 

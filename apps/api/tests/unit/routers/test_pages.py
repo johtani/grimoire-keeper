@@ -252,14 +252,14 @@ class TestPagesRouter:
         mock_service.delete_page.return_value = {
             "page_id": 56,
             "url": "https://example.com/bad",
-            "status": "deleted",
+            "status": "deleting",
         }
         app.dependency_overrides[get_repair_deletion_service] = lambda: mock_service
 
         response = client.delete("/api/v1/pages/56")
 
-        assert response.status_code == 200
-        assert response.json()["status"] == "deleted"
+        assert response.status_code == 202
+        assert response.json()["status"] == "deleting"
         mock_service.delete_page.assert_awaited_once_with(56)
 
     def test_delete_repair_page_errors(self) -> None:

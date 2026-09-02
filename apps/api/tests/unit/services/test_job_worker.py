@@ -92,6 +92,28 @@ async def test_worker_does_not_claim_after_stop_requested() -> None:
     job_repo.claim_next.assert_not_awaited()
 
 
+async def test_failed_cleanup_does_not_starve_processing_jobs() -> None:
+    job_repo = AsyncMock()
+    job_repo.claim_next.return_value = make_job()
+    deletion_worker = AsyncMock()
+    deletion_worker.run_next.return_value = True
+    worker = JobWorker(
+        job_repo,
+        AsyncMock(),
+        AsyncMock(),
+        AsyncMock(),
+        poll_interval=0,
+        deletion_worker=deletion_worker,
+    )
+    worker._execute = AsyncMock(side_effect=lambda job: worker._stop_event.set())
+
+    await worker.run()
+
+    deletion_worker.run_next.assert_awaited_once()
+    job_repo.claim_next.assert_awaited_once()
+    worker._execute.assert_awaited_once()
+
+
 async def test_worker_updates_heartbeat_before_claim() -> None:
     job_repo = AsyncMock()
     job_repo.claim_next.return_value = None

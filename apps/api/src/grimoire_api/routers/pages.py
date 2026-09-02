@@ -138,6 +138,7 @@ async def update_page_url(
 @router.delete(
     "/pages/{page_id}",
     response_model=DeletePageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
         404: {"model": ErrorResponse},
         409: {"model": ErrorResponse},

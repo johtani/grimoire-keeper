@@ -20,6 +20,7 @@ from ..utils.metrics import (
     worker_loop_heartbeats,
 )
 from .base_processor import BaseProcessorService
+from .deletion_worker import DeletionWorker
 from .repair_service import validate_stored_source
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class JobWorker:
         repair_repo: RepairRepository | None = None,
         poll_interval: float = 0.5,
         heartbeat: Callable[[], None] | None = None,
+        deletion_worker: DeletionWorker | None = None,
     ):
         self.job_repo = job_repo
         self.page_repo = page_repo
@@ -45,12 +47,16 @@ class JobWorker:
         self.repair_repo = repair_repo
         self.poll_interval = poll_interval
         self.heartbeat = heartbeat
+        self.deletion_worker = deletion_worker
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._prefer_cleanup = True
 
     async def start(self) -> None:
         """中断ジョブを復旧してポーリングを開始する."""
         interrupted_jobs = await self.job_repo.recover_running()
+        if self.deletion_worker is not None:
+            await self.deletion_worker.recover_running()
         for job in interrupted_jobs:
             self._record_interrupted_attempt(job)
             logger.info(
@@ -120,8 +126,24 @@ class JobWorker:
                 break
             if self.heartbeat is not None:
                 self.heartbeat()
+            if self.deletion_worker is not None and self._prefer_cleanup:
+                cleanup_processed = await self.deletion_worker.run_next()
+                if cleanup_processed:
+                    self._prefer_cleanup = False
+                    try:
+                        await asyncio.wait_for(
+                            self._stop_event.wait(), timeout=self.poll_interval
+                        )
+                    except TimeoutError:
+                        pass
+                    continue
             job = await self.job_repo.claim_next()
             if job is None:
+                if self.deletion_worker is not None:
+                    cleanup_processed = await self.deletion_worker.run_next()
+                    if cleanup_processed:
+                        self._prefer_cleanup = False
+                        continue
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(), timeout=self.poll_interval
@@ -129,6 +151,7 @@ class JobWorker:
                 except TimeoutError:
                     pass
                 continue
+            self._prefer_cleanup = True
             worker_job_claims.add(1, {"job_kind": job.kind.value})
             logger.info(
                 "Job claimed",

@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from ..config import settings
 from ..models.database import PageStatus, RepairStatus
 from ..models.external import FetchedDocument
+from ..repositories.cleanup_job_repository import CleanupJobRepository
 from ..repositories.file_repository import FileRepository
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
@@ -20,10 +21,7 @@ from ..utils.exceptions import (
     DuplicateUrlError,
     FileOperationError,
     GrimoireAPIError,
-    RepairDeletionConflictError,
-    RepairDeletionError,
 )
-from .vectorizer import VectorizerService
 
 
 def validate_stored_source(
@@ -69,14 +67,14 @@ class RepairService:
         log_repo: LogRepository,
         job_repo: JobRepository,
         report_path: str | None = None,
-        vectorizer: VectorizerService | None = None,
+        cleanup_repo: CleanupJobRepository | None = None,
     ):
         self.page_repo = page_repo
         self.repair_repo = repair_repo
         self.file_repo = file_repo
         self.log_repo = log_repo
         self.job_repo = job_repo
-        self.vectorizer = vectorizer
+        self.cleanup_repo = cleanup_repo
         self.report_path = Path(report_path or settings.REPAIR_REPORT_PATH)
 
     async def _validate_page(self, page_id: int, url: str) -> list[dict[str, str]]:
@@ -249,43 +247,11 @@ class RepairService:
         }
 
     async def delete_page(self, page_id: int) -> dict[str, Any]:
-        """pending repair ページを全ストレージから安全に削除する."""
+        """pending repair ページの非同期削除を受付する."""
         page = await self.page_repo.get_page(page_id)
         if page is None:
             raise LookupError("Page not found")
-        case = await self.repair_repo.get_by_page_id(page_id)
-        if case is None or case.status != RepairStatus.PENDING:
-            raise RepairDeletionConflictError(
-                "Only pages with a pending repair case can be deleted"
-            )
-        if await self.job_repo.has_active_for_page(page_id):
-            raise RepairDeletionConflictError("Page has a queued or running job")
-        vectorizer = self.vectorizer
-        if vectorizer is None:
-            raise RepairDeletionError("Weaviate deletion service is not available")
-
-        try:
-
-            async def cleanup_external_data() -> None:
-                await vectorizer.delete_page_from_index(page_id)
-                await self.file_repo.delete_json_file(page_id)
-
-            await self.page_repo.delete_pending_repair_page(
-                page_id, cleanup_external_data
-            )
-        except (LookupError, RepairDeletionConflictError):
-            raise
-        except Exception as exc:
-            try:
-                await self.log_repo.create_log(
-                    page.url,
-                    "failed",
-                    page_id,
-                    error_message=f"repair deletion failed: {exc}",
-                )
-            except DatabaseError:
-                pass
-            raise RepairDeletionError(
-                f"Failed to delete page {page_id}; deletion can be retried: {exc}"
-            ) from exc
-        return {"page_id": page_id, "url": page.url, "status": "deleted"}
+        if self.cleanup_repo is None:
+            raise DatabaseError("Cleanup job repository is not available")
+        await self.cleanup_repo.enqueue(page_id)
+        return {"page_id": page_id, "url": page.url, "status": "deleting"}
