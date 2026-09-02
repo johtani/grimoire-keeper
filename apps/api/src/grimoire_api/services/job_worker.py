@@ -50,6 +50,7 @@ class JobWorker:
         self.deletion_worker = deletion_worker
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._prefer_cleanup = True
 
     async def start(self) -> None:
         """中断ジョブを復旧してポーリングを開始する."""
@@ -125,9 +126,10 @@ class JobWorker:
                 break
             if self.heartbeat is not None:
                 self.heartbeat()
-            if self.deletion_worker is not None:
+            if self.deletion_worker is not None and self._prefer_cleanup:
                 cleanup_processed = await self.deletion_worker.run_next()
                 if cleanup_processed:
+                    self._prefer_cleanup = False
                     try:
                         await asyncio.wait_for(
                             self._stop_event.wait(), timeout=self.poll_interval
@@ -137,6 +139,11 @@ class JobWorker:
                     continue
             job = await self.job_repo.claim_next()
             if job is None:
+                if self.deletion_worker is not None:
+                    cleanup_processed = await self.deletion_worker.run_next()
+                    if cleanup_processed:
+                        self._prefer_cleanup = False
+                        continue
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(), timeout=self.poll_interval
@@ -144,6 +151,7 @@ class JobWorker:
                 except TimeoutError:
                     pass
                 continue
+            self._prefer_cleanup = True
             worker_job_claims.add(1, {"job_kind": job.kind.value})
             logger.info(
                 "Job claimed",
