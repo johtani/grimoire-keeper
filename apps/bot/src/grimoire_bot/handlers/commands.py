@@ -90,10 +90,12 @@ def register_command_handlers(app: AsyncApp) -> None:
                         page_id_str = text[7:].strip()
                         if page_id_str.isdigit():
                             api_client = ApiClient()
-                            result = await api_client.get_process_status(
+                            status_result = await api_client.get_process_status(
                                 int(page_id_str)
                             )
-                            blocks = create_status_blocks(result, int(page_id_str))
+                            blocks = create_status_blocks(
+                                status_result, int(page_id_str)
+                            )
                             await respond(blocks=blocks)
                         else:
                             await respond("有効な処理IDを入力してください")
@@ -104,8 +106,10 @@ def register_command_handlers(app: AsyncApp) -> None:
                         search_span.set_attribute("search.query_length", len(query))
                         if query:
                             api_client = ApiClient()
-                            result = await api_client.search_content(query, limit=5)
-                            results = result.get("results", [])
+                            search_result = await api_client.search_content(
+                                query, limit=5
+                            )
+                            results = search_result.get("results", [])
                             search_span.set_attribute(
                                 "search.results_count", len(results)
                             )
@@ -128,8 +132,8 @@ def register_command_handlers(app: AsyncApp) -> None:
 
                         if url:
                             api_client = ApiClient()
-                            result = await api_client.process_url(url, memo)
-                            page_id = int(result.get("page_id", 0))
+                            process_result = await api_client.process_url(url, memo)
+                            page_id = int(process_result.get("page_id", 0))
                             url_span.set_attribute("process.page_id", page_id)
                             url_processing_counter.add(1, {"has_memo": str(bool(memo))})
                             blocks = create_url_processing_blocks(page_id, url)

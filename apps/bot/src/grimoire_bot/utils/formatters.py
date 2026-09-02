@@ -1,7 +1,6 @@
 """メッセージフォーマッター"""
 
-from typing import Any
-
+from ..models.api import ProcessStatusResponse
 from ..services.api_client import ApiClientError
 
 ERROR_MESSAGES = {
@@ -15,20 +14,22 @@ ERROR_MESSAGES = {
     "service_unavailable": "サービスを一時的に利用できません。",
     "internal_error": "サーバーでエラーが発生しました。",
     "connection_error": "APIに接続できませんでした。",
+    "invalid_response": "APIから予期しない応答を受信しました。",
 }
 
 
-def format_process_status(result: dict[str, Any], page_id: int) -> str:
+def format_process_status(result: ProcessStatusResponse, page_id: int) -> str:
     """処理状況をフォーマット"""
-    status = result.get("status", "unknown")
-    url = result.get("url", "")
-    title = result.get("title", "")
+    status = result.status.value
+    url = result.page.url if result.page else ""
+    title = result.page.title if result.page else ""
 
     status_emoji = {
         "processing": "⏳",
         "completed": "✅",
         "failed": "❌",
-        "pending": "⏸️",
+        "error": "❌",
+        "queued": "⏸️",
     }.get(status, "❓")
 
     response = "📊 処理状況\n"
