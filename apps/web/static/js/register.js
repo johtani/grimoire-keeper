@@ -42,7 +42,7 @@ class RegisterManager {
             
             if (response.status === 'already_exists') {
                 this.showResult('warning', `このURLは既に登録済みです（ID: ${response.page_id}）`);
-            } else if (response.status === 'prepared' || response.status === 'processing') {
+            } else if (['queued', 'prepared', 'processing'].includes(response.status)) {
                 this.currentPageId = response.page_id;
                 this.showResult('success', 'URL登録が完了しました。処理を開始します...');
                 this.startStatusCheck();
@@ -83,60 +83,75 @@ class RegisterManager {
     startStatusCheck() {
         if (!this.currentPageId) return;
 
-        this.updateProgress(25, 'コンテンツを取得中...');
+        this.stopStatusCheck(false);
+        this.updateProgress(10, '処理待ちです...', 'queued');
 
         this.statusCheckInterval = setInterval(async () => {
             try {
-                const status = await this.api.getProcessStatus(this.currentPageId);
+                const status = await this.api.getPageDetail(this.currentPageId);
                 this.updateProcessingStatus(status);
             } catch (error) {
                 console.error('Status check error:', error);
+                this.updateProgress(0, `処理状況を取得できませんでした: ${error.message}`, 'unknown');
                 this.stopStatusCheck();
             }
         }, 2000);
     }
 
     updateProcessingStatus(status) {
-        if (status.status === 'completed') {
-            this.updateProgress(100, '処理完了！');
-            this.stopStatusCheck();
-            setTimeout(() => {
-                document.getElementById('processingInfo').classList.add('d-none');
-            }, 3000);
-        } else if (status.status === 'failed') {
-            this.updateProgress(0, `処理に失敗しました: ${status.message}`);
-            this.stopStatusCheck();
-        } else if (status.status === 'processing') {
-            // 処理段階に応じて進捗を更新
-            if (status.message.includes('download')) {
-                this.updateProgress(50, 'AI要約を生成中...');
-            } else if (status.message.includes('llm')) {
-                this.updateProgress(75, 'ベクトル化処理中...');
-            } else {
-                this.updateProgress(25, '処理中...');
-            }
+        const state = status.status;
+
+        if (state === 'queued') {
+            this.updateProgress(10, '処理待ちです...', state);
+            return;
         }
+
+        if (state === 'processing') {
+            const steps = {
+                downloaded: [50, 'AI要約を生成中...'],
+                llm_processed: [75, 'ベクトル化処理中...'],
+                vectorized: [90, '処理を完了しています...']
+            };
+            const [percent, text] = steps[status.last_success_step]
+                || [25, 'コンテンツを取得中...'];
+            this.updateProgress(percent, text, state);
+            return;
+        }
+
+        if (state === 'completed') {
+            this.updateProgress(100, '処理完了！', state);
+        } else if (state === 'failed') {
+            const reason = status.error_message || '理由を取得できませんでした';
+            this.updateProgress(0, `処理に失敗しました: ${reason}`, state);
+        } else if (state === 'cancelled') {
+            this.updateProgress(0, '処理はキャンセルされました', state);
+        } else {
+            this.updateProgress(0, `不明な処理状態です: ${state || '値なし'}`, 'unknown');
+        }
+
+        this.stopStatusCheck();
     }
 
-    updateProgress(percent, text) {
+    updateProgress(percent, text, state = 'processing') {
         const progressBar = document.getElementById('progressBar');
         const statusText = document.getElementById('statusText');
         
         progressBar.style.width = `${percent}%`;
+        progressBar.setAttribute('aria-valuenow', String(percent));
+        progressBar.className = `progress-bar progress-bar-striped progress-state-${state}`;
         statusText.textContent = text;
 
-        if (percent === 100) {
-            progressBar.classList.remove('progress-bar-animated');
-            progressBar.classList.add('bg-success');
+        if (state === 'queued' || state === 'processing') {
+            progressBar.classList.add('progress-bar-animated');
         }
     }
 
-    stopStatusCheck() {
+    stopStatusCheck(clearPageId = true) {
         if (this.statusCheckInterval) {
             clearInterval(this.statusCheckInterval);
             this.statusCheckInterval = null;
         }
-        this.currentPageId = null;
+        if (clearPageId) this.currentPageId = null;
     }
 
     async loadRecentPages() {
@@ -177,8 +192,10 @@ class RegisterManager {
     getStatusColor(status) {
         switch (status) {
             case 'completed': return 'success';
+            case 'queued': return 'secondary';
             case 'processing': return 'warning';
             case 'failed': return 'danger';
+            case 'cancelled': return 'dark';
             default: return 'secondary';
         }
     }
@@ -186,8 +203,10 @@ class RegisterManager {
     getStatusText(status) {
         switch (status) {
             case 'completed': return '完了';
+            case 'queued': return '待機中';
             case 'processing': return '処理中';
             case 'failed': return '失敗';
+            case 'cancelled': return 'キャンセル';
             default: return '不明';
         }
     }

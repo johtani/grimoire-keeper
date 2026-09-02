@@ -55,11 +55,12 @@
                         <!-- 結果表示エリア -->
                         <div id="resultArea" class="mt-4 d-none">
                             <div class="alert" id="resultAlert"></div>
-                            <div id="processingInfo" class="d-none">
+                            <div id="processingInfo" class="d-none" aria-live="polite">
                                 <h6>処理状況</h6>
                                 <div class="progress mb-2">
                                     <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                         id="progressBar" style="width: 0%"></div>
+                                         id="progressBar" role="progressbar" aria-valuemin="0"
+                                         aria-valuemax="100" aria-valuenow="0" style="width: 0%"></div>
                                 </div>
                                 <small class="text-muted" id="statusText">処理を開始しています...</small>
                             </div>
