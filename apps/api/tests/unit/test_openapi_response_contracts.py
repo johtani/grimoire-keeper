@@ -42,6 +42,24 @@ def test_process_url_request_excludes_slack_fields_and_forbids_extras() -> None:
     assert request_schema["additionalProperties"] is False
 
 
+def test_keyword_search_request_schema_exposes_constraints() -> None:
+    """キーワード検索は名前付き request schema と制約を公開する."""
+    schema = TestClient(app).get("/openapi.json").json()
+    operation = schema["paths"]["/api/v1/search/keywords"]["post"]
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    model_schema = schema["components"]["schemas"]["KeywordSearchRequest"]
+
+    assert request_schema == {"$ref": "#/components/schemas/KeywordSearchRequest"}
+    assert model_schema["additionalProperties"] is False
+    assert model_schema["properties"]["keywords"]["minItems"] == 1
+    assert model_schema["properties"]["keywords"]["maxItems"] == 20
+    keyword_schema = model_schema["properties"]["keywords"]["items"]
+    assert keyword_schema["minLength"] == 1
+    assert keyword_schema["maxLength"] == 100
+    assert model_schema["properties"]["limit"]["minimum"] == 1
+    assert model_schema["properties"]["limit"]["maximum"] == 100
+
+
 def test_public_api_success_responses_use_concrete_schemas() -> None:
     """型付きへ移行した API が具体的な OpenAPI スキーマを公開する."""
     schema = TestClient(app).get("/openapi.json").json()

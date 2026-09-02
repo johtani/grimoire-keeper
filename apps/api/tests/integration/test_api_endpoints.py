@@ -107,7 +107,10 @@ class TestAPIEndpoints:
         mock_keyword_search.return_value = []
 
         # リクエスト実行
-        response = client.post("/api/v1/search/keywords", json=["keyword1", "keyword2"])
+        response = client.post(
+            "/api/v1/search/keywords",
+            json={"keywords": ["keyword1", "keyword2"]},
+        )
 
         # レスポンス確認
         assert response.status_code == 200

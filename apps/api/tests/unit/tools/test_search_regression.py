@@ -99,8 +99,8 @@ def test_capture_snapshot_calls_vector_and_keyword_endpoints() -> None:
             12.0,
         ),
         (
-            "http://api.example/api/v1/search/keywords?limit=10",
-            ["AI"],
+            "http://api.example/api/v1/search/keywords",
+            {"keywords": ["AI"], "limit": 10},
             12.0,
         ),
     ]

@@ -257,23 +257,30 @@ Search processed content by matching against stored keywords.
 
 **Request Body:**
 ```json
-["machine learning", "AI", "neural networks"]
+{
+  "keywords": ["machine learning", "AI", "neural networks"],
+  "limit": 10
+}
 ```
 
-**Query Parameters:**
-- `limit` (integer, optional, default=5): Maximum number of results
+**Constraints:**
+- `keywords`: 1–20 strings; each is trimmed, must contain 1–100 characters,
+  and duplicate values are removed while preserving their first occurrence
+- `limit`: integer from 1–100 (optional, default=5)
+- Unknown fields are rejected
 
 **Response:** Same format as `POST /api/v1/search`
 
 **Status Codes:**
 - `200 OK`: Search completed successfully
+- `422 Unprocessable Entity`: Invalid request
 - `500 Internal Server Error`: Search error
 
 **Examples:**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/search/keywords?limit=10" \
+curl -X POST "http://localhost:8000/api/v1/search/keywords" \
   -H "Content-Type: application/json" \
-  -d '["machine learning", "AI"]'
+  -d '{"keywords": ["machine learning", "AI"], "limit": 10}'
 ```
 
 ---

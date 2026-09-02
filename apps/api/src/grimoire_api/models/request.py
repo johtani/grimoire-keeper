@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    StrictInt,
     StringConstraints,
     field_validator,
     model_validator,
@@ -123,3 +124,18 @@ class SearchRequest(BaseModel):
     exclude_keywords: list[SearchKeyword] | None = Field(
         default=None, min_length=1, max_length=20
     )
+
+
+class KeywordSearchRequest(BaseModel):
+    """キーワード検索リクエスト."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    keywords: list[SearchKeyword] = Field(min_length=1, max_length=20)
+    limit: StrictInt = Field(default=5, ge=1, le=100)
+
+    @field_validator("keywords")
+    @classmethod
+    def deduplicate_keywords(cls, keywords: list[str]) -> list[str]:
+        """入力順を維持して重複キーワードを除去する."""
+        return list(dict.fromkeys(keywords))
