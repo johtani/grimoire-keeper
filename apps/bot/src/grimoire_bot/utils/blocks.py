@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from ..models.api import ProcessStatusResponse
+
 
 def create_url_processing_blocks(page_id: int, url: str) -> list[dict[str, Any]]:
     """URL処理開始時のブロック"""
@@ -94,18 +96,20 @@ def create_search_result_blocks(
     return blocks
 
 
-def create_status_blocks(result: dict[str, Any], page_id: int) -> list[dict[str, Any]]:
+def create_status_blocks(
+    result: ProcessStatusResponse, page_id: int
+) -> list[dict[str, Any]]:
     """ステータス表示のブロック"""
-    status = result.get("status", "unknown")
-    page = result.get("page") or {}
-    url = page.get("url", "")
-    title = page.get("title", "")
+    status = result.status.value
+    url = result.page.url if result.page else ""
+    title = result.page.title if result.page else ""
 
     status_info = {
         "processing": {"emoji": "⏳", "color": "#ffcc00", "text": "処理中"},
         "completed": {"emoji": "✅", "color": "#36a64f", "text": "完了"},
         "failed": {"emoji": "❌", "color": "#ff0000", "text": "失敗"},
-        "pending": {"emoji": "⏸️", "color": "#cccccc", "text": "待機中"},
+        "error": {"emoji": "❌", "color": "#ff0000", "text": "エラー"},
+        "queued": {"emoji": "⏸️", "color": "#cccccc", "text": "待機中"},
     }
 
     info = status_info.get(status, {"emoji": "❓", "color": "#cccccc", "text": status})

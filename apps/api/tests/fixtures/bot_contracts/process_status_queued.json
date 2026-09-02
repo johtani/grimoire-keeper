@@ -1,0 +1,13 @@
+{
+  "status": "queued",
+  "message": "Processing status retrieved",
+  "page": {
+    "id": 120,
+    "url": "https://example.com/queued",
+    "title": "Processing...",
+    "memo": null,
+    "summary": null,
+    "keywords": [],
+    "created_at": "2026-08-30T12:00:00Z"
+  }
+}

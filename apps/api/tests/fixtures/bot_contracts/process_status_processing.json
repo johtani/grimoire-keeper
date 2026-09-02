@@ -1,0 +1,13 @@
+{
+  "status": "processing",
+  "message": "Processing status retrieved",
+  "page": {
+    "id": 121,
+    "url": "https://example.com/processing",
+    "title": "Processing article",
+    "memo": "Read later",
+    "summary": null,
+    "keywords": [],
+    "created_at": "2026-08-30T12:01:00Z"
+  }
+}

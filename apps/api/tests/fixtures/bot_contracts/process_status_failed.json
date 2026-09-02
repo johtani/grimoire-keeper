@@ -1,0 +1,13 @@
+{
+  "status": "failed",
+  "message": "Processing status retrieved",
+  "page": {
+    "id": 123,
+    "url": "https://example.com/failed",
+    "title": "Failed article",
+    "memo": null,
+    "summary": null,
+    "keywords": [],
+    "created_at": "2026-08-30T12:03:00Z"
+  }
+}

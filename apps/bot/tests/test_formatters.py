@@ -1,5 +1,7 @@
 """フォーマッターのテスト"""
 
+import pytest
+from grimoire_bot.models.api import ProcessStatusResponse
 from grimoire_bot.services.api_client import ApiClientError
 from grimoire_bot.utils.formatters import (
     format_error_message,
@@ -7,17 +9,26 @@ from grimoire_bot.utils.formatters import (
 )
 
 
-def test_format_process_status():
-    """処理状況フォーマットテスト"""
-    result = {"status": "completed", "url": "https://example.com", "title": "Test Page"}
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_emoji"),
+    [
+        ("process_status_queued.json", "⏸️ queued"),
+        ("process_status_processing.json", "⏳ processing"),
+        ("process_status_completed.json", "✅ completed"),
+        ("process_status_failed.json", "❌ failed"),
+    ],
+)
+def test_format_process_status(bot_contract_fixture, fixture_name, expected_emoji):
+    """ネストされた API 契約の4状態をフォーマットする."""
+    result = ProcessStatusResponse.model_validate(bot_contract_fixture(fixture_name))
 
-    formatted = format_process_status(result, 123)
+    formatted = format_process_status(result, result.page.id)
 
     assert "📊 処理状況" in formatted
-    assert "ID: 123" in formatted
-    assert "https://example.com" in formatted
-    assert "Test Page" in formatted
-    assert "✅ completed" in formatted
+    assert f"ID: {result.page.id}" in formatted
+    assert result.page.url in formatted
+    assert result.page.title in formatted
+    assert expected_emoji in formatted
 
 
 def test_format_error_message():

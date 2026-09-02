@@ -22,6 +22,10 @@ BOT_CONTRACT_FIXTURES = Path(__file__).parents[1] / "fixtures" / "bot_contracts"
         ("process_url.json", ProcessUrlResponse),
         ("search.json", SearchResponse),
         ("process_status.json", ProcessStatusResponse),
+        ("process_status_queued.json", ProcessStatusResponse),
+        ("process_status_processing.json", ProcessStatusResponse),
+        ("process_status_completed.json", ProcessStatusResponse),
+        ("process_status_failed.json", ProcessStatusResponse),
     ],
 )
 def test_bot_contract_fixtures_match_api_response_models(

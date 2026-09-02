@@ -1,5 +1,7 @@
 """Block Kitユーティリティのテスト"""
 
+import pytest
+from grimoire_bot.models.api import ProcessStatusResponse
 from grimoire_bot.utils.blocks import (
     create_search_result_blocks,
     create_status_blocks,
@@ -42,15 +44,50 @@ def test_create_search_result_blocks_empty():
     assert "見つかりませんでした" in blocks[0]["text"]["text"]
 
 
-def test_create_status_blocks(bot_contract_fixture):
-    """ステータスブロック作成テスト"""
-    result = bot_contract_fixture("process_status.json")
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_url", "expected_title", "expected_emoji"),
+    [
+        (
+            "process_status_queued.json",
+            "https://example.com/queued",
+            "Processing...",
+            "⏸️",
+        ),
+        (
+            "process_status_processing.json",
+            "https://example.com/processing",
+            "Processing article",
+            "⏳",
+        ),
+        (
+            "process_status_completed.json",
+            "https://example.com/completed",
+            "Completed article",
+            "✅",
+        ),
+        (
+            "process_status_failed.json",
+            "https://example.com/failed",
+            "Failed article",
+            "❌",
+        ),
+    ],
+)
+def test_create_status_blocks(
+    bot_contract_fixture,
+    fixture_name,
+    expected_url,
+    expected_title,
+    expected_emoji,
+):
+    """API 契約の4状態を正しく表示する."""
+    result = ProcessStatusResponse.model_validate(bot_contract_fixture(fixture_name))
 
-    blocks = create_status_blocks(result, 123)
+    blocks = create_status_blocks(result, result.page.id)
 
     assert len(blocks) == 1
     assert blocks[0]["type"] == "section"
-    assert "123" in blocks[0]["text"]["text"]
-    assert "https://example.com/article" in blocks[0]["text"]["text"]
-    assert "Contract Test Article" in blocks[0]["text"]["text"]
-    assert "✅" in blocks[0]["text"]["text"]
+    assert str(result.page.id) in blocks[0]["text"]["text"]
+    assert expected_url in blocks[0]["text"]["text"]
+    assert expected_title in blocks[0]["text"]["text"]
+    assert expected_emoji in blocks[0]["text"]["text"]

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 from grimoire_bot.handlers.commands import GRIMOIRE_HELP_TEXT, register_command_handlers
 from grimoire_bot.handlers.events import register_event_handlers
+from grimoire_bot.models.api import ProcessStatusResponse
 from slack_bolt import App
 
 
@@ -132,7 +133,9 @@ async def test_status_command_renders_nested_page_contract(bot_contract_fixture)
     app = Mock(spec=App)
     register_command_handlers(app)
     handler = app.command.return_value.call_args.args[0]
-    api_response = bot_contract_fixture("process_status.json")
+    api_response = ProcessStatusResponse.model_validate(
+        bot_contract_fixture("process_status.json")
+    )
     ack = AsyncMock()
     respond = AsyncMock()
 

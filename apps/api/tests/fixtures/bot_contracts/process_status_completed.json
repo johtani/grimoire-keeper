@@ -1,0 +1,13 @@
+{
+  "status": "completed",
+  "message": "Processing status retrieved",
+  "page": {
+    "id": 122,
+    "url": "https://example.com/completed",
+    "title": "Completed article",
+    "memo": "Read later",
+    "summary": "Processing has completed.",
+    "keywords": ["contract", "completed"],
+    "created_at": "2026-08-30T12:02:00Z"
+  }
+}

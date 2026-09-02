@@ -4,6 +4,9 @@ import os
 from typing import Any, cast
 
 import httpx
+from pydantic import ValidationError
+
+from ..models.api import ProcessStatusResponse
 
 
 class ApiClientError(Exception):
@@ -69,9 +72,13 @@ class ApiClient:
             {"query": query, "limit": limit, "vector_name": "title_vector"},
         )
 
-    async def get_process_status(self, page_id: int) -> dict[str, Any]:
-        """処理状況確認"""
-        return await self._request("GET", f"/api/v1/process-status/{page_id}")
+    async def get_process_status(self, page_id: int) -> ProcessStatusResponse:
+        """処理状況を取得し、Bot が依存する API 契約を検証する."""
+        response = await self._request("GET", f"/api/v1/process-status/{page_id}")
+        try:
+            return ProcessStatusResponse.model_validate(response)
+        except ValidationError as exc:
+            raise ApiClientError("invalid_response") from exc
 
     async def health_check(self) -> bool:
         """ヘルスチェック"""

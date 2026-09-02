@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from grimoire_bot.models.api import ProcessStatus
 from grimoire_bot.services.api_client import ApiClient, ApiClientError
 
 
@@ -53,7 +54,7 @@ async def test_search_content_success(api_client, bot_contract_fixture):
 
 @pytest.mark.asyncio
 async def test_get_process_status_success(api_client, bot_contract_fixture):
-    """現行 API 契約の処理ステータスをそのまま返すことを確認."""
+    """現行 API 契約の処理ステータスを検証済み model で返す."""
     mock_response = bot_contract_fixture("process_status.json")
     mock_resp = MagicMock()
     mock_resp.json.return_value = mock_response
@@ -66,7 +67,32 @@ async def test_get_process_status_success(api_client, bot_contract_fixture):
 
         result = await api_client.get_process_status(123)
 
-        assert result == mock_response
+        assert result.status is ProcessStatus.COMPLETED
+        assert result.page.url == "https://example.com/article"
+
+
+@pytest.mark.asyncio
+async def test_get_process_status_rejects_schema_mismatch(api_client):
+    """旧 flat schema を consumer contract 違反として拒否する."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {
+        "status": "completed",
+        "message": "Processing status retrieved",
+        "url": "https://example.com/legacy",
+        "title": "Legacy response",
+    }
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_instance = AsyncMock()
+        mock_instance.get.return_value = mock_resp
+        mock_client.return_value.__aenter__.return_value = mock_instance
+
+        with pytest.raises(ApiClientError) as exc_info:
+            await api_client.get_process_status(123)
+
+    assert exc_info.value.code == "invalid_response"
+    assert "legacy" not in str(exc_info.value)
 
 
 @pytest.mark.asyncio
