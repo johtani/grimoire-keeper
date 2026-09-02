@@ -7,7 +7,7 @@ import aiosqlite
 
 from ..utils.exceptions import DatabaseError
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 
 class SchemaMigrationError(DatabaseError):
@@ -90,6 +90,15 @@ REPAIR_CASE_COLUMNS = (
     "status",
     "detected_at",
     "resolved_at",
+)
+CLEANUP_JOB_COLUMNS = (
+    "id",
+    "page_id",
+    "status",
+    "attempt",
+    "error_message",
+    "created_at",
+    "updated_at",
 )
 
 
@@ -260,10 +269,17 @@ async def _migration_6(conn: aiosqlite.Connection) -> None:
     )
 
 
-async def _migration_7(conn: aiosqlite.Connection) -> None:
+async def _migration_7(
+    conn: aiosqlite.Connection, *, include_deleting: bool = False
+) -> None:
     """Constrain persisted states and align indexes with repository queries."""
+    page_statuses = (
+        "'queued', 'processing', 'succeeded', 'failed', 'deleting'"
+        if include_deleting
+        else "'queued', 'processing', 'succeeded', 'failed'"
+    )
     await conn.execute(
-        """CREATE TABLE new_pages (
+        f"""CREATE TABLE new_pages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT UNIQUE NOT NULL,
             title TEXT NOT NULL,
@@ -277,7 +293,7 @@ async def _migration_7(conn: aiosqlite.Connection) -> None:
                 CHECK (last_success_step IS NULL OR last_success_step IN
                     ('downloaded', 'llm_processed', 'vectorized', 'completed')),
             status TEXT NOT NULL DEFAULT 'queued'
-                CHECK (status IN ('queued', 'processing', 'succeeded', 'failed'))
+                CHECK (status IN ({page_statuses}))
         )"""
     )
     await conn.execute(
@@ -375,6 +391,28 @@ async def _migration_7(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_8(conn: aiosqlite.Connection) -> None:
+    """Add the deleting page state and persistent cleanup jobs."""
+    await _migration_7(conn, include_deleting=True)
+    await conn.execute(
+        """CREATE TABLE cleanup_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'running')),
+            attempt INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (page_id) REFERENCES pages(id)
+        )"""
+    )
+    await conn.execute(
+        "CREATE INDEX idx_cleanup_jobs_status_updated "
+        "ON cleanup_jobs(status, updated_at, id)"
+    )
+
+
 MIGRATIONS = (
     Migration(1, "create_pages_and_process_logs", _migration_1),
     Migration(2, "add_last_success_step", _migration_2),
@@ -383,6 +421,7 @@ MIGRATIONS = (
     Migration(5, "normalize_timestamps_to_utc", _migration_5),
     Migration(6, "add_job_attempt_event_history", _migration_6),
     Migration(7, "add_state_constraints_and_query_indexes", _migration_7),
+    Migration(8, "add_cleanup_jobs", _migration_8),
 )
 
 
@@ -449,6 +488,8 @@ def _expected_tables(version: int) -> dict[str, tuple[str, ...]]:
         tables["jobs"] = JOB_COLUMNS
     if version >= 4:
         tables["repair_cases"] = REPAIR_CASE_COLUMNS
+    if version >= 8:
+        tables["cleanup_jobs"] = CLEANUP_JOB_COLUMNS
     return tables
 
 
@@ -473,10 +514,15 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
             )
 
     if version >= 7:
+        page_status_check = (
+            "status IN ('queued', 'processing', 'succeeded', 'failed', 'deleting')"
+            if version >= 8
+            else "status IN ('queued', 'processing', 'succeeded', 'failed')"
+        )
         required_checks = {
             "pages": (
                 "last_success_step IS NULL OR last_success_step IN",
-                "status IN ('queued', 'processing', 'succeeded', 'failed')",
+                page_status_check,
             ),
             "jobs": (
                 "kind IN ('initial', 'retry', 'reprocess')",
@@ -499,6 +545,17 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 raise SchemaMigrationError(
                     f"Corrupt SQLite schema: invalid CHECK constraints on {table}"
                 )
+
+    if version >= 8:
+        pages_sql = await _table_sql(conn, "pages")
+        cleanup_sql = await _table_sql(conn, "cleanup_jobs")
+        if "'deleting'" not in pages_sql or any(
+            check not in cleanup_sql
+            for check in ("status IN ('queued', 'running')", "attempt >= 0")
+        ):
+            raise SchemaMigrationError(
+                "Corrupt SQLite schema: invalid cleanup saga constraints"
+            )
 
     for table in set(expected) - {"pages"}:
         cursor = await conn.execute(f'PRAGMA foreign_key_list("{table}")')
@@ -574,6 +631,12 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                     ),
                 }
             )
+        if version >= 8:
+            required_indexes["idx_cleanup_jobs_status_updated"] = (
+                "cleanup_jobs",
+                ("status", "updated_at", "id"),
+                False,
+            )
         missing_indexes = set(required_indexes) - set(actual_indexes)
         if missing_indexes:
             raise SchemaMigrationError(
@@ -611,6 +674,15 @@ async def _detect_legacy_version(conn: aiosqlite.Connection) -> int:
         pages_sql = await _table_sql(conn, "pages")
         if "last_success_step IS NULL OR last_success_step IN" in pages_sql:
             return LATEST_SCHEMA_VERSION
+
+    version_7_tables = set(_expected_tables(7))
+    if tables == version_7_tables:
+        pages_sql = await _table_sql(conn, "pages")
+        if (
+            "last_success_step IS NULL OR last_success_step IN" in pages_sql
+            and "'deleting'" not in pages_sql
+        ):
+            return 7
 
     for version in range(1, LATEST_SCHEMA_VERSION + 1):
         expected = _expected_tables(version)

@@ -9,12 +9,13 @@ from unittest.mock import AsyncMock
 import aiosqlite
 import pytest
 from grimoire_api.models.database import Page, PageStatus
+from grimoire_api.repositories.cleanup_job_repository import CleanupJobRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.utils.exceptions import DatabaseError, DuplicateUrlError
 
 
-async def test_delete_pending_repair_page_is_atomic(temp_db, page_repo) -> None:
+async def test_enqueue_cleanup_job_is_atomic(temp_db, page_repo) -> None:
     page_id = await page_repo.create_page("https://delete.example.com", "title")
     await RepairRepository(temp_db).upsert_pending(
         page_id, "scan", [{"code": "invalid", "detail": "bad"}]
@@ -29,19 +30,18 @@ async def test_delete_pending_repair_page_is_atomic(temp_db, page_repo) -> None:
     )
 
     await temp_db.execute(
-        "CREATE TRIGGER reject_test_page_delete BEFORE DELETE ON pages "
+        "CREATE TRIGGER reject_cleanup_job BEFORE INSERT ON cleanup_jobs "
         "BEGIN SELECT RAISE(ABORT, 'test rollback'); END"
     )
     with pytest.raises(DatabaseError, match="test rollback"):
-        await page_repo.delete_pending_repair_page(page_id)
+        await CleanupJobRepository(temp_db).enqueue(page_id)
 
-    for table in ("pages", "process_logs", "jobs", "repair_cases"):
-        row = await temp_db.fetch_one(
-            f"SELECT COUNT(*) AS count FROM {table} WHERE "
-            + ("id=?" if table == "pages" else "page_id=?"),
-            (page_id,),
-        )
-        assert row is not None and row["count"] == 1
+    page = await page_repo.get_page(page_id)
+    assert page is not None and page.status == PageStatus.QUEUED
+    row = await temp_db.fetch_one(
+        "SELECT COUNT(*) AS count FROM cleanup_jobs WHERE page_id=?", (page_id,)
+    )
+    assert row is not None and row["count"] == 0
 
 
 class TestListPages:

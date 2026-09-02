@@ -21,6 +21,7 @@ class PageResponseStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    DELETING = "deleting"
 
 
 class ProcessStatus(str, Enum):

@@ -45,6 +45,7 @@ class TestDatabaseInitialization:
         assert "idx_process_logs_page_id" in index_names
         assert "idx_process_logs_status" in index_names
         assert "idx_pages_last_success_step" in index_names
+        assert "idx_cleanup_jobs_status_updated" in index_names
 
     @pytest.mark.asyncio
     async def test_indexes_idempotent(self, temp_db: DatabaseConnection) -> None:
@@ -59,6 +60,7 @@ class TestDatabaseInitialization:
         assert "idx_process_logs_page_id" in index_names
         assert "idx_process_logs_status" in index_names
         assert "idx_pages_last_success_step" in index_names
+        assert "idx_cleanup_jobs_status_updated" in index_names
 
     @pytest.mark.asyncio
     async def test_schema_history_created(self, temp_db: DatabaseConnection) -> None:
@@ -337,7 +339,7 @@ class TestLegacyDatabaseMigration:
 
         assert inspection.current_version == 2
         assert inspection.has_history is False
-        assert inspection.pending_versions == (3, 4, 5, 6, 7)
+        assert inspection.pending_versions == (3, 4, 5, 6, 7, 8)
         assert inspection.backup_required is True
 
         async with aiosqlite.connect(db_path) as conn:

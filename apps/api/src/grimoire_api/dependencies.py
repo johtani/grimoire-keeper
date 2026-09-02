@@ -6,6 +6,7 @@ import weaviate
 from fastapi import Depends, Request
 
 from .config import settings
+from .repositories.cleanup_job_repository import CleanupJobRepository
 from .repositories.database import DatabaseConnection
 from .repositories.file_repository import FileRepository
 from .repositories.job_repository import JobRepository
@@ -91,6 +92,12 @@ def get_repair_repository(
     return RepairRepository(db)
 
 
+def get_cleanup_job_repository(
+    db: DatabaseConnection = Depends(get_db_connection),
+) -> CleanupJobRepository:
+    return CleanupJobRepository(db)
+
+
 def get_repair_service(
     page_repo: PageRepository = Depends(get_page_repository),
     repair_repo: RepairRepository = Depends(get_repair_repository),
@@ -154,10 +161,10 @@ def get_repair_deletion_service(
     file_repo: FileRepository = Depends(get_file_repository),
     log_repo: LogRepository = Depends(get_log_repository),
     job_repo: JobRepository = Depends(get_job_repository),
-    vectorizer: VectorizerService = Depends(get_vectorizer_service),
+    cleanup_repo: CleanupJobRepository = Depends(get_cleanup_job_repository),
 ) -> RepairService:
     return RepairService(
-        page_repo, repair_repo, file_repo, log_repo, job_repo, vectorizer=vectorizer
+        page_repo, repair_repo, file_repo, log_repo, job_repo, cleanup_repo=cleanup_repo
     )
 
 

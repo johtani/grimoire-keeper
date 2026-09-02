@@ -38,6 +38,7 @@ class PageStatus(str, Enum):
     PROCESSING = "processing"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    DELETING = "deleting"
 
 
 class JobKind(str, Enum):
@@ -62,6 +63,13 @@ class RepairStatus(str, Enum):
 
     PENDING = "pending"
     RESOLVED = "resolved"
+
+
+class CleanupJobStatus(str, Enum):
+    """外部データ削除ジョブの状態."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
 
 
 @dataclass
@@ -124,3 +132,16 @@ class RepairCase:
     status: RepairStatus
     detected_at: datetime
     resolved_at: datetime | None
+
+
+@dataclass
+class CleanupJob:
+    """再実行可能なページ削除ジョブ."""
+
+    id: int
+    page_id: int
+    status: CleanupJobStatus
+    attempt: int
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
