@@ -54,6 +54,23 @@ def test_same_origin_request_succeeds_without_cors_headers() -> None:
     assert response.json() == {"message": "Grimoire Keeper API is running"}
     assert "access-control-allow-origin" not in response.headers
     assert "access-control-allow-credentials" not in response.headers
+    assert len(response.headers["X-Request-ID"]) == 32
+
+
+def test_valid_request_id_is_propagated() -> None:
+    response = TestClient(app).get("/", headers={"X-Request-ID": "request-1234"})
+
+    assert response.headers["X-Request-ID"] == "request-1234"
+
+
+def test_invalid_request_id_is_replaced() -> None:
+    response = TestClient(app).get("/missing", headers={"X-Request-ID": "bad"})
+
+    error = response.json()["error"]
+    assert response.status_code == 404
+    assert error["code"] == "not_found"
+    assert error["request_id"] == response.headers["X-Request-ID"]
+    assert error["request_id"] != "bad"
 
 
 def test_cross_origin_request_is_not_allowed() -> None:
@@ -77,6 +94,8 @@ def test_cross_origin_preflight_is_not_allowed() -> None:
     )
 
     assert response.status_code == 405
+    assert response.json()["error"]["code"] == "method_not_allowed"
+    assert response.json()["error"]["request_id"] == response.headers["X-Request-ID"]
     assert "access-control-allow-origin" not in response.headers
     assert "access-control-allow-methods" not in response.headers
     assert "access-control-allow-headers" not in response.headers

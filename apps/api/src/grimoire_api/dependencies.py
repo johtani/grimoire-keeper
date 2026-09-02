@@ -3,7 +3,7 @@
 from functools import lru_cache
 
 import weaviate
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 
 from .config import settings
 from .repositories.database import DatabaseConnection
@@ -21,6 +21,7 @@ from .services.retry_service import RetryService
 from .services.search_service import SearchService
 from .services.url_processor import UrlProcessorService
 from .services.vectorizer import VectorizerService
+from .utils.exceptions import ServiceUnavailableError
 
 # ---------------------------------------------------------------------------
 # Stateless singletons (lru_cache → one instance per process lifetime)
@@ -126,14 +127,14 @@ async def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
     """Weaviate クライアントを app.state から取得.
 
     Raises:
-        HTTPException: Weaviate が未接続の場合 (503)
+        ServiceUnavailableError: Weaviate が未接続の場合 (503)
     """
     manager = getattr(request.app.state, "weaviate_manager", None)
     client: weaviate.WeaviateClient | None = (
         await manager.get_ready_client() if manager is not None else None
     )
     if client is None:
-        raise HTTPException(status_code=503, detail="Weaviate is not available")
+        raise ServiceUnavailableError("Weaviate is not available")
     return client
 
 

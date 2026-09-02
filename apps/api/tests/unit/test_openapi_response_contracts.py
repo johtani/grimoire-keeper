@@ -71,14 +71,14 @@ def test_public_api_success_responses_use_concrete_schemas() -> None:
         }
 
 
-def test_readiness_errors_use_health_response_schema() -> None:
-    """readiness API が503レスポンスにも通常時と同じ契約を公開する."""
+def test_readiness_errors_use_common_error_schema() -> None:
+    """readiness API の503レスポンスも共通エラー契約を公開する."""
     schema = TestClient(app).get("/openapi.json").json()
 
     for path in ("/api/v1/health", "/api/v1/health/ready"):
         response_schema = schema["paths"][path]["get"]["responses"]["503"]
         assert response_schema["content"]["application/json"]["schema"] == {
-            "$ref": "#/components/schemas/HealthResponse"
+            "$ref": "#/components/schemas/ErrorResponse"
         }
 
 
@@ -112,3 +112,22 @@ def test_page_resource_errors_use_common_schema() -> None:
                 str(status_code)
             ]["content"]["application/json"]["schema"]
             assert response_schema == {"$ref": "#/components/schemas/ErrorResponse"}
+
+
+def test_all_documented_api_errors_use_common_schema() -> None:
+    """全 router の文書化されたエラーが共通 schema を参照する."""
+    schema = TestClient(app).get("/openapi.json").json()
+
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for operation in path_item.values():
+            if not isinstance(operation, dict) or "responses" not in operation:
+                continue
+            for status_code, response in operation["responses"].items():
+                if int(status_code) < 400:
+                    continue
+                response_schema = response["content"]["application/json"]["schema"]
+                assert response_schema == {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                }, f"{path} returned a different schema for {status_code}"

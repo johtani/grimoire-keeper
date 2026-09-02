@@ -2,6 +2,21 @@
 
 from typing import Any
 
+from ..services.api_client import ApiClientError
+
+ERROR_MESSAGES = {
+    "bad_request": "リクエストを処理できませんでした。",
+    "unauthorized": "認証が必要です。",
+    "forbidden": "この操作は許可されていません。",
+    "not_found": "対象が見つかりませんでした。",
+    "method_not_allowed": "この操作は利用できません。",
+    "conflict": "現在の状態では操作を実行できません。",
+    "validation_error": "入力内容を確認してください。",
+    "service_unavailable": "サービスを一時的に利用できません。",
+    "internal_error": "サーバーでエラーが発生しました。",
+    "connection_error": "APIに接続できませんでした。",
+}
+
 
 def format_process_status(result: dict[str, Any], page_id: int) -> str:
     """処理状況をフォーマット"""
@@ -26,11 +41,14 @@ def format_process_status(result: dict[str, Any], page_id: int) -> str:
     return response
 
 
-def format_error_message(error: str, context: str = "") -> str:
+def format_error_message(error: Exception, context: str = "") -> str:
     """エラーメッセージをフォーマット"""
     response = "❌ エラーが発生しました\n"
     if context:
         response += f"操作: {context}\n"
-    response += f"詳細: {error}\n"
+    code = error.code if isinstance(error, ApiClientError) else "api_error"
+    response += f"詳細: {ERROR_MESSAGES.get(code, '操作に失敗しました。')}\n"
+    if isinstance(error, ApiClientError) and error.request_id:
+        response += f"リクエストID: {error.request_id}\n"
     response += "\n💡 問題が続く場合は管理者にお問い合わせください。"
     return response

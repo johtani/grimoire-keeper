@@ -12,6 +12,7 @@ from ..utils.blocks import (
     create_status_blocks,
     create_url_processing_blocks,
 )
+from ..utils.formatters import format_error_message
 from ..utils.parsers import parse_url_and_memo
 
 tracer = get_tracer(__name__)
@@ -150,7 +151,7 @@ def register_command_handlers(app: AsyncApp) -> None:
                 )
                 span.set_attribute("error", True)
                 span.set_attribute("error.type", type(e).__name__)
-                await respond(f"エラー: {str(e)}")
+                await respond(format_error_message(e, command_type))
 
             finally:
                 # 持続時間メトリクス

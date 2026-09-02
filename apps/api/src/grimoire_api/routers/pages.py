@@ -3,7 +3,7 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import JsonValue
 
@@ -16,6 +16,7 @@ from ..dependencies import (
 from ..models.database import RepairStatus
 from ..models.request import UpdatePageUrlRequest
 from ..models.response import (
+    COMMON_ERROR_RESPONSES,
     DeletePageResponse,
     ErrorResponse,
     PageListResponse,
@@ -32,12 +33,11 @@ from ..services.repair_service import RepairService
 from ..utils.exceptions import (
     FileOperationError,
     RepairDeletionConflictError,
-    RepairDeletionError,
     ResourceConflictError,
     ResourceNotFoundError,
 )
 
-router = APIRouter(prefix="/api/v1", tags=["pages"])
+router = APIRouter(prefix="/api/v1", tags=["pages"], responses=COMMON_ERROR_RESPONSES)
 
 
 @router.get("/repairs", response_model=RepairListResponse)
@@ -66,9 +66,7 @@ async def import_repairs(
         result = await repair_service.import_report()
         return RepairImportResponse.model_validate(result)
     except FileOperationError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise ResourceNotFoundError(str(exc)) from exc
 
 
 @router.post("/repairs/scan", response_model=RepairScanResponse)
@@ -158,8 +156,6 @@ async def delete_page(
         raise ResourceNotFoundError(str(exc)) from exc
     except RepairDeletionConflictError as exc:
         raise ResourceConflictError(str(exc)) from exc
-    except RepairDeletionError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/pages", response_model=PageListResponse)
@@ -184,27 +180,23 @@ async def get_pages(
     Returns:
         ページ一覧とメタデータ
     """
-    try:
-        pages_data, total = await page_service.list_pages(
-            limit=limit,
-            offset=offset,
-            sort=sort,
-            order=order,
-            status_filter=status if status != "all" else None,
-        )
+    pages_data, total = await page_service.list_pages(
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        order=order,
+        status_filter=status if status != "all" else None,
+    )
 
-        return PageListResponse.model_validate(
-            {
-                "pages": pages_data,
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-                "status_filter": status,
-            }
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return PageListResponse.model_validate(
+        {
+            "pages": pages_data,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "status_filter": status,
+        }
+    )
 
 
 @router.get(
@@ -230,19 +222,12 @@ async def get_page_detail(
     Raises:
         HTTPException: ページが見つからない場合
     """
-    try:
-        page_data = await page_service.get_page_detail(page_id)
-        if not page_data:
-            raise ResourceNotFoundError(f"Page {page_id} not found")
+    page_data = await page_service.get_page_detail(page_id)
+    if not page_data:
+        raise ResourceNotFoundError(f"Page {page_id} not found")
 
-        page_data["has_json_file"] = await file_repo.file_exists(page_id)
-
-        return PageResponse.model_validate(page_data)
-
-    except ResourceNotFoundError:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    page_data["has_json_file"] = await file_repo.file_exists(page_id)
+    return PageResponse.model_validate(page_data)
 
 
 @router.get(
@@ -275,5 +260,3 @@ async def get_page_json(
 
     except FileOperationError as exc:
         raise ResourceNotFoundError(f"JSON file for page {page_id} not found") from exc
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

@@ -30,40 +30,52 @@ function errorResponse(status, statusText, json) {
     };
 }
 
-for (const status of [404, 409, 422]) {
-    test(`uses the common API error message for HTTP ${status}`, async () => {
+for (const [status, code, expected] of [
+    [404, 'not_found', '対象が見つかりませんでした。'],
+    [409, 'conflict', '現在の状態では操作を実行できません。'],
+    [422, 'validation_error', '入力内容を確認してください。']
+]) {
+    test(`uses the error code mapping for HTTP ${status}`, async () => {
         const client = createApiClient(async () => errorResponse(
             status,
             'Error',
             async () => ({
-                error: { code: 'api_error', message: `API message ${status}` }
+                error: { code, message: `API message ${status}` }
             })
         ));
 
         await assert.rejects(
             client.request('/api/v1/test'),
-            { message: `API message ${status}` }
+            { code, message: expected, status }
         );
     });
 }
 
-test('prefers the common API error message over FastAPI detail', async () => {
+test('includes the request ID without exposing legacy detail', async () => {
     const client = createApiClient(async () => errorResponse(
         409,
         'Conflict',
         async () => ({
-            error: { code: 'conflict', message: 'Common error message' },
-            detail: 'Legacy detail'
+            error: {
+                code: 'conflict',
+                message: 'Common error message',
+                request_id: 'request-1234'
+            },
+            detail: 'secret internal detail'
         })
     ));
 
     await assert.rejects(
         client.request('/api/v1/test'),
-        { message: 'Common error message' }
+        {
+            code: 'conflict',
+            requestId: 'request-1234',
+            message: '現在の状態では操作を実行できません。 (リクエストID: request-1234)'
+        }
     );
 });
 
-test('falls back to FastAPI detail', async () => {
+test('does not display a legacy FastAPI detail', async () => {
     const client = createApiClient(async () => errorResponse(
         503,
         'Service Unavailable',
@@ -72,11 +84,11 @@ test('falls back to FastAPI detail', async () => {
 
     await assert.rejects(
         client.request('/api/v1/test'),
-        { message: 'Weaviate is not available' }
+        { code: 'api_error', message: 'APIリクエストに失敗しました。' }
     );
 });
 
-test('falls back to the HTTP status for a non-JSON response', async () => {
+test('uses a safe message for a non-JSON response', async () => {
     const client = createApiClient(async () => errorResponse(
         502,
         'Bad Gateway',
@@ -85,6 +97,6 @@ test('falls back to the HTTP status for a non-JSON response', async () => {
 
     await assert.rejects(
         client.request('/api/v1/test'),
-        { message: 'HTTP 502: Bad Gateway' }
+        { code: 'api_error', message: 'APIリクエストに失敗しました。' }
     );
 });

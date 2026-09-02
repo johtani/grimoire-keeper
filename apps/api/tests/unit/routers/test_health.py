@@ -44,8 +44,13 @@ class TestHealthRouter:
             response = client.get("/api/v1/health")
 
         assert response.status_code == 503
-        assert response.json()["status"] == "unhealthy"
-        assert response.json()["weaviate"] == "unavailable"
+        assert response.json()["error"]["code"] == "service_unavailable"
+        assert response.json()["error"]["message"] == (
+            "The service is temporarily unavailable"
+        )
+        assert (
+            response.json()["error"]["request_id"] == response.headers["X-Request-ID"]
+        )
 
     def test_readiness_returns_503_when_database_unavailable(self) -> None:
         """DB 障害時は Weaviate が正常でも readiness エラーになる."""
@@ -60,9 +65,8 @@ class TestHealthRouter:
             response = client.get("/api/v1/health/ready")
 
         assert response.status_code == 503
-        assert response.json()["status"] == "unhealthy"
-        assert response.json()["database"] == "unavailable"
-        assert response.json()["weaviate"] == "ready"
+        assert response.json()["error"]["code"] == "service_unavailable"
+        assert "database down" not in response.text
 
     def test_liveness_ignores_dependency_failures(self) -> None:
         """liveness は DB と Weaviate の状態を確認しない."""
