@@ -198,12 +198,24 @@ def test_deploy_prepares_only_application_data_for_fixed_uid() -> None:
     subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
 
 
-def test_production_compose_renders() -> None:
+def test_production_compose_renders(tmp_path: Path) -> None:
     if shutil.which("docker") is None:
         pytest.skip("docker CLI is not installed")
 
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    test_compose = tmp_path / "docker-compose.prod.yml"
+    test_compose.write_text(compose.replace("      - .env\n", "      - .env.test\n"))
     subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.prod.yml", "config", "--quiet"],
+        [
+            "docker",
+            "compose",
+            "--project-directory",
+            str(PROJECT_ROOT),
+            "-f",
+            str(test_compose),
+            "config",
+            "--quiet",
+        ],
         check=True,
         cwd=PROJECT_ROOT,
     )
