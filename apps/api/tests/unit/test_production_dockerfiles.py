@@ -51,3 +51,28 @@ def test_runtime_commands_do_not_depend_on_uv() -> None:
 
     for path in files:
         assert "uv run" not in path.read_text()
+
+
+def test_production_runtime_uses_fixed_non_root_user() -> None:
+    """Application images run with the same unprivileged numeric identity."""
+    for dockerfile in DOCKERFILES:
+        runtime = dockerfile.read_text().split("FROM ${PYTHON_IMAGE} AS runtime", 1)[1]
+
+        assert "groupadd --gid 10001 grimoire" in runtime
+        assert "useradd --uid 10001 --gid 10001" in runtime
+        assert "USER 10001:10001" in runtime
+        assert runtime.index("USER 10001:10001") < runtime.index("CMD ")
+        assert "PYTHONDONTWRITEBYTECODE=1" in runtime
+        assert "TMPDIR=/tmp" in runtime
+
+
+def test_api_only_owns_declared_runtime_data_directories() -> None:
+    """The API image grants its service account ownership only under data roots."""
+    runtime = (
+        (PROJECT_ROOT / "apps/api/Dockerfile.prod")
+        .read_text()
+        .split("FROM ${PYTHON_IMAGE} AS runtime", 1)[1]
+    )
+
+    assert "chown -R 10001:10001 /data /app/apps/api/data" in runtime
+    assert "chown -R 10001:10001 /app" not in runtime

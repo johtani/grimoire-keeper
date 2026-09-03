@@ -3,6 +3,8 @@
 set -e
 
 DATA_ROOT="/opt/grimoire-keeper-data"
+APP_UID=10001
+APP_GID=10001
 OLD_WEAVIATE_DATA="${DATA_ROOT}/weaviate"
 NEW_WEAVIATE_DATA="${DATA_ROOT}/weaviate-1.38.8"
 MIGRATION_MARKER="${NEW_WEAVIATE_DATA}/.grimoire-migration-ready"
@@ -42,9 +44,13 @@ fi
 # データディレクトリ作成
 echo "データディレクトリ作成中..."
 sudo mkdir -p "${DATA_ROOT}/database" "${DATA_ROOT}/json" \
+    "${DATA_ROOT}/migration" \
     "${NEW_WEAVIATE_DATA}" "${DATA_ROOT}/backups"
-sudo chown -R "${USER}:${USER}" "${DATA_ROOT}/database" "${DATA_ROOT}/json" \
-    "${NEW_WEAVIATE_DATA}" "${DATA_ROOT}/backups"
+sudo chown -R "${APP_UID}:${APP_GID}" "${DATA_ROOT}/database" \
+    "${DATA_ROOT}/json" "${DATA_ROOT}/migration"
+sudo chmod 0750 "${DATA_ROOT}/database" "${DATA_ROOT}/json" \
+    "${DATA_ROOT}/migration"
+sudo chown -R "${USER}:${USER}" "${NEW_WEAVIATE_DATA}" "${DATA_ROOT}/backups"
 
 # 旧データがある環境では、検証済みの新環境なしに空のWeaviateへ切り替えない。
 if [ "${WEAVIATE_DATA_PATH}" = "${NEW_WEAVIATE_DATA}" ] && \

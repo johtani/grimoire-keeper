@@ -67,6 +67,43 @@ Weaviate は個人利用かつ外部ネットワークから到達不能であ�
 ホスト自体を信頼できない環境では追加の認証・アクセス制御が必要です。ホスト側の保守・移行
 スクリプトは、loopback に限定した HTTP および gRPC ポートを引き続き利用できます。
 
+### 本番 application container の最小権限
+
+API、worker、Bot の production image は固定 UID/GID `10001:10001` の `grimoire`
+ユーザーで動作します。Compose 側でも同じ数値 ID を指定し、root filesystem を
+read-only、Linux capability をすべて削除、`no-new-privileges` を有効にしています。
+Python と worker healthcheck が一時ファイルを作成できる場所は、`noexec`、`nosuid`、
+`nodev` を付けた `/tmp` の tmpfs だけです。
+
+永続データの書き込み権限はサービスの責務に合わせて制限します。
+
+- API: URL登録、repair 操作などに必要な `database` は read-write。保存済み本文の
+  `json` と repair report の `migration` は read-only
+- worker: ジョブ状態、worker lock、SQLite WAL/SHM を置く `database` と、取得本文を
+  保存・削除する `json` は read-write
+- Bot: 永続 volume なし
+
+`scripts/deploy.sh` は `/opt/grimoire-keeper-data/{database,json,migration}` を作成し、
+既存ファイルを含めて `10001:10001`、ディレクトリを `0750` に設定します。これは既存の
+root 所有ファイルを non-root container から利用可能にする移行も兼ねます。Weaviate data と
+backup の所有権は application container 用 UID へ変更しません。手動でデータを配置する場合も、
+起動前に次の所有権を設定してください。
+
+```bash
+sudo chown -R 10001:10001 \
+  /opt/grimoire-keeper-data/database \
+  /opt/grimoire-keeper-data/json \
+  /opt/grimoire-keeper-data/migration
+sudo chmod 0750 \
+  /opt/grimoire-keeper-data/database \
+  /opt/grimoire-keeper-data/json \
+  /opt/grimoire-keeper-data/migration
+```
+
+設定の展開結果は `docker compose -f docker-compose.prod.yml config` で確認できます。
+実行中の identity は `docker compose -f docker-compose.prod.yml exec api id` などで確認し、
+UID が `0` でないことを検証してください。
+
 ## LLM の認証設定
 
 要約LLMの認証情報には、プロバイダー共通の `LLM_API_KEY` を使用します。

@@ -27,7 +27,9 @@ RUN uv sync --frozen --no-dev --no-editable --package grimoire-api
 FROM ${PYTHON_IMAGE} AS runtime
 
 ENV PATH=/app/.venv/bin:${PATH} \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TMPDIR=/tmp
 WORKDIR /app/apps/api
 
 COPY --from=builder /app/.venv /app/.venv
@@ -39,7 +41,12 @@ ARG BUILD_DATE=unknown
 ENV GIT_COMMIT=${GIT_COMMIT} \
     BUILD_DATE=${BUILD_DATE}
 
-RUN mkdir -p /data /app/apps/api/data/json
+RUN groupadd --gid 10001 grimoire \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin grimoire \
+    && mkdir -p /data /app/apps/api/data/json /app/apps/api/data/migration \
+    && chown -R 10001:10001 /data /app/apps/api/data
+
+USER 10001:10001
 
 EXPOSE 8000
 
