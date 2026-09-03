@@ -1,6 +1,7 @@
 """Test vectorizer service."""
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,6 +36,26 @@ class TestVectorizerService:
         )
         mock_collection.batch.failed_objects = []
         mock_page_collection.batch.failed_objects = []
+
+        def schema_config(*vector_names: str) -> SimpleNamespace:
+            vector_config = {
+                name: SimpleNamespace(
+                    vectorizer=SimpleNamespace(
+                        vectorizer="text2vec-openai",
+                        model={
+                            "model": settings.WEAVIATE_EMBEDDING_MODEL,
+                            "dimensions": settings.WEAVIATE_EMBEDDING_DIMENSIONS,
+                        },
+                    )
+                )
+                for name in vector_names
+            }
+            return SimpleNamespace(vector_config=vector_config)
+
+        mock_page_collection.config.get.return_value = schema_config(
+            "title_vector", "memo_vector"
+        )
+        mock_collection.config.get.return_value = schema_config("content_vector")
 
         mock_collections = MagicMock()
         mock_collections.get.side_effect = lambda name: (
@@ -694,3 +715,48 @@ class TestVectorizerService:
         }
         assert len(vectors_by_name[settings.WEAVIATE_PAGE_COLLECTION_NAME]) == 2
         assert len(vectors_by_name[settings.WEAVIATE_CHUNK_COLLECTION_NAME]) == 1
+        for vector_configs in vectors_by_name.values():
+            for vector_config in vector_configs:
+                assert (
+                    vector_config.vectorizer.model == settings.WEAVIATE_EMBEDDING_MODEL
+                )
+                assert (
+                    vector_config.vectorizer.dimensions
+                    == settings.WEAVIATE_EMBEDDING_DIMENSIONS
+                )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("vectorizer", "text2vec-cohere"),
+            ("model", "text-embedding-3-small"),
+            ("dimensions", 3072),
+        ],
+    )
+    async def test_ensure_schema_rejects_incompatible_vectorizer(
+        self, vectorizer_service, mock_dependencies, field: str, value: object
+    ) -> None:
+        """既存schemaのprovider/model/dimensions不一致を拒否する."""
+        mock_dependencies["weaviate_client"].collections.exists.return_value = True
+        config = mock_dependencies["mock_page_collection"].config.get.return_value
+        vectorizer = config.vector_config["title_vector"].vectorizer
+        if field == "vectorizer":
+            vectorizer.vectorizer = value
+        else:
+            vectorizer.model[field] = value
+
+        with pytest.raises(VectorizerError, match="reindex_weaviate.py"):
+            await vectorizer_service.ensure_schema()
+
+    @pytest.mark.asyncio
+    async def test_ensure_schema_rejects_incompatible_named_vectors(
+        self, vectorizer_service, mock_dependencies
+    ) -> None:
+        """既存schemaのnamed vector構成不一致を拒否する."""
+        mock_dependencies["weaviate_client"].collections.exists.return_value = True
+        config = mock_dependencies["mock_page_collection"].config.get.return_value
+        del config.vector_config["memo_vector"]
+
+        with pytest.raises(VectorizerError, match="named vectors"):
+            await vectorizer_service.ensure_schema()

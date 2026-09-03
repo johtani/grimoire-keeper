@@ -80,6 +80,19 @@ async def test_weaviate_1_38_creates_separated_collections() -> None:
 
             assert client.collections.exists(page_collection)
             assert client.collections.exists(chunk_collection)
+            for collection_name, vector_names in {
+                page_collection: {"title_vector", "memo_vector"},
+                chunk_collection: {"content_vector"},
+            }.items():
+                config = client.collections.get(collection_name).config.get()
+                assert set(config.vector_config or {}) == vector_names
+                for vector_config in (config.vector_config or {}).values():
+                    model = dict(vector_config.vectorizer.model)
+                    assert vector_config.vectorizer.vectorizer.value == (
+                        settings.WEAVIATE_EMBEDDING_PROVIDER
+                    )
+                    assert model["model"] == settings.WEAVIATE_EMBEDDING_MODEL
+                    assert model["dimensions"] == settings.WEAVIATE_EMBEDDING_DIMENSIONS
         finally:
             if client.collections.exists(page_collection):
                 client.collections.delete(page_collection)
