@@ -126,6 +126,59 @@ Bitwarden Secrets Manager には `GRIMOIRE_KEEPER_LLM_API_KEY` という名前�
 Googleのキーをこの名前で管理している場合は、同じ値を
 `GRIMOIRE_KEEPER_LLM_API_KEY` としてBitwardenへ登録し直してください。
 
+## Weaviate 埋め込みモデルの設定と再インデックス
+
+Weaviate の named vector は、次の非秘密環境変数で固定します。未指定時も同じ既定値が
+コードと Compose の両方で使用され、Weaviate module のデフォルトには依存しません。
+
+```bash
+WEAVIATE_EMBEDDING_PROVIDER=text2vec-openai
+WEAVIATE_EMBEDDING_MODEL=text-embedding-ada-002
+WEAVIATE_EMBEDDING_DIMENSIONS=1536
+```
+
+`text-embedding-ada-002` の dimensions は 1536 固定です。
+`text-embedding-3-small` は最大 1536、`text-embedding-3-large` は最大 3072 で、
+3 系モデルでは上限以下の dimensions を指定できます。worker の schema 初期化は
+`title_vector`、`memo_vector`、`content_vector` の provider、model、dimensions を
+実コレクションと照合し、不一致なら既存ベクトルとの混在を防ぐため失敗します。
+
+モデルまたは dimensions を変更する場合は、全ベクトルの再インデックスが必要です。
+
+1. worker を停止し、SQLite、JSON キャッシュ、Weaviate 永続ボリュームをバックアップする。
+2. 新しい `WEAVIATE_EMBEDDING_MODEL` と `WEAVIATE_EMBEDDING_DIMENSIONS` を `.env` に設定する。
+3. 再構築対象と修復待ちデータを変更なしで確認する。
+
+   ```bash
+   uv run python scripts/reindex_weaviate.py --dry-run \
+     --repair-pending-output data/migration/repair-pending.json
+   ```
+
+4. Weaviate の `GrimoirePage` と `GrimoireContentChunk` コレクションを削除する。
+   SQLite と JSON は削除しない。コレクション削除は検索索引を失う操作なので、バックアップと
+   worker の停止を再確認してから実施する。
+
+   ```bash
+   curl --fail-with-body -X DELETE http://localhost:8089/v1/schema/GrimoirePage
+   curl --fail-with-body -X DELETE \
+     http://localhost:8089/v1/schema/GrimoireContentChunk
+   ```
+
+5. 新しい設定を反映した環境で全件を再構築する。
+
+   ```bash
+   uv run python scripts/reindex_weaviate.py \
+     --repair-pending-output data/migration/repair-pending.json
+   ```
+
+6. コマンドが `failed=0` で終了したこと、`GET /api/v1/system-info` が各 named vector に
+   新しい model と dimensions を返すこと、代表的な検索が成功することを確認して worker を
+   再開する。
+
+失敗時は worker を停止したまま、旧設定へ戻して Weaviate 永続ボリュームのバックアップを
+復元します。再構築中に SQLite を更新する処理を止めているため、SQLite と JSON の復元は
+通常不要ですが、同時に変更した場合は同じバックアップ時点へ揃えて復元してください。
+
 worker は `BEGIN IMMEDIATE` のトランザクションで queued ジョブを原子的に claim します。
 停止要求を受けると新規 claim を止め、実行中ジョブを `WEAVIATE_WORKER_STOP_TIMEOUT` 秒まで
 待機します。期限を超えた処理はキャンセルされ、`running` のまま残ったジョブは次回の

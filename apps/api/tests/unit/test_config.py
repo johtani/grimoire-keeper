@@ -2,6 +2,7 @@
 
 import pytest
 from grimoire_api.config import Settings
+from pydantic import ValidationError
 
 
 def make_settings(**overrides: str) -> Settings:
@@ -64,3 +65,36 @@ def test_api_requires_database_path() -> None:
     assert settings.missing_api_required_vars() == ["DATABASE_PATH"]
     with pytest.raises(SystemExit, match="1"):
         settings.validate_api_required_vars()
+
+
+def test_embedding_defaults_are_pinned() -> None:
+    settings = make_settings()
+
+    assert settings.WEAVIATE_EMBEDDING_PROVIDER == "text2vec-openai"
+    assert settings.WEAVIATE_EMBEDDING_MODEL == "text-embedding-ada-002"
+    assert settings.WEAVIATE_EMBEDDING_DIMENSIONS == 1536
+
+
+@pytest.mark.parametrize(
+    ("model", "dimensions"),
+    [
+        ("text-embedding-ada-002", 1024),
+        ("text-embedding-3-small", 1537),
+        ("text-embedding-3-large", 3073),
+    ],
+)
+def test_embedding_rejects_incompatible_dimensions(model: str, dimensions: int) -> None:
+    with pytest.raises(ValidationError):
+        make_settings(
+            WEAVIATE_EMBEDDING_MODEL=model,
+            WEAVIATE_EMBEDDING_DIMENSIONS=dimensions,
+        )
+
+
+def test_embedding_accepts_reduced_dimensions_for_v3_models() -> None:
+    settings = make_settings(
+        WEAVIATE_EMBEDDING_MODEL="text-embedding-3-large",
+        WEAVIATE_EMBEDDING_DIMENSIONS=1024,
+    )
+
+    assert settings.WEAVIATE_EMBEDDING_DIMENSIONS == 1024

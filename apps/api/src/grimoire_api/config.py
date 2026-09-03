@@ -3,7 +3,9 @@
 import logging
 import os
 import sys
+from typing import Literal
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,13 @@ class Settings(BaseSettings):
     WEAVIATE_PORT: int = 8080
     WEAVIATE_PAGE_COLLECTION_NAME: str = "GrimoirePage"
     WEAVIATE_CHUNK_COLLECTION_NAME: str = "GrimoireContentChunk"
+    WEAVIATE_EMBEDDING_PROVIDER: Literal["text2vec-openai"] = "text2vec-openai"
+    WEAVIATE_EMBEDDING_MODEL: Literal[
+        "text-embedding-ada-002",
+        "text-embedding-3-small",
+        "text-embedding-3-large",
+    ] = "text-embedding-ada-002"
+    WEAVIATE_EMBEDDING_DIMENSIONS: int = Field(default=1536, gt=0)
     WEAVIATE_STARTUP_RETRY_ATTEMPTS: int = 12
     WEAVIATE_STARTUP_RETRY_INTERVAL: float = 5.0
     WEAVIATE_STARTUP_TIMEOUT: float = 60.0
@@ -51,6 +60,24 @@ class Settings(BaseSettings):
         env_file=os.environ.get("ENV_FILE", ".env"),
         extra="ignore",  # 余分な環境変数を無視
     )
+
+    @model_validator(mode="after")
+    def validate_embedding_dimensions(self) -> "Settings":
+        """Validate dimensions supported by the configured OpenAI model."""
+        maximum_dimensions = {
+            "text-embedding-ada-002": 1536,
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+        }
+        maximum = maximum_dimensions[self.WEAVIATE_EMBEDDING_MODEL]
+        if self.WEAVIATE_EMBEDDING_MODEL == "text-embedding-ada-002":
+            if self.WEAVIATE_EMBEDDING_DIMENSIONS != maximum:
+                raise ValueError("text-embedding-ada-002 requires 1536 dimensions")
+        elif self.WEAVIATE_EMBEDDING_DIMENSIONS > maximum:
+            raise ValueError(
+                f"{self.WEAVIATE_EMBEDDING_MODEL} supports at most {maximum} dimensions"
+            )
+        return self
 
     def missing_api_required_vars(self) -> list[str]:
         """Return missing settings required by the SQLite-backed API process."""

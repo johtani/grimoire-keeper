@@ -73,6 +73,25 @@ def test_only_worker_receives_processing_credentials() -> None:
     assert all(key in worker_section for key in processing_keys)
 
 
+def test_worker_receives_pinned_embedding_configuration() -> None:
+    """workerへ非秘密の埋め込み設定を明示的に渡す."""
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
+
+    assert (
+        "WEAVIATE_EMBEDDING_PROVIDER=${WEAVIATE_EMBEDDING_PROVIDER:-text2vec-openai}"
+        in worker_section
+    )
+    assert (
+        "WEAVIATE_EMBEDDING_MODEL=${WEAVIATE_EMBEDDING_MODEL:-text-embedding-ada-002}"
+        in worker_section
+    )
+    assert (
+        "WEAVIATE_EMBEDDING_DIMENSIONS=${WEAVIATE_EMBEDDING_DIMENSIONS:-1536}"
+        in worker_section
+    )
+
+
 def test_dev_api_script_does_not_require_worker_credentials() -> None:
     """開発APIはBitwardenやAI処理用キーなしで起動する."""
     script = (PROJECT_ROOT / "scripts/dev.sh").read_text()
