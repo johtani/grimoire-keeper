@@ -107,8 +107,9 @@ fi
 if [ "${backup_required}" = "true" ]; then
     backup_timestamp=$(date -u +%Y%m%dT%H%M%SZ)
     backup_path="${DATA_ROOT}/backups/database-before-schema-${backup_timestamp}"
-    mkdir -p "${backup_path}"
-    cp -a "${DATA_ROOT}/database/." "${backup_path}/"
+    sudo mkdir -p "${backup_path}"
+    sudo cp -a "${DATA_ROOT}/database/." "${backup_path}/"
+    sudo chown -R "${USER}:${USER}" "${backup_path}"
     echo "SQLiteバックアップ作成完了: ${backup_path}"
 fi
 

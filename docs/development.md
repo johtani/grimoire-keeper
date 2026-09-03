@@ -89,6 +89,9 @@ root 所有ファイルを non-root container から利用可能にする移行�
 backup の所有権は application container 用 UID へ変更しません。手動でデータを配置する場合も、
 起動前に次の所有権を設定してください。
 
+SQLite の移行前バックアップは、`0600` の既存DBも読めるよう `sudo` でコピーし、作成後の
+バックアップだけをデプロイ実行ユーザーの所有へ戻します。
+
 ```bash
 sudo chown -R 10001:10001 \
   /opt/grimoire-keeper-data/database \

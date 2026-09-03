@@ -111,7 +111,7 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     deploy = (Path(__file__).parents[4] / "scripts" / "deploy.sh").read_text()
 
     status = "init_database.py migration-status"
-    backup = 'cp -a "${DATA_ROOT}/database/." "${backup_path}/"'
+    backup = 'sudo cp -a "${DATA_ROOT}/database/." "${backup_path}/"'
     migration = "init_database.py sqlite"
     services = "docker compose -f docker-compose.prod.yml up -d"
 
@@ -120,6 +120,7 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     assert deploy.index(migration) < deploy.index(services)
     assert 'case "${migration_status}"' in deploy
     assert '"${FORCE_SQLITE_BACKUP:-false}"' in deploy
+    assert 'sudo chown -R "${USER}:${USER}" "${backup_path}"' in deploy
     subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
 
 
