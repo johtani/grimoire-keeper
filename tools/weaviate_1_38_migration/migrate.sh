@@ -99,19 +99,19 @@ done
 echo "再インデックス対象を確認します。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
     --volume "${MIGRATION_DIR}:/migration" api \
-    uv run python ../../scripts/reindex_weaviate.py --dry-run \
+    python ../../scripts/reindex_weaviate.py --dry-run \
     --repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 echo "空のWeaviate 1.38.8へ再インデックスします。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
     --volume "${MIGRATION_DIR}:/migration" api \
-    uv run python ../../scripts/reindex_weaviate.py \
+    python ../../scripts/reindex_weaviate.py \
     --repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 echo "再構築したコレクション件数を検証します。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
     --volume "${MIGRATION_DIR}:/migration" api \
-    uv run python -m tools.weaviate_1_38_migration.check_counts \
+    python -m tools.weaviate_1_38_migration.check_counts \
     --repair-pending-report "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 touch "${MIGRATION_MARKER}"

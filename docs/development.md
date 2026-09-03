@@ -181,6 +181,31 @@ uv run python scripts/init_database.py check
 FORCE_SQLITE_BACKUP=true bash scripts/deploy.sh
 ```
 
+### Production Docker image の更新
+
+API と Bot の production image は、`uv lock --check` で workspace metadata との
+一致を検査したルートの `uv.lock` を使い、`uv sync --frozen --no-dev` で構築します。
+Python base image と uv image は tag と
+multi-platform digest の両方を `apps/api/Dockerfile.prod` と
+`apps/bot/Dockerfile.prod` に記録し、Web の nginx image も
+`docker-compose.prod.yml` で同様に固定します。
+
+定期更新または脆弱性対応では、公式 registry で新しい tag と digest を確認し、同じ
+PR で該当する参照を更新してください。更新後は通常の必須チェックに加えて、CI の
+`Production Image Smoke Tests` で次を確認します。
+
+- API/Bot の両 image が lockfile から build できること
+- application package と共有 package を import できること
+- pytest、ruff、uv、build cache が runtime image に含まれないこと
+- workspace metadata と `uv.lock` が不一致の場合に build が失敗すること
+
+ローカルに Docker がある場合は、CI と同じ build を次のコマンドで先に確認できます。
+
+```bash
+docker build -f apps/api/Dockerfile.prod -t grimoire-api:smoke .
+docker build -f apps/bot/Dockerfile.prod -t grimoire-bot:smoke .
+```
+
 現在の実装はアップグレードのみを提供し、down migrationは提供しません。新しい
 スキーマへ移行した後に旧アプリへ戻す場合は、コードだけでなくSQLiteファイルも
 自動バックアップから同じ時点へ戻してください。旧アプリが新しいスキーマを読み書き

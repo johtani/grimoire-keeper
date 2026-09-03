@@ -9,3 +9,8 @@ __pycache__
 .coverage
 htmlcov/
 .devcontainer/
+.mypy_cache/
+.ruff_cache/
+data/
+*.db
+*.sqlite

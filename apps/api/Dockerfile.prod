@@ -1,45 +1,49 @@
-FROM python:3.13-slim
+ARG PYTHON_IMAGE=python:3.13-slim-bookworm@sha256:ed86c82274b3c69b52fb5820f358f0bd7df0b603332063cb5c6e32bd220c3e6e
+ARG UV_IMAGE=docker.io/astral/uv:0.11.30@sha256:93b61e21202b1dab861092748e46bbd6e0e41dd84f59b9174efd2353186e1b47
 
+FROM ${UV_IMAGE} AS uv
+
+FROM ${PYTHON_IMAGE} AS builder
+
+COPY --from=uv /uv /uvx /bin/
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 WORKDIR /app
 
-# システム依存関係
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Lockfile と workspace metadata だけを先にコピーし、依存レイヤーを再利用する。
+COPY pyproject.toml uv.lock ./
+COPY apps/api/pyproject.toml apps/api/pyproject.toml
+COPY apps/bot/pyproject.toml apps/bot/pyproject.toml
+COPY shared/pyproject.toml shared/pyproject.toml
+RUN uv lock --check
+RUN uv sync --frozen --no-dev --no-install-workspace --package grimoire-api
 
-# uvインストール
-RUN pip install uv
+# Workspace package は source をコピーした後に wheel としてインストールする。
+COPY apps/api/src/ apps/api/src/
+COPY shared/src/ shared/src/
+RUN uv sync --frozen --no-dev --no-editable --package grimoire-api
 
-# ワークスペース構造をコピー
-COPY ./pyproject.toml ./
-COPY ./shared/ ./shared/
-COPY ./apps/api/pyproject.toml ./apps/api/
-COPY ./apps/api/src/ ./apps/api/src/
-COPY ./scripts/ ./scripts/
-COPY ./tools/ ./tools/
+FROM ${PYTHON_IMAGE} AS runtime
 
+ENV PATH=/app/.venv/bin:${PATH} \
+    PYTHONPATH=/app
 WORKDIR /app/apps/api
 
-# 依存関係インストール
-RUN uv sync
+COPY --from=builder /app/.venv /app/.venv
+COPY scripts/ /app/scripts/
+COPY tools/ /app/tools/
 
-# ビルド情報
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
-ENV GIT_COMMIT=${GIT_COMMIT}
-ENV BUILD_DATE=${BUILD_DATE}
+ENV GIT_COMMIT=${GIT_COMMIT} \
+    BUILD_DATE=${BUILD_DATE}
 
-# データディレクトリ作成
 RUN mkdir -p /data /app/apps/api/data/json
 
-# ポート公開
 EXPOSE 8000
 
-# ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)" || exit 1
 
-# アプリ起動
-CMD ["uv", "run", "uvicorn", "src.grimoire_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "grimoire_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
