@@ -1,7 +1,10 @@
 """Production Compose readiness configuration tests."""
 
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).parents[4]
 
@@ -108,7 +111,7 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     deploy = (Path(__file__).parents[4] / "scripts" / "deploy.sh").read_text()
 
     status = "init_database.py migration-status"
-    backup = 'cp -a "${DATA_ROOT}/database/." "${backup_path}/"'
+    backup = 'sudo cp -a "${DATA_ROOT}/database/." "${backup_path}/"'
     migration = "init_database.py sqlite"
     services = "docker compose -f docker-compose.prod.yml up -d"
 
@@ -117,6 +120,7 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     assert deploy.index(migration) < deploy.index(services)
     assert 'case "${migration_status}"' in deploy
     assert '"${FORCE_SQLITE_BACKUP:-false}"' in deploy
+    assert 'sudo chown -R "${USER}:${USER}" "${backup_path}"' in deploy
     subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
 
 
@@ -139,3 +143,79 @@ def test_deploy_removes_orphan_containers_when_recreating_services() -> None:
 
     assert "docker compose -f docker-compose.prod.yml down --remove-orphans" in deploy
     assert "docker compose -f docker-compose.prod.yml up -d --remove-orphans" in deploy
+
+
+def _application_sections(compose: str) -> dict[str, str]:
+    return {
+        "bot": compose.split("\n  bot:", 1)[1].split("\n  api:", 1)[0],
+        "api": compose.split("\n  api:", 1)[1].split("\n  worker:", 1)[0],
+        "worker": compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0],
+    }
+
+
+def test_application_services_are_hardened() -> None:
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+
+    for section in _application_sections(compose).values():
+        assert 'user: "10001:10001"' in section
+        assert "read_only: true" in section
+        assert "- /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777" in section
+        assert "cap_drop:\n      - ALL" in section
+        assert "security_opt:\n      - no-new-privileges:true" in section
+
+
+def test_application_volume_permissions_follow_service_responsibilities() -> None:
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    sections = _application_sections(compose)
+
+    assert "volumes:" not in sections["bot"]
+    assert "/opt/grimoire-keeper-data/database:/data" in sections["api"]
+    assert (
+        "/opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro" in sections["api"]
+    )
+    assert (
+        "/opt/grimoire-keeper-data/migration:/app/apps/api/data/migration:ro"
+        in sections["api"]
+    )
+    assert "/opt/grimoire-keeper-data/database:/data" in sections["worker"]
+    assert (
+        "/opt/grimoire-keeper-data/json:/app/apps/api/data/json" in sections["worker"]
+    )
+    assert (
+        "/opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro"
+        not in sections["worker"]
+    )
+
+
+def test_deploy_prepares_only_application_data_for_fixed_uid() -> None:
+    deploy = (PROJECT_ROOT / "scripts/deploy.sh").read_text()
+
+    assert "APP_UID=10001" in deploy
+    assert "APP_GID=10001" in deploy
+    assert '"${DATA_ROOT}/migration"' in deploy
+    assert 'sudo chown -R "${APP_UID}:${APP_GID}"' in deploy
+    assert 'sudo chmod 0750 "${DATA_ROOT}/database" "${DATA_ROOT}/json"' in deploy
+    subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
+
+
+def test_production_compose_renders(tmp_path: Path) -> None:
+    if shutil.which("docker") is None:
+        pytest.skip("docker CLI is not installed")
+
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    test_compose = tmp_path / "docker-compose.prod.yml"
+    test_compose.write_text(compose.replace("      - .env\n", "      - .env.test\n"))
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "--project-directory",
+            str(PROJECT_ROOT),
+            "-f",
+            str(test_compose),
+            "config",
+            "--quiet",
+        ],
+        check=True,
+        cwd=PROJECT_ROOT,
+    )

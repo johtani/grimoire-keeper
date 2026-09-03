@@ -27,10 +27,17 @@ RUN uv sync --frozen --no-dev --no-editable --package grimoire-bot
 FROM ${PYTHON_IMAGE} AS runtime
 
 ENV PATH=/app/.venv/bin:${PATH} \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TMPDIR=/tmp
 WORKDIR /app/apps/bot
 
 COPY --from=builder /app/.venv /app/.venv
+
+RUN groupadd --gid 10001 grimoire \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin grimoire
+
+USER 10001:10001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import asyncio, sys; from grimoire_bot.services.api_client import ApiClient; sys.exit(not asyncio.run(ApiClient().health_check()))"

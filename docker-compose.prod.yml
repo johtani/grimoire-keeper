@@ -28,6 +28,14 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - api
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     networks:
       - grimoire-network
@@ -43,7 +51,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - /opt/grimoire-keeper-data/database:/data
-      - /opt/grimoire-keeper-data/json:/app/apps/api/data/json
+      - /opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro
+      - /opt/grimoire-keeper-data/migration:/app/apps/api/data/migration:ro
     environment:
       - PYTHONPATH=/app
       - WEAVIATE_HOST=weaviate
@@ -54,6 +63,14 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     networks:
       - grimoire-network
@@ -92,6 +109,14 @@ services:
     depends_on:
       weaviate:
         condition: service_healthy
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     networks:
       - grimoire-network
