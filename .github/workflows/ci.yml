@@ -119,6 +119,48 @@ jobs:
           --cov-report=xml:coverage-shared.xml
           --cov-fail-under=90
 
+  production-image-test:
+    name: Production Image Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build --file apps/api/Dockerfile.prod --tag grimoire-api:smoke .
+
+      - name: Smoke test API image
+        run: >-
+          docker run --rm --entrypoint python grimoire-api:smoke -c
+          "import importlib.util, shutil;
+          import grimoire_api, grimoire_shared;
+          assert importlib.util.find_spec('pytest') is None;
+          assert importlib.util.find_spec('ruff') is None;
+          assert shutil.which('uv') is None"
+
+      - name: Build Bot image
+        run: docker build --file apps/bot/Dockerfile.prod --tag grimoire-bot:smoke .
+
+      - name: Smoke test Bot image
+        run: >-
+          docker run --rm --entrypoint python grimoire-bot:smoke -c
+          "import importlib.util, shutil;
+          import grimoire_bot, grimoire_shared;
+          assert importlib.util.find_spec('pytest') is None;
+          assert importlib.util.find_spec('ruff') is None;
+          assert shutil.which('uv') is None"
+
+      - name: Verify lockfile mismatch fails the build
+        shell: bash
+        run: |
+          cp apps/api/pyproject.toml /tmp/api-pyproject.toml
+          trap 'cp /tmp/api-pyproject.toml apps/api/pyproject.toml' EXIT
+          sed -i '/dependencies = \[/a\    "lockfile-mismatch-test==0",' apps/api/pyproject.toml
+          if docker build --file apps/api/Dockerfile.prod .; then
+            echo "ERROR: build succeeded with a stale uv.lock"
+            exit 1
+          fi
+
   web-test:
     name: Web Tests
     runs-on: ubuntu-latest

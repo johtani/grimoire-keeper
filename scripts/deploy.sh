@@ -73,7 +73,7 @@ bws run -- docker compose -f docker-compose.prod.yml build --no-cache
 echo "SQLiteマイグレーション確認中..."
 migration_status=0
 bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
-    uv run python ../../scripts/init_database.py migration-status || \
+    python ../../scripts/init_database.py migration-status || \
     migration_status=$?
 
 backup_required=false
@@ -109,9 +109,9 @@ fi
 # APIとworkerの起動前に単独プロセスでSQLiteを移行・検証する。
 echo "SQLiteマイグレーション実行中..."
 bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
-    uv run python ../../scripts/init_database.py sqlite
+    python ../../scripts/init_database.py sqlite
 bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps api \
-    uv run python ../../scripts/init_database.py check
+    python ../../scripts/init_database.py check
 
 # サービス起動
 echo "サービス起動中..."
@@ -131,7 +131,7 @@ fi
 
 # データベース・スキーマ初期化
 echo "データベース・スキーマ初期化中..."
-docker compose -f docker-compose.prod.yml exec -T api uv run python ../../scripts/init_database.py init
+docker compose -f docker-compose.prod.yml exec -T api python ../../scripts/init_database.py init
 if [ $? -eq 0 ]; then
     echo "OK: データベース・スキーマ初期化完了"
 else

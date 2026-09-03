@@ -1,32 +1,38 @@
-FROM python:3.13-slim
+ARG PYTHON_IMAGE=python:3.13-slim-bookworm@sha256:ed86c82274b3c69b52fb5820f358f0bd7df0b603332063cb5c6e32bd220c3e6e
+ARG UV_IMAGE=docker.io/astral/uv:0.11.30@sha256:93b61e21202b1dab861092748e46bbd6e0e41dd84f59b9174efd2353186e1b47
 
+FROM ${UV_IMAGE} AS uv
+
+FROM ${PYTHON_IMAGE} AS builder
+
+COPY --from=uv /uv /uvx /bin/
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 WORKDIR /app
 
-# システム依存関係
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Lockfile と workspace metadata だけを先にコピーし、依存レイヤーを再利用する。
+COPY pyproject.toml uv.lock ./
+COPY apps/api/pyproject.toml apps/api/pyproject.toml
+COPY apps/bot/pyproject.toml apps/bot/pyproject.toml
+COPY shared/pyproject.toml shared/pyproject.toml
+RUN uv lock --check
+RUN uv sync --frozen --no-dev --no-install-workspace --package grimoire-bot
 
-# uvインストール
-RUN pip install uv
+# Workspace package は source をコピーした後に wheel としてインストールする。
+COPY apps/bot/src/ apps/bot/src/
+COPY shared/src/ shared/src/
+RUN uv sync --frozen --no-dev --no-editable --package grimoire-bot
 
-# ワークスペース構造をコピー
-COPY ./pyproject.toml ./
-COPY ./shared/ ./shared/
-COPY ./apps/bot/pyproject.toml ./apps/bot/
-COPY ./apps/bot/src/ ./apps/bot/src/
-COPY ./scripts/ ./scripts/
+FROM ${PYTHON_IMAGE} AS runtime
 
+ENV PATH=/app/.venv/bin:${PATH} \
+    PYTHONPATH=/app
 WORKDIR /app/apps/bot
 
-# 依存関係インストール
-RUN uv sync
+COPY --from=builder /app/.venv /app/.venv
 
-# ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import asyncio, sys; from src.grimoire_bot.services.api_client import ApiClient; sys.exit(not asyncio.run(ApiClient().health_check()))"
+    CMD python -c "import asyncio, sys; from grimoire_bot.services.api_client import ApiClient; sys.exit(not asyncio.run(ApiClient().health_check()))"
 
-# ボット起動
-CMD ["uv", "run", "python", "-m", "src.grimoire_bot.main"]
+CMD ["python", "-m", "grimoire_bot.main"]
