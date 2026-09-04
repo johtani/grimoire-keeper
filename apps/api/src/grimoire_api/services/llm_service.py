@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from litellm import acompletion, token_counter
@@ -159,10 +159,8 @@ class LLMService:
                     f"page_id={page_id}, chunk={index + 1}/{len(chunks)}, cause={e}"
                 ) from e
 
-        return list(
-            await asyncio.gather(
-                *(summarize(index, chunk) for index, chunk in enumerate(chunks))
-            )
+        return await self._run_required_tasks(
+            [summarize(index, chunk) for index, chunk in enumerate(chunks)]
         )
 
     async def _reduce_summaries(
@@ -195,11 +193,37 @@ class LLMService:
                     f"cause={e}"
                 ) from e
 
-        return list(
-            await asyncio.gather(
-                *(reduce_group(index, group) for index, group in enumerate(groups))
-            )
+        return await self._run_required_tasks(
+            [reduce_group(index, group) for index, group in enumerate(groups)]
         )
+
+    async def _run_required_tasks(
+        self, operations: list[Coroutine[Any, Any, str]]
+    ) -> list[str]:
+        """Run required operations as one failure-atomic concurrent unit."""
+        tasks: list[asyncio.Task[str]] = []
+        try:
+            async with asyncio.TaskGroup() as task_group:
+                tasks = [task_group.create_task(operation) for operation in operations]
+        except ExceptionGroup as group:
+            errors = self._flatten_exception_group(group)
+            message = "; ".join(dict.fromkeys(str(error) for error in errors))
+            raise LLMServiceError(
+                message or "Parallel LLM processing failed"
+            ) from group
+
+        return [task.result() for task in tasks]
+
+    @classmethod
+    def _flatten_exception_group(cls, group: ExceptionGroup) -> list[Exception]:
+        """Collect every child failure from a TaskGroup exception tree."""
+        errors: list[Exception] = []
+        for error in group.exceptions:
+            if isinstance(error, ExceptionGroup):
+                errors.extend(cls._flatten_exception_group(error))
+            else:
+                errors.append(error)
+        return errors
 
     def _split_to_fit(
         self, text: str, prompt_builder: Callable[[str], str]

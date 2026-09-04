@@ -206,4 +206,6 @@ class TestRunPipelineFrom:
         with pytest.raises(Exception, match="LLM error"):
             await base_processor._run_pipeline_from(page_id, url, "llm")
 
+        mock_services["page_repo"].update_summary_keywords_and_step.assert_not_called()
+        mock_services["page_repo"].update_success_step.assert_not_called()
         mock_services["vectorizer"].vectorize_content.assert_not_called()
