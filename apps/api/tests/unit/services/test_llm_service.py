@@ -403,6 +403,91 @@ class TestLLMService:
                 await service.generate_summary_keywords(9)
 
     @pytest.mark.asyncio
+    async def test_required_task_failure_cancels_sibling(
+        self, llm_service: LLMService
+    ) -> None:
+        """必須タスクの失敗時は実行中の sibling を停止して回収する."""
+        sibling_started = asyncio.Event()
+        sibling_cancelled = asyncio.Event()
+
+        async def fail_with_timeout() -> str:
+            await sibling_started.wait()
+            raise LLMServiceError("partial summary timed out")
+
+        async def wait_until_cancelled() -> str:
+            sibling_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                sibling_cancelled.set()
+
+        with pytest.raises(LLMServiceError, match="partial summary timed out"):
+            await llm_service._run_required_tasks(
+                [fail_with_timeout(), wait_until_cancelled()]
+            )
+
+        assert sibling_cancelled.is_set()
+
+    @pytest.mark.asyncio
+    async def test_required_tasks_propagate_caller_cancellation(
+        self, llm_service: LLMService
+    ) -> None:
+        """呼び出し元のキャンセルを変換せず、すべての子へ伝播する."""
+        all_started = asyncio.Event()
+        all_cancelled = asyncio.Event()
+        started = 0
+        cancelled = 0
+
+        async def wait_until_cancelled() -> str:
+            nonlocal started, cancelled
+            started += 1
+            if started == 2:
+                all_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled += 1
+                if cancelled == 2:
+                    all_cancelled.set()
+
+        parent = asyncio.create_task(
+            llm_service._run_required_tasks(
+                [wait_until_cancelled(), wait_until_cancelled()]
+            )
+        )
+        await all_started.wait()
+        parent.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await parent
+
+        assert all_cancelled.is_set()
+
+    @pytest.mark.asyncio
+    async def test_required_tasks_collect_multiple_failures(
+        self, llm_service: LLMService
+    ) -> None:
+        """同時に発生した複数の例外をすべて回収して報告する."""
+        both_ready = asyncio.Event()
+        ready = 0
+
+        async def fail(message: str) -> str:
+            nonlocal ready
+            ready += 1
+            if ready == 2:
+                both_ready.set()
+            await both_ready.wait()
+            raise LLMServiceError(message)
+
+        with pytest.raises(LLMServiceError) as exc_info:
+            await llm_service._run_required_tasks(
+                [fail("first failure"), fail("second failure")]
+            )
+
+        assert "first failure" in str(exc_info.value)
+        assert "second failure" in str(exc_info.value)
+
+    @pytest.mark.asyncio
     async def test_chunk_requests_respect_concurrency_limit(
         self, mock_file_repo: Any
     ) -> None:
