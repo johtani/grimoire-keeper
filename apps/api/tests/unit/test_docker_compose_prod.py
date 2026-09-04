@@ -136,6 +136,33 @@ def test_local_llm_documentation_covers_host_and_container_execution() -> None:
         assert guidance in development
 
 
+def test_readme_quick_start_covers_worker_and_end_to_end_verification() -> None:
+    """Quick Startだけで全サービスの起動、処理、検索、障害診断ができる."""
+    readme = (PROJECT_ROOT / "README.md").read_text()
+    quick_start = readme.split("## 🚀 Quick Start", 1)[1].split("## 📖 Usage", 1)[0]
+
+    for guidance in (
+        "bash scripts/start.sh -d",
+        "uv run --package grimoire-api python -m grimoire_api.worker",
+        "http://localhost:8000/api/v1/health/ready",
+        "docker compose -f docker-compose.prod.yml ps worker",
+        "http://localhost:8089/v1/.well-known/ready",
+        "http://localhost:8080/v1/models",
+        "http://localhost:8000/api/v1/process-url",
+        "http://localhost:8000/api/v1/process-status/{page_id}",
+        "http://localhost:8000/api/v1/search",
+        "`queued`",
+        "logs --tail=100 worker",
+        "LLM_API_BASE=http://localhost:8080/v1",
+        "http://host.docker.internal:8080/v1",
+        "127.0.0.1",
+    ):
+        assert guidance in quick_start
+
+    assert "same SQLite database" in quick_start
+    assert "同じSQLiteデータベース" in quick_start
+
+
 def test_worker_receives_pinned_embedding_configuration() -> None:
     """workerへ非秘密の埋め込み設定を明示的に渡す."""
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
