@@ -46,6 +46,36 @@ def test_host_ports_are_loopback_only_and_internal_connections_are_preserved() -
     assert all(binding not in compose for binding in unrestricted_bindings)
 
 
+def test_deploy_documentation_preserves_local_only_access_policy() -> None:
+    """本番手順が管理portを外部公開せず、内部通信と確認方法を案内する."""
+    deploy = (PROJECT_ROOT / "DEPLOY.md").read_text()
+
+    for binding in (
+        "127.0.0.1:8001",
+        "127.0.0.1:8000",
+        "127.0.0.1:8089",
+        "127.0.0.1:50051",
+    ):
+        assert binding in deploy
+
+    assert "http://api:8000" in deploy
+    assert "weaviate:8080" in deploy
+    assert "Socket Mode" in deploy
+    assert "outbound" in deploy
+    assert "docker compose -f docker-compose.prod.yml config" in deploy
+    assert "sudo ss -lntp" in deploy
+    assert "sudo ufw status numbered" in deploy
+    assert "ssh -N -L 8001:127.0.0.1:8001" in deploy
+
+    unsafe_guidance = (
+        "8000番ポートのみ公開",
+        "API (外部公開)",
+        "listen 80;",
+        "server_name your-domain.com",
+    )
+    assert all(guidance not in deploy for guidance in unsafe_guidance)
+
+
 def test_worker_has_claim_loop_healthcheck_and_allows_graceful_stop() -> None:
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]

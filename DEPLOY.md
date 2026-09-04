@@ -110,6 +110,9 @@ chmod +x scripts/deploy.sh
 # サービス状態確認
 docker compose -f docker-compose.prod.yml ps
 
+# 展開後のport設定を確認（Host IPがすべて127.0.0.1であること）
+docker compose -f docker-compose.prod.yml config
+
 # ログ確認
 docker compose -f docker-compose.prod.yml logs -f
 
@@ -119,6 +122,57 @@ curl http://localhost:8000/api/v1/health
 # Weaviate動作確認  
 curl http://localhost:8089/v1/meta
 ```
+
+Web (`8001`)、API (`8000`)、Weaviate HTTP (`8089`) および gRPC (`50051`) は、
+すべてホストの `127.0.0.1` にだけ bind されます。デプロイ先ホスト以外から直接接続
+できる状態は想定していません。管理画面はデプロイ先ホスト上で
+`http://localhost:8001` を開いて利用します。
+
+Slack Bot は Socket Mode で Slack へ outbound 接続し、外部からの inbound port を
+必要としません。Bot から API への通信には、公開portではなく Compose 内部networkの
+`http://api:8000` を使用します。API と worker から Weaviate への通信も同様に
+`weaviate:8080` を使用します。
+
+### 6. 公開範囲の確認
+
+デプロイ後、待受addressが `127.0.0.1` に限定されていることを確認します。
+
+```bash
+# Dockerが公開するportとHost IPを確認
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml config
+
+# ホストの実際の待受socketを確認
+sudo ss -lntp | grep -E ':(8000|8001|8089|50051)\b'
+
+# loopback経由でWeb/API/Weaviateへ接続できることを確認
+curl -f http://127.0.0.1:8001/api/v1/health
+curl -f http://127.0.0.1:8000/api/v1/health
+curl -f http://127.0.0.1:8089/v1/.well-known/ready
+
+# ufwを利用している場合は、管理portを許可するルールがないことを確認
+sudo ufw status numbered
+```
+
+`ss` の Local Address:Port は `127.0.0.1:8000`、`127.0.0.1:8001`、
+`127.0.0.1:8089`、`127.0.0.1:50051` である必要があります。`0.0.0.0`、`[::]`、
+またはホストの外部向けIPで待ち受けている場合は、運用を開始せず Compose 設定と
+firewall ruleを見直してください。これらのportを ufw などで外部向けに許可しないで
+ください。
+
+### 7. リモートから管理する場合（明示的な opt-in）
+
+リモート管理が必要な場合も Compose の bind address は変更せず、アクセスを許可した
+管理者だけが利用できる SSH tunnel または VPN を別途構成します。例えば Web UI だけを
+SSH tunnel 経由で利用する場合は、管理端末で次を実行します。
+
+```bash
+ssh -N -L 8001:127.0.0.1:8001 <user>@<deploy-host>
+```
+
+接続中は管理端末の `http://127.0.0.1:8001` からアクセスできます。API や Weaviate の
+保守が必要な場合だけ、同じ方法で必要なportを個別に転送してください。SSH serverやVPNの
+認証、接続元制限、監査は運用環境のポリシーに従って設定します。
 
 ## 補足: Slack App詳細設定
 
@@ -218,28 +272,20 @@ ls -la /opt/grimoire-keeper-data/
 ```
 
 ### ポート使用状況
-- **8000**: API (外部公開)
-- **8089**: Weaviate (内部のみ)
-- **Bot**: Socket Mode (外部ポート不要、WebSocket接続)
+- **8001**: Web UI (`127.0.0.1` のみ)
+- **8000**: API (`127.0.0.1` のみ。BotはCompose内部の`api:8000`を使用)
+- **8089 / 50051**: Weaviate HTTP / gRPC (`127.0.0.1` のみ)
+- **Bot**: Socket Modeによるoutbound接続 (外部からのinbound port不要)
 
 ## セキュリティ
 
 ### 推奨設定
-- ファイアウォール設定 (8000番ポートのみ公開)
-- SSL/TLS証明書設定 (Let's Encrypt推奨)
+- API、Web UI、Weaviate のhost bindを`127.0.0.1`から変更しない
+- firewallで管理port (`8000`、`8001`、`8089`、`50051`) を外部公開しない
+- リモート管理は接続元を制限したSSH tunnelまたはVPNで明示的に有効化する
 - 定期的なAPIキーローテーション
 - ログ監視・アラート設定
 
-### nginx設定例
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    location /api/ {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
+Weaviate は匿名アクセスが有効なため、loopbackおよびCompose内部networkから到達可能な
+構成を前提とします。loopbackは同一ホスト上の別ユーザーやプロセスを隔離しないため、
+信頼できないユーザーが同居するホストでは追加の認証・アクセス制御を検討してください。
