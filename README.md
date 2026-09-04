@@ -99,6 +99,14 @@
 
 5. **Start all services (recommended) / 全サービスの起動（推奨）**
    ```bash
+   # First run only: prepare bind-mount directories for the non-root containers
+   sudo mkdir -p /opt/grimoire-keeper-data/{database,json,migration,weaviate-1.38.8}
+   sudo chown -R 10001:10001 \
+     /opt/grimoire-keeper-data/{database,json,migration}
+   sudo chmod 0750 /opt/grimoire-keeper-data/{database,json,migration}
+   sudo chown -R "$USER":"$USER" \
+     /opt/grimoire-keeper-data/weaviate-1.38.8
+
    bash scripts/start.sh -d
    ```
 

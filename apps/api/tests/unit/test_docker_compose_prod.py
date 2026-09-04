@@ -161,6 +161,9 @@ def test_readme_quick_start_covers_worker_and_end_to_end_verification() -> None:
 
     assert "same SQLite database" in quick_start
     assert "同じSQLiteデータベース" in quick_start
+    assert "sudo mkdir -p /opt/grimoire-keeper-data/" in quick_start
+    assert "sudo chown -R 10001:10001" in quick_start
+    assert "sudo chmod 0750" in quick_start
 
 
 def test_worker_receives_pinned_embedding_configuration() -> None:
