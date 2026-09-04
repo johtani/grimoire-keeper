@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 from grimoire_api.main import app
+from grimoire_api.utils.exceptions import VectorizerError
 
 client = TestClient(app)
 
@@ -17,8 +18,11 @@ class TestHealthRouter:
         app.state.weaviate_manager.get_ready_client = AsyncMock(return_value=object())
         database = MagicMock()
         database.fetch_one = AsyncMock(return_value=(1,))
-        with patch(
-            "grimoire_api.routers.health.get_db_connection", return_value=database
+        with (
+            patch(
+                "grimoire_api.routers.health.get_db_connection", return_value=database
+            ),
+            patch("grimoire_api.routers.health.validate_weaviate_schema"),
         ):
             response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -59,8 +63,11 @@ class TestHealthRouter:
         database = MagicMock()
         database.fetch_one = AsyncMock(side_effect=RuntimeError("database down"))
 
-        with patch(
-            "grimoire_api.routers.health.get_db_connection", return_value=database
+        with (
+            patch(
+                "grimoire_api.routers.health.get_db_connection", return_value=database
+            ),
+            patch("grimoire_api.routers.health.validate_weaviate_schema"),
         ):
             response = client.get("/api/v1/health/ready")
 
@@ -90,8 +97,11 @@ class TestHealthRouter:
         mock_settings.GIT_COMMIT = "abc1234"
         mock_settings.BUILD_DATE = "2026-04-09T12:00:00Z"
 
-        with patch(
-            "grimoire_api.routers.health.get_db_connection", return_value=database
+        with (
+            patch(
+                "grimoire_api.routers.health.get_db_connection", return_value=database
+            ),
+            patch("grimoire_api.routers.health.validate_weaviate_schema"),
         ):
             response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -99,3 +109,63 @@ class TestHealthRouter:
         assert data["version"] == "1.2.3"
         assert data["git_commit"] == "abc1234"
         assert data["build_date"] == "2026-04-09T12:00:00Z"
+
+    def test_readiness_returns_schema_diagnostics(self, caplog: object) -> None:
+        """schema 不一致はログと503 detailsから診断できる."""
+        app.state.weaviate_manager = MagicMock()
+        app.state.weaviate_manager.get_ready_client = AsyncMock(return_value=object())
+        database = MagicMock()
+        database.fetch_one = AsyncMock(return_value=(1,))
+        schema_error = (
+            "Incompatible Weaviate schema for GrimoirePage: "
+            "required property 'pageId' is missing"
+        )
+
+        with (
+            patch(
+                "grimoire_api.routers.health.get_db_connection", return_value=database
+            ),
+            patch(
+                "grimoire_api.routers.health.validate_weaviate_schema",
+                side_effect=VectorizerError(schema_error),
+            ),
+        ):
+            response = client.get("/api/v1/health/ready")
+
+        assert response.status_code == 503
+        assert response.json()["error"]["details"] == [
+            {
+                "dependency": "weaviate",
+                "reason": "schema_incompatible",
+                "message": schema_error,
+            }
+        ]
+        assert schema_error in caplog.text
+
+    def test_readiness_hides_unexpected_schema_check_error(self) -> None:
+        """schema 取得障害は内部メッセージを公開せず503にする."""
+        app.state.weaviate_manager = MagicMock()
+        app.state.weaviate_manager.get_ready_client = AsyncMock(return_value=object())
+        database = MagicMock()
+        database.fetch_one = AsyncMock(return_value=(1,))
+
+        with (
+            patch(
+                "grimoire_api.routers.health.get_db_connection", return_value=database
+            ),
+            patch(
+                "grimoire_api.routers.health.validate_weaviate_schema",
+                side_effect=RuntimeError("secret SDK failure"),
+            ),
+        ):
+            response = client.get("/api/v1/health/ready")
+
+        assert response.status_code == 503
+        assert response.json()["error"]["details"] == [
+            {
+                "dependency": "weaviate",
+                "reason": "schema_check_failed",
+                "message": "Weaviate schema could not be inspected",
+            }
+        ]
+        assert "secret SDK failure" not in response.text

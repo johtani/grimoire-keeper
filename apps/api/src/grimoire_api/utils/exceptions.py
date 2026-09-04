@@ -1,5 +1,7 @@
 """Custom exceptions."""
 
+from typing import Any
+
 
 class GrimoireAPIError(Exception):
     """Base exception for Grimoire API."""
@@ -7,6 +9,12 @@ class GrimoireAPIError(Exception):
     code = "internal_error"
     public_message = "An internal error occurred"
     status_code = 500
+
+    def __init__(
+        self, message: str = "", details: list[dict[str, Any]] | None = None
+    ) -> None:
+        super().__init__(message)
+        self.details = details
 
 
 class ResourceNotFoundError(GrimoireAPIError):

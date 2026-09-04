@@ -142,7 +142,13 @@ async def domain_exception_handler(
             exc.code,
             exc_info=exc,
         )
-    return _error_response(request, exc.status_code, exc.code, exc.public_message)
+    return _error_response(
+        request,
+        exc.status_code,
+        exc.code,
+        exc.public_message,
+        details=exc.details,
+    )
 
 
 @app.exception_handler(HTTPException)
