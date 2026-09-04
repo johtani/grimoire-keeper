@@ -299,8 +299,10 @@ class LLMService:
     def _classify_error(error: Exception) -> tuple[bool, str, float | None]:
         """Retry only LiteLLM failures that represent transient conditions."""
         response = getattr(error, "response", None)
-        headers = getattr(response, "headers", {})
-        retry_after = parse_retry_after(headers.get("Retry-After"))
+        headers = getattr(error, "headers", None) or getattr(response, "headers", {})
+        retry_after = parse_retry_after(
+            headers.get("Retry-After") or headers.get("retry-after")
+        )
         if isinstance(error, RateLimitError):
             return True, "rate_limit", retry_after
         if isinstance(error, Timeout):
