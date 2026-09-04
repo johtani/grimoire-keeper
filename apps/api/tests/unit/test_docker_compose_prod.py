@@ -103,6 +103,39 @@ def test_only_worker_receives_processing_credentials() -> None:
     assert all(key in worker_section for key in processing_keys)
 
 
+def test_worker_uses_host_gateway_for_local_llm() -> None:
+    """ComposeのworkerはホストLLM向けURLを既定値とし、空値で上書きできる."""
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
+
+    assert (
+        "LLM_API_BASE=${DOCKER_LLM_API_BASE-http://host.docker.internal:8080/v1}"
+    ) in worker_section
+    assert '"host.docker.internal:host-gateway"' in worker_section
+
+
+def test_local_llm_documentation_covers_host_and_container_execution() -> None:
+    """設定例と診断手順がホスト実行、macOS、Linux、Composeを区別する."""
+    env_example = (PROJECT_ROOT / ".env.example").read_text()
+    development = (PROJECT_ROOT / "docs/development.md").read_text()
+
+    assert "LLM_API_BASE=http://localhost:8080/v1" in env_example
+    assert "DOCKER_LLM_API_BASE=http://host.docker.internal:8080/v1" in env_example
+    assert "DOCKER_LLM_API_BASE=" in env_example
+
+    for guidance in (
+        "macOSのDocker Desktop",
+        "Linux",
+        "host.docker.internal:host-gateway",
+        "curl --fail-with-body http://localhost:8080/v1/models",
+        'os.environ["LLM_API_BASE"]',
+        "urllib.request.urlopen",
+        "logs --tail=100 worker",
+        "127.0.0.1",
+    ):
+        assert guidance in development
+
+
 def test_worker_receives_pinned_embedding_configuration() -> None:
     """workerへ非秘密の埋め込み設定を明示的に渡す."""
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
