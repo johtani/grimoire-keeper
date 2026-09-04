@@ -116,11 +116,62 @@ Bitwarden Secrets Manager には `GRIMOIRE_KEEPER_LLM_API_KEY` という名前�
 埋め込み用であり、要約LLM用とは別です。`scripts/dev.sh` はAPIだけを起動するため、これらの
 処理用キーやBitwardenへの接続を必要としません。
 
-ローカルの OpenAI 互換サーバーを使う場合は `LLM_API_BASE` にそのURLを設定します。
-認証不要のサーバーでは `LLM_API_KEY=dummy` を使用できます。GeminiなどのクラウドLLMを
-使う場合は `LLM_API_BASE` を空にし、`LLM_API_KEY` に実際のプロバイダーAPIキーを設定します。
+ローカルの OpenAI 互換サーバーを使う場合、ホスト上でworkerを直接実行するときは
+`LLM_API_BASE=http://localhost:8080/v1` を使用します。Composeのworkerからホスト上の
+LLMへ接続するときは、コンテナ自身を指す `localhost` ではなく、次の設定を使用します。
+
+```bash
+DOCKER_LLM_API_BASE=http://host.docker.internal:8080/v1
+```
+
+この値はmacOSのDocker DesktopとLinuxの両方で利用できます。LinuxではComposeに設定済みの
+`extra_hosts: host.docker.internal:host-gateway` が、ホストゲートウェイの名前解決を追加します。
+別のホストやポートでLLMを公開する場合は `DOCKER_LLM_API_BASE` をそのURLへ変更してください。
+認証不要のサーバーでは `LLM_API_KEY=dummy` を使用できます。
+
+GeminiなどのクラウドLLMを使う場合は、直接実行用とCompose用の接続先を両方空にし、
+`LLM_API_KEY` に実際のプロバイダーAPIキーを設定します。
+
+```bash
+LLM_API_BASE=
+DOCKER_LLM_API_BASE=
+```
+
+Composeでは `DOCKER_LLM_API_BASE` が未定義の場合だけ
+`http://host.docker.internal:8080/v1` を既定値として使用します。明示的な空値は維持されます。
 クラウド構成でキーが空、または `dummy` の場合、workerは起動時に停止します。APIはAI処理用
 キーを検証せず、SQLiteを使う受付・参照APIを継続します。
+
+### Docker からローカル LLM へ接続できない場合
+
+まずホスト上でLLMのOpenAI互換エンドポイントへ接続できることを確認します。
+
+```bash
+curl --fail-with-body http://localhost:8080/v1/models
+```
+
+次にComposeが展開した値と、実行中のworkerが受け取った値を確認します。
+
+```bash
+docker compose -f docker-compose.prod.yml config | grep -A1 LLM_API_BASE
+docker compose -f docker-compose.prod.yml exec worker \
+  python -c 'import os; print(os.environ["LLM_API_BASE"])'
+```
+
+workerコンテナ内からも同じエンドポイントへ接続できるか確認できます。
+
+```bash
+docker compose -f docker-compose.prod.yml exec worker \
+  python -c 'import urllib.request; print(urllib.request.urlopen("http://host.docker.internal:8080/v1/models", timeout=5).status)'
+docker compose -f docker-compose.prod.yml logs --tail=100 worker
+```
+
+ホスト側の確認だけ成功する場合は、LLMサーバーが `127.0.0.1` のみにbindされていないかを
+確認してください。コンテナから接続するには `0.0.0.0` またはDockerブリッジから到達できる
+アドレスでlistenする必要があります。外部インターフェースでlistenする場合は、LLMのポートを
+信頼できないネットワークへ公開しないようファイアウォールも設定してください。Linuxでは
+`docker compose -f docker-compose.prod.yml config` のworkerに `extra_hosts` と
+`host-gateway` が含まれることも確認します。
 
 `GOOGLE_API_KEY` は `LLMService` から参照される互換変数ではありません。既存環境で
 Googleのキーをこの名前で管理している場合は、同じ値を

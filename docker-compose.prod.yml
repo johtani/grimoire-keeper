@@ -105,6 +105,7 @@ services:
       - WEAVIATE_EMBEDDING_DIMENSIONS=${WEAVIATE_EMBEDDING_DIMENSIONS:-1536}
       - JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}
       - LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}
+      - LLM_API_BASE=${DOCKER_LLM_API_BASE-http://host.docker.internal:8080/v1}
     env_file:
       - .env
     extra_hosts:
