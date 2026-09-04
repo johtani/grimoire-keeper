@@ -1,5 +1,6 @@
 """Health check router."""
 
+import asyncio
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
@@ -9,7 +10,8 @@ from pydantic import BaseModel
 from ..config import settings
 from ..dependencies import get_db_connection
 from ..models.response import COMMON_ERROR_RESPONSES
-from ..utils.exceptions import ServiceUnavailableError
+from ..services.vectorizer import validate_weaviate_schema
+from ..utils.exceptions import ServiceUnavailableError, VectorizerError
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +55,23 @@ async def _readiness_check(request: Request) -> HealthResponse:
         database_ready = False
 
     manager = getattr(request.app.state, "weaviate_manager", None)
-    weaviate_ready = (
-        manager is not None and await manager.get_ready_client() is not None
-    )
+    weaviate_client = await manager.get_ready_client() if manager is not None else None
+    weaviate_ready = weaviate_client is not None
+    schema_error: str | None = None
+    schema_reason: str | None = None
+    if weaviate_client is not None:
+        try:
+            await asyncio.to_thread(validate_weaviate_schema, weaviate_client)
+        except VectorizerError as exc:
+            schema_error = str(exc)
+            schema_reason = "schema_incompatible"
+            weaviate_ready = False
+            logger.error("Weaviate schema readiness check failed: %s", exc)
+        except Exception:
+            schema_error = "Weaviate schema could not be inspected"
+            schema_reason = "schema_check_failed"
+            weaviate_ready = False
+            logger.exception("Weaviate schema readiness check failed")
     unavailable = []
     if not database_ready:
         unavailable.append("database")
@@ -63,8 +79,18 @@ async def _readiness_check(request: Request) -> HealthResponse:
         unavailable.append("Weaviate")
     ready = database_ready and weaviate_ready
     if not ready:
+        details = None
+        if schema_error is not None and schema_reason is not None:
+            details = [
+                {
+                    "dependency": "weaviate",
+                    "reason": schema_reason,
+                    "message": schema_error,
+                }
+            ]
         raise ServiceUnavailableError(
-            f"Unavailable dependencies: {', '.join(unavailable)}"
+            f"Unavailable dependencies: {', '.join(unavailable)}",
+            details=details,
         )
 
     return HealthResponse(

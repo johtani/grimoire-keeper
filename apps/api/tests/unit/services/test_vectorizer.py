@@ -8,8 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from grimoire_api.config import settings
 from grimoire_api.models.database import Page, ProcessingStep
-from grimoire_api.services.vectorizer import VectorizerService
+from grimoire_api.services.vectorizer import (
+    EXPECTED_PROPERTIES,
+    VectorizerService,
+    validate_weaviate_schema,
+)
 from grimoire_api.utils.exceptions import VectorizerError
+from weaviate.classes.config import DataType
 
 
 class TestVectorizerService:
@@ -50,7 +55,14 @@ class TestVectorizerService:
                 )
                 for name in vector_names
             }
-            return SimpleNamespace(vector_config=vector_config)
+            properties = [
+                SimpleNamespace(name=name, data_type=data_type)
+                for name, data_type in {
+                    **EXPECTED_PROPERTIES["page"],
+                    **EXPECTED_PROPERTIES["chunk"],
+                }.items()
+            ]
+            return SimpleNamespace(properties=properties, vector_config=vector_config)
 
         mock_page_collection.config.get.return_value = schema_config(
             "title_vector", "memo_vector"
@@ -760,3 +772,37 @@ class TestVectorizerService:
 
         with pytest.raises(VectorizerError, match="named vectors"):
             await vectorizer_service.ensure_schema()
+
+    def test_validate_schema_rejects_missing_collection(
+        self, mock_dependencies: Any
+    ) -> None:
+        """readiness 用検証は必須 collection の不在を拒否する."""
+        mock_dependencies["weaviate_client"].collections.exists.return_value = False
+
+        with pytest.raises(VectorizerError, match="collection is missing"):
+            validate_weaviate_schema(mock_dependencies["weaviate_client"])
+
+    @pytest.mark.parametrize(
+        ("mutation", "message"),
+        [
+            ("missing", "required property 'pageId' is missing"),
+            ("wrong_type", "property 'pageId' type is 'text', expected 'int'"),
+        ],
+    )
+    def test_validate_schema_rejects_incompatible_property(
+        self, mock_dependencies: Any, mutation: str, message: str
+    ) -> None:
+        """readiness 用検証は必須 property の不足と型不一致を拒否する."""
+        mock_dependencies["weaviate_client"].collections.exists.return_value = True
+        config = mock_dependencies["mock_page_collection"].config.get.return_value
+        if mutation == "missing":
+            config.properties = [
+                prop for prop in config.properties if prop.name != "pageId"
+            ]
+        else:
+            next(
+                prop for prop in config.properties if prop.name == "pageId"
+            ).data_type = DataType.TEXT
+
+        with pytest.raises(VectorizerError, match=message):
+            validate_weaviate_schema(mock_dependencies["weaviate_client"])

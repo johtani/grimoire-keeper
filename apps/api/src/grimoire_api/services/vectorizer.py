@@ -26,6 +26,115 @@ EXPECTED_NAMED_VECTORS = {
     "page": {"title_vector", "memo_vector"},
     "chunk": {"content_vector"},
 }
+EXPECTED_PROPERTIES = {
+    "page": {
+        "pageId": DataType.INT,
+        "url": DataType.TEXT,
+        "title": DataType.TEXT,
+        "memo": DataType.TEXT,
+        "summary": DataType.TEXT,
+        "keywords": DataType.TEXT_ARRAY,
+        "createdAt": DataType.DATE,
+    },
+    "chunk": {
+        "pageId": DataType.INT,
+        "chunkId": DataType.INT,
+        "content": DataType.TEXT,
+    },
+}
+
+
+def _raise_incompatible_schema(collection_name: str, detail: str) -> NoReturn:
+    raise VectorizerError(
+        f"Incompatible Weaviate schema for {collection_name}: {detail}. "
+        "Recreate the collections and run scripts/reindex_weaviate.py."
+    )
+
+
+def _validate_collection_schema(
+    client: weaviate.WeaviateClient,
+    collection_name: str,
+    expected_properties: dict[str, DataType],
+    expected_vector_names: set[str],
+) -> None:
+    """Reject a collection whose properties or vectors are incompatible."""
+    config = client.collections.get(collection_name).config.get()
+    actual_properties = {prop.name: prop.data_type for prop in config.properties}
+    for property_name, expected_type in expected_properties.items():
+        actual_type = actual_properties.get(property_name)
+        if actual_type is None:
+            _raise_incompatible_schema(
+                collection_name, f"required property {property_name!r} is missing"
+            )
+        if actual_type != expected_type:
+            _raise_incompatible_schema(
+                collection_name,
+                f"property {property_name!r} type is {actual_type.value!r}, "
+                f"expected {expected_type.value!r}",
+            )
+
+    vector_config = config.vector_config
+    if vector_config is None:
+        _raise_incompatible_schema(
+            collection_name, "named vector configuration is missing"
+        )
+    actual_names = set(vector_config)
+    if actual_names != expected_vector_names:
+        _raise_incompatible_schema(
+            collection_name,
+            f"named vectors are {sorted(actual_names)}, expected "
+            f"{sorted(expected_vector_names)}",
+        )
+
+    for vector_name in sorted(expected_vector_names):
+        vectorizer = vector_config[vector_name].vectorizer
+        provider = vectorizer.vectorizer
+        if isinstance(provider, Enum):
+            provider = provider.value
+        model_config = dict(vectorizer.model)
+        actual_model = model_config.get("model")
+        actual_dimensions = model_config.get("dimensions")
+        if provider != settings.WEAVIATE_EMBEDDING_PROVIDER:
+            _raise_incompatible_schema(
+                collection_name,
+                f"{vector_name} provider is {provider!r}, expected "
+                f"{settings.WEAVIATE_EMBEDDING_PROVIDER!r}",
+            )
+        if actual_model != settings.WEAVIATE_EMBEDDING_MODEL:
+            _raise_incompatible_schema(
+                collection_name,
+                f"{vector_name} model is {actual_model!r}, expected "
+                f"{settings.WEAVIATE_EMBEDDING_MODEL!r}",
+            )
+        if actual_dimensions != settings.WEAVIATE_EMBEDDING_DIMENSIONS:
+            _raise_incompatible_schema(
+                collection_name,
+                f"{vector_name} dimensions are {actual_dimensions!r}, expected "
+                f"{settings.WEAVIATE_EMBEDDING_DIMENSIONS!r}",
+            )
+
+
+def validate_weaviate_schema(client: weaviate.WeaviateClient) -> None:
+    """Validate all collections required by registration and search."""
+    schemas = (
+        (
+            "page",
+            settings.WEAVIATE_PAGE_COLLECTION_NAME,
+        ),
+        (
+            "chunk",
+            settings.WEAVIATE_CHUNK_COLLECTION_NAME,
+        ),
+    )
+    for schema_name, collection_name in schemas:
+        if not client.collections.exists(collection_name):
+            _raise_incompatible_schema(collection_name, "collection is missing")
+        _validate_collection_schema(
+            client,
+            collection_name,
+            EXPECTED_PROPERTIES[schema_name],
+            EXPECTED_NAMED_VECTORS[schema_name],
+        )
 
 
 def _insert_objects_sync(
@@ -325,63 +434,26 @@ class VectorizerService:
 
             self._validate_collection_schema(
                 settings.WEAVIATE_PAGE_COLLECTION_NAME,
+                EXPECTED_PROPERTIES["page"],
                 EXPECTED_NAMED_VECTORS["page"],
             )
             self._validate_collection_schema(
                 settings.WEAVIATE_CHUNK_COLLECTION_NAME,
+                EXPECTED_PROPERTIES["chunk"],
                 EXPECTED_NAMED_VECTORS["chunk"],
             )
         except Exception as e:
             raise VectorizerError(f"Failed to ensure schema: {str(e)}")
 
     def _validate_collection_schema(
-        self, collection_name: str, expected_vector_names: set[str]
+        self,
+        collection_name: str,
+        expected_properties: dict[str, DataType],
+        expected_vector_names: set[str],
     ) -> None:
-        """Reject a collection whose embedding configuration is incompatible."""
-        config = self.weaviate_client.collections.get(collection_name).config.get()
-        vector_config = config.vector_config
-        if vector_config is None:
-            self._raise_incompatible_schema(
-                collection_name, "named vector configuration is missing"
-            )
-        actual_names = set(vector_config)
-        if actual_names != expected_vector_names:
-            self._raise_incompatible_schema(
-                collection_name,
-                f"named vectors are {sorted(actual_names)}, expected "
-                f"{sorted(expected_vector_names)}",
-            )
-
-        for vector_name in sorted(expected_vector_names):
-            vectorizer = vector_config[vector_name].vectorizer
-            provider = vectorizer.vectorizer
-            if isinstance(provider, Enum):
-                provider = provider.value
-            model_config = dict(vectorizer.model)
-            actual_model = model_config.get("model")
-            actual_dimensions = model_config.get("dimensions")
-            if provider != settings.WEAVIATE_EMBEDDING_PROVIDER:
-                self._raise_incompatible_schema(
-                    collection_name,
-                    f"{vector_name} provider is {provider!r}, expected "
-                    f"{settings.WEAVIATE_EMBEDDING_PROVIDER!r}",
-                )
-            if actual_model != settings.WEAVIATE_EMBEDDING_MODEL:
-                self._raise_incompatible_schema(
-                    collection_name,
-                    f"{vector_name} model is {actual_model!r}, expected "
-                    f"{settings.WEAVIATE_EMBEDDING_MODEL!r}",
-                )
-            if actual_dimensions != settings.WEAVIATE_EMBEDDING_DIMENSIONS:
-                self._raise_incompatible_schema(
-                    collection_name,
-                    f"{vector_name} dimensions are {actual_dimensions!r}, expected "
-                    f"{settings.WEAVIATE_EMBEDDING_DIMENSIONS!r}",
-                )
-
-    @staticmethod
-    def _raise_incompatible_schema(collection_name: str, detail: str) -> NoReturn:
-        raise VectorizerError(
-            f"Incompatible Weaviate schema for {collection_name}: {detail}. "
-            "Recreate the collections and run scripts/reindex_weaviate.py."
+        _validate_collection_schema(
+            self.weaviate_client,
+            collection_name,
+            expected_properties,
+            expected_vector_names,
         )
