@@ -25,6 +25,23 @@ class Settings(BaseSettings):
     LLM_CONTEXT_WINDOW: int = 32768
     LLM_MAX_OUTPUT_TOKENS: int = 1024
     LLM_SUMMARY_CONCURRENCY: int = 3
+    LLM_TIMEOUT: float = Field(default=60.0, gt=0)
+    LLM_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
+    LLM_RETRY_BACKOFF_BASE: float = Field(default=1.0, ge=0)
+    LLM_RETRY_BACKOFF_MAX: float = Field(default=10.0, ge=0)
+    LLM_RETRY_JITTER: float = Field(default=0.5, ge=0)
+    LLM_RETRY_AFTER_MAX: float = Field(default=30.0, ge=0)
+
+    # Jina Reader
+    JINA_CONNECT_TIMEOUT: float = Field(default=5.0, gt=0)
+    JINA_READ_TIMEOUT: float = Field(default=60.0, gt=0)
+    JINA_WRITE_TIMEOUT: float = Field(default=10.0, gt=0)
+    JINA_POOL_TIMEOUT: float = Field(default=5.0, gt=0)
+    JINA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
+    JINA_RETRY_BACKOFF_BASE: float = Field(default=1.0, ge=0)
+    JINA_RETRY_BACKOFF_MAX: float = Field(default=10.0, ge=0)
+    JINA_RETRY_JITTER: float = Field(default=0.5, ge=0)
+    JINA_RETRY_AFTER_MAX: float = Field(default=30.0, ge=0)
 
     # Database
     DATABASE_PATH: str = "./grimoire.db"
@@ -45,6 +62,15 @@ class Settings(BaseSettings):
     WEAVIATE_STARTUP_RETRY_INTERVAL: float = 5.0
     WEAVIATE_STARTUP_TIMEOUT: float = 60.0
     WEAVIATE_CONNECT_TIMEOUT: float = 5.0
+    WEAVIATE_QUERY_TIMEOUT: float = Field(default=30.0, gt=0)
+    WEAVIATE_INSERT_TIMEOUT: float = Field(default=90.0, gt=0)
+    WEAVIATE_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
+    WEAVIATE_RETRY_BACKOFF_BASE: float = Field(default=0.5, ge=0)
+    WEAVIATE_RETRY_BACKOFF_MAX: float = Field(default=5.0, ge=0)
+    WEAVIATE_RETRY_JITTER: float = Field(default=0.25, ge=0)
+    WEAVIATE_RETRY_AFTER_MAX: float = Field(default=10.0, ge=0)
+    WEAVIATE_DELETE_POLL_ATTEMPTS: int = Field(default=10, ge=1)
+    WEAVIATE_DELETE_POLL_INTERVAL: float = Field(default=0.1, ge=0)
     WEAVIATE_MONITOR_INTERVAL: float = 5.0
     WEAVIATE_WORKER_STOP_TIMEOUT: float = 10.0
 
@@ -77,6 +103,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"{self.WEAVIATE_EMBEDDING_MODEL} supports at most {maximum} dimensions"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_retry_backoff_limits(self) -> "Settings":
+        """Reject retry policies whose cap is below their initial delay."""
+        for service in ("JINA", "LLM", "WEAVIATE"):
+            base = getattr(self, f"{service}_RETRY_BACKOFF_BASE")
+            maximum = getattr(self, f"{service}_RETRY_BACKOFF_MAX")
+            if maximum < base:
+                raise ValueError(
+                    f"{service}_RETRY_BACKOFF_MAX must be greater than or equal to "
+                    f"{service}_RETRY_BACKOFF_BASE"
+                )
         return self
 
     def missing_api_required_vars(self) -> list[str]:

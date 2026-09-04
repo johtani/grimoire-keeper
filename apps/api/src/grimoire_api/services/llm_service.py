@@ -7,12 +7,20 @@ from collections.abc import Callable
 from typing import Any
 
 from litellm import acompletion, token_counter
+from litellm.exceptions import (
+    APIConnectionError,
+    InternalServerError,
+    RateLimitError,
+    ServiceUnavailableError,
+    Timeout,
+)
 from pydantic import ValidationError
 
 from ..config import settings
 from ..models.external import FetchedDocument, PartialSummaryResult, SummaryResult
 from ..repositories.file_repository import FileRepository
 from ..utils.exceptions import LLMServiceError
+from ..utils.retry import RetryPolicy, parse_retry_after, retry_external_call
 from .chunking_service import ChunkingService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +49,13 @@ class LLMService:
             raise LLMServiceError("LLM_SUMMARY_CONCURRENCY must be greater than zero")
         self.chunking_service = chunking_service
         self.semaphore = asyncio.Semaphore(settings.LLM_SUMMARY_CONCURRENCY)
+        self._retry_policy = RetryPolicy(
+            attempts=settings.LLM_RETRY_ATTEMPTS,
+            backoff_base=settings.LLM_RETRY_BACKOFF_BASE,
+            backoff_max=settings.LLM_RETRY_BACKOFF_MAX,
+            jitter=settings.LLM_RETRY_JITTER,
+            retry_after_max=settings.LLM_RETRY_AFTER_MAX,
+        )
 
     async def generate_summary_keywords(self, page_id: int) -> SummaryResult:
         """ページの長さに応じて単発または分割で要約とキーワードを生成する."""
@@ -238,13 +253,22 @@ class LLMService:
             "temperature": 0.3,
             "response_format": {"type": "json_object"},
             "max_tokens": settings.LLM_MAX_OUTPUT_TOKENS,
+            "timeout": settings.LLM_TIMEOUT,
+            # Retries are owned here so attempt counts and final failures are visible.
+            "num_retries": 0,
         }
         if settings.LLM_API_BASE:
             kwargs["api_base"] = settings.LLM_API_BASE
 
         try:
             async with self.semaphore:
-                response = await acompletion(**kwargs)
+                response = await retry_external_call(
+                    lambda: acompletion(**kwargs),
+                    service="llm",
+                    operation_name="completion",
+                    policy=self._retry_policy,
+                    classify_error=self._classify_error,
+                )
         except Exception:
             raise LLMServiceError("LLM request failed") from None
         try:
@@ -270,6 +294,22 @@ class LLMService:
             )
             detail = f": {', '.join(fields)}" if fields else ""
             raise LLMServiceError(f"Invalid LLM response format{detail}") from None
+
+    @staticmethod
+    def _classify_error(error: Exception) -> tuple[bool, str, float | None]:
+        """Retry only LiteLLM failures that represent transient conditions."""
+        response = getattr(error, "response", None)
+        headers = getattr(response, "headers", {})
+        retry_after = parse_retry_after(headers.get("Retry-After"))
+        if isinstance(error, RateLimitError):
+            return True, "rate_limit", retry_after
+        if isinstance(error, Timeout):
+            return True, "timeout", retry_after
+        if isinstance(error, APIConnectionError):
+            return True, "connection", retry_after
+        if isinstance(error, (ServiceUnavailableError, InternalServerError)):
+            return True, "server", retry_after
+        return False, "permanent", None
 
     def _count_tokens(self, prompt: str) -> int:
         """モデルのトークナイザーを使い、失敗時はUTF-8バイト数で安全側に推定する."""

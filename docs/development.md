@@ -137,6 +137,25 @@ LLM_API_BASE=
 DOCKER_LLM_API_BASE=
 ```
 
+### 外部サービスの timeout / retry
+
+Jina、LLM、Weaviate の timeout と retry は `.env` でサービス別に設定できます。
+全設定と既定値は `.env.example` を参照してください。Jina は
+connect/read/write/pool、Weaviate は connect/query/insert、LLM は1リクエスト全体の
+timeout を設定します。
+
+SDKレベルの retry は、timeout、接続障害、rate limit、対象となる一時的なサーバー
+エラーに限り、1回の外部操作を短時間だけ再試行します。認証・権限・入力不備などの
+永続エラーは再試行しません。`Retry-After` は設定した上限まで尊重し、それ以外は
+指数 backoff と jitter を使います。LiteLLM 自身の retry は無効化し、重複 retry を
+避けます。
+
+外部操作が最終的に失敗した場合、永続ジョブは failed で終了します。ページ単位の
+再投入は `/api/v1/retry/{page_id}` など既存のジョブレベル retry の責務であり、SDK
+レベルでジョブ全体を自動再実行することはありません。各試行と最終失敗分類は
+構造化ログ、および `external_api_attempts_total` / `external_api_retries_total` に記録
+されます。
+
 Composeでは `DOCKER_LLM_API_BASE` が未定義の場合だけ
 `http://host.docker.internal:8080/v1` を既定値として使用します。明示的な空値は維持されます。
 クラウド構成でキーが空、または `dummy` の場合、workerは起動時に停止します。APIはAI処理用

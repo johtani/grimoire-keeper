@@ -10,6 +10,7 @@ import pytest
 from grimoire_api.models.external import SummaryResult
 from grimoire_api.services.llm_service import LLMService
 from grimoire_api.utils.exceptions import LLMServiceError
+from litellm.exceptions import AuthenticationError, Timeout
 
 
 class TestLLMService:
@@ -46,6 +47,14 @@ class TestLLMService:
         api_key = "test_api_key"
         service = LLMService(file_repo=mock_file_repo, api_key=api_key)
         assert service.api_key == api_key
+
+    def test_classifies_timeout_as_retryable(self: Any) -> None:
+        error = Timeout("timed out", model="test", llm_provider="openai")
+        assert LLMService._classify_error(error) == (True, "timeout", None)
+
+    def test_classifies_authentication_as_permanent(self: Any) -> None:
+        error = AuthenticationError("unauthorized", llm_provider="openai", model="test")
+        assert LLMService._classify_error(error) == (False, "permanent", None)
 
     def test_init_without_api_key(self: Any, mock_file_repo: Any) -> None:
         """APIキー未指定での初期化テスト."""
@@ -276,6 +285,8 @@ class TestLLMService:
             assert call_args[1]["api_key"] == "test_api_key"
             assert call_args[1]["temperature"] == 0.3
             assert call_args[1]["max_tokens"] == 1024
+            assert call_args[1]["timeout"] == 60.0
+            assert call_args[1]["num_retries"] == 0
             assert len(call_args[1]["messages"]) == 1
             assert call_args[1]["messages"][0]["role"] == "user"
 
