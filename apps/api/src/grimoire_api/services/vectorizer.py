@@ -9,6 +9,12 @@ import weaviate
 from pydantic import ValidationError
 from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
+from weaviate.exceptions import (
+    WeaviateConnectionError,
+    WeaviateGRPCUnavailableError,
+    WeaviateRetryError,
+    WeaviateTimeoutError,
+)
 from weaviate.util import generate_uuid5
 
 from ..config import settings
@@ -18,6 +24,7 @@ from ..repositories.file_repository import FileRepository
 from ..repositories.page_repository import PageRepository
 from ..utils.datetime import utc_isoformat
 from ..utils.exceptions import VectorizerError
+from ..utils.retry import RetryPolicy, retry_external_call
 from .chunking_service import ChunkingService
 
 logger = logging.getLogger(__name__)
@@ -169,6 +176,13 @@ class VectorizerService:
         self.file_repo = file_repo
         self.chunking_service = chunking_service
         self.weaviate_client = weaviate_client
+        self._retry_policy = RetryPolicy(
+            attempts=settings.WEAVIATE_RETRY_ATTEMPTS,
+            backoff_base=settings.WEAVIATE_RETRY_BACKOFF_BASE,
+            backoff_max=settings.WEAVIATE_RETRY_BACKOFF_MAX,
+            jitter=settings.WEAVIATE_RETRY_JITTER,
+            retry_after_max=settings.WEAVIATE_RETRY_AFTER_MAX,
+        )
 
     async def vectorize_content(self, page_id: int) -> None:
         """ページを索引化し、SQLiteのWeaviate IDと処理ステップを更新する."""
@@ -211,6 +225,16 @@ class VectorizerService:
 
     async def _save_page_to_weaviate(self, page_data: Page, chunks: list[str]) -> str:
         """ページ代表オブジェクト1件と本文チャンクを別コレクションへ保存する."""
+        return await retry_external_call(
+            lambda: self._save_page_once(page_data, chunks),
+            service="weaviate",
+            operation_name="save_page",
+            policy=self._retry_policy,
+            classify_error=self._classify_error,
+        )
+
+    async def _save_page_once(self, page_data: Page, chunks: list[str]) -> str:
+        """Perform one idempotent page-save attempt."""
         if page_data.id is None:
             raise VectorizerError("Page ID is required")
 
@@ -330,8 +354,8 @@ class VectorizerService:
             if not hasattr(result, "matches") or result.matches == 0:
                 return
 
-            for attempt in range(10):
-                await asyncio.sleep(0.1)
+            for attempt in range(settings.WEAVIATE_DELETE_POLL_ATTEMPTS):
+                await asyncio.sleep(settings.WEAVIATE_DELETE_POLL_INTERVAL)
                 remaining = await asyncio.to_thread(
                     collection.query.fetch_objects,
                     filters=Filter.by_property("pageId").equal(page_id),
@@ -340,9 +364,10 @@ class VectorizerService:
                 if not remaining.objects:
                     return
                 logger.debug(
-                    "Waiting for deletion for page %d (attempt %d/10)",
+                    "Waiting for deletion for page %d (attempt %d/%d)",
                     page_id,
                     attempt + 1,
+                    settings.WEAVIATE_DELETE_POLL_ATTEMPTS,
                 )
             raise VectorizerError(
                 f"Deletion of objects for page {page_id} "
@@ -353,6 +378,26 @@ class VectorizerService:
         except Exception as e:
             logger.error("Failed to delete objects for page %d: %s", page_id, e)
             raise
+
+    @staticmethod
+    def _classify_error(error: Exception) -> tuple[bool, str, float | None]:
+        """Classify nested Weaviate SDK errors while keeping messages private."""
+        current: BaseException | None = error
+        while current is not None:
+            if isinstance(current, (TimeoutError, WeaviateTimeoutError)):
+                return True, "timeout", None
+            if isinstance(
+                current,
+                (
+                    OSError,
+                    WeaviateConnectionError,
+                    WeaviateGRPCUnavailableError,
+                    WeaviateRetryError,
+                ),
+            ):
+                return True, "connection", None
+            current = current.__cause__
+        return False, "permanent", None
 
     async def _delete_existing_chunks(self, collection: Any, page_id: int) -> None:
         """後方互換用の内部エイリアス."""

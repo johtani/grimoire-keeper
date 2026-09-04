@@ -7,8 +7,9 @@ from pydantic import ValidationError
 from ..config import settings
 from ..models.external import FetchedDocument
 from ..utils.exceptions import JinaClientError
+from ..utils.retry import RetryPolicy, parse_retry_after, retry_external_call
 
-_TIMEOUT = 60.0
+_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
 class JinaClient:
@@ -23,6 +24,13 @@ class JinaClient:
         self.api_key = api_key or settings.JINA_API_KEY
         self.base_url = "https://r.jina.ai"
         self._client: httpx.AsyncClient | None = None
+        self._retry_policy = RetryPolicy(
+            attempts=settings.JINA_RETRY_ATTEMPTS,
+            backoff_base=settings.JINA_RETRY_BACKOFF_BASE,
+            backoff_max=settings.JINA_RETRY_BACKOFF_MAX,
+            jitter=settings.JINA_RETRY_JITTER,
+            retry_after_max=settings.JINA_RETRY_AFTER_MAX,
+        )
         self._headers = {
             "Accept": "application/json",
             "Authorization": f"Bearer {self.api_key}",
@@ -35,7 +43,14 @@ class JinaClient:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=_TIMEOUT)
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=settings.JINA_CONNECT_TIMEOUT,
+                    read=settings.JINA_READ_TIMEOUT,
+                    write=settings.JINA_WRITE_TIMEOUT,
+                    pool=settings.JINA_POOL_TIMEOUT,
+                )
+            )
         return self._client
 
     async def close(self) -> None:
@@ -61,14 +76,25 @@ class JinaClient:
 
         client = await self._get_client()
         try:
-            # The target URL is embedded in the Jina request path. HTTPX records
-            # transport exceptions after request hooks run, so suppress automatic
-            # spans here to prevent exception events from leaking that URL.
-            with suppress_http_instrumentation():
-                response = await client.get(
-                    f"{self.base_url}/{url}", headers=self._headers
-                )
-            response.raise_for_status()
+
+            async def request() -> httpx.Response:
+                # The target URL is embedded in the Jina request path. HTTPX records
+                # transport exceptions after request hooks run, so suppress automatic
+                # spans here to prevent exception events from leaking that URL.
+                with suppress_http_instrumentation():
+                    response = await client.get(
+                        f"{self.base_url}/{url}", headers=self._headers
+                    )
+                response.raise_for_status()
+                return response
+
+            response = await retry_external_call(
+                request,
+                service="jina",
+                operation_name="fetch_content",
+                policy=self._retry_policy,
+                classify_error=self._classify_error,
+            )
             raw_response = response.json()
             if not isinstance(raw_response, dict):
                 raise ValueError("response root must be an object")
@@ -94,6 +120,19 @@ class JinaClient:
             raise JinaClientError(f"Invalid Jina response{detail}") from None
         except Exception:
             raise JinaClientError("Invalid Jina response") from None
+
+    @staticmethod
+    def _classify_error(error: Exception) -> tuple[bool, str, float | None]:
+        """Classify Jina failures without exposing the requested URL."""
+        if isinstance(error, httpx.HTTPStatusError):
+            status = error.response.status_code
+            retry_after = parse_retry_after(error.response.headers.get("Retry-After"))
+            return status in _RETRYABLE_STATUS_CODES, f"http_{status}", retry_after
+        if isinstance(error, httpx.TimeoutException):
+            return True, "timeout", None
+        if isinstance(error, httpx.TransportError):
+            return True, "transport", None
+        return False, "permanent", None
 
     async def health_check(self) -> bool:
         """ヘルスチェック.

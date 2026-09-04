@@ -14,6 +14,7 @@ from grimoire_api.services.vectorizer import (
     validate_weaviate_schema,
 )
 from grimoire_api.utils.exceptions import VectorizerError
+from grimoire_api.utils.retry import RetryPolicy
 from weaviate.classes.config import DataType
 
 
@@ -806,3 +807,18 @@ class TestVectorizerService:
 
         with pytest.raises(VectorizerError, match=message):
             validate_weaviate_schema(mock_dependencies["weaviate_client"])
+
+    @pytest.mark.asyncio
+    async def test_save_retries_transient_weaviate_timeout(
+        self, vectorizer_service: VectorizerService
+    ) -> None:
+        page = MagicMock(spec=Page)
+        vectorizer_service._retry_policy = RetryPolicy(2, 0, 0, 0, 0)
+        vectorizer_service._save_page_once = AsyncMock(
+            side_effect=[TimeoutError("timed out"), "page-id"]
+        )
+
+        result = await vectorizer_service._save_page_to_weaviate(page, ["chunk"])
+
+        assert result == "page-id"
+        assert vectorizer_service._save_page_once.await_count == 2

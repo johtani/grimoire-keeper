@@ -72,6 +72,8 @@
    | `LLM_CONTEXT_WINDOW` | `32768` | Model context-window size / モデルのコンテキスト上限 |
    | `LLM_MAX_OUTPUT_TOKENS` | `1024` | Tokens reserved for each response / 各レスポンス用に確保する最大トークン数 |
    | `LLM_SUMMARY_CONCURRENCY` | `3` | Maximum concurrent partial-summary requests / 部分要約の最大同時リクエスト数 |
+   | `LLM_TIMEOUT` | `60` | Timeout in seconds for one LLM request / LLM 1リクエストのタイムアウト秒数 |
+   | `LLM_RETRY_ATTEMPTS` | `3` | Maximum attempts for a transient LLM failure / LLM一時障害の最大試行回数 |
 
    > **devcontainer を使う場合 / Using devcontainer:**
    > VS Code で `Ctrl+Shift+P` → "Dev Containers: Reopen in Container" を実行すると

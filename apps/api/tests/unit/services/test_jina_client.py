@@ -8,6 +8,7 @@ import httpx
 import pytest
 from grimoire_api.services.jina_client import JinaClient
 from grimoire_api.utils.exceptions import JinaClientError
+from grimoire_api.utils.retry import RetryPolicy
 
 
 class TestJinaClient:
@@ -97,6 +98,45 @@ class TestJinaClient:
         assert result.content == "Test content"
         assert result.source_url == test_url
         assert result.raw_response == expected_response
+
+    @pytest.mark.asyncio
+    async def test_fetch_content_retries_429_and_honors_retry_after(self: Any) -> None:
+        client = JinaClient(api_key="test_key")
+        client._retry_policy = RetryPolicy(2, 0, 0, 0, 3)
+        request = httpx.Request("GET", "https://r.jina.ai/https://example.com")
+        limited = httpx.Response(429, request=request, headers={"Retry-After": "10"})
+        success = MagicMock()
+        success.raise_for_status.return_value = None
+        success.json.return_value = {"data": {"title": "title", "content": "content"}}
+        client._client = AsyncMock()
+        client._client.get.side_effect = [
+            httpx.HTTPStatusError("limited", request=request, response=limited),
+            success,
+        ]
+
+        with patch(
+            "grimoire_api.utils.retry.asyncio.sleep", new_callable=AsyncMock
+        ) as sleep:
+            result = await client.fetch_content("https://example.com")
+
+        assert result.title == "title"
+        assert client._client.get.await_count == 2
+        sleep.assert_awaited_once_with(3)
+
+    @pytest.mark.asyncio
+    async def test_fetch_content_does_not_retry_permanent_401(self: Any) -> None:
+        client = JinaClient(api_key="test_key")
+        request = httpx.Request("GET", "https://r.jina.ai/https://example.com")
+        response = httpx.Response(401, request=request)
+        client._client = AsyncMock()
+        client._client.get.side_effect = httpx.HTTPStatusError(
+            "unauthorized", request=request, response=response
+        )
+
+        with pytest.raises(JinaClientError, match="HTTP error 401"):
+            await client.fetch_content("https://example.com")
+
+        client._client.get.assert_awaited_once()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("data", [{}, {"title": "", "content": "secret-content"}])

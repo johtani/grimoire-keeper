@@ -75,6 +75,21 @@ def test_embedding_defaults_are_pinned() -> None:
     assert settings.WEAVIATE_EMBEDDING_DIMENSIONS == 1536
 
 
+def test_retry_policy_defaults_are_bounded() -> None:
+    settings = make_settings()
+
+    assert settings.JINA_RETRY_ATTEMPTS == 3
+    assert settings.LLM_RETRY_ATTEMPTS == 3
+    assert settings.WEAVIATE_RETRY_ATTEMPTS == 3
+    assert settings.JINA_CONNECT_TIMEOUT == 5.0
+    assert settings.WEAVIATE_INSERT_TIMEOUT == 90.0
+
+
+def test_retry_backoff_cap_cannot_be_below_base() -> None:
+    with pytest.raises(ValueError, match="JINA_RETRY_BACKOFF_MAX"):
+        make_settings(JINA_RETRY_BACKOFF_BASE=2, JINA_RETRY_BACKOFF_MAX=1)
+
+
 @pytest.mark.parametrize(
     ("model", "dimensions"),
     [

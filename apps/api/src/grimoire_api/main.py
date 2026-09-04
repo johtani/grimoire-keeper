@@ -65,7 +65,13 @@ async def lifespan(app: FastAPI) -> Any:
         startup_interval=settings.WEAVIATE_STARTUP_RETRY_INTERVAL,
         startup_timeout=settings.WEAVIATE_STARTUP_TIMEOUT,
         connect_timeout=settings.WEAVIATE_CONNECT_TIMEOUT,
+        query_timeout=settings.WEAVIATE_QUERY_TIMEOUT,
+        insert_timeout=settings.WEAVIATE_INSERT_TIMEOUT,
         monitor_interval=settings.WEAVIATE_MONITOR_INTERVAL,
+        retry_backoff_base=settings.WEAVIATE_RETRY_BACKOFF_BASE,
+        retry_backoff_max=settings.WEAVIATE_RETRY_BACKOFF_MAX,
+        retry_jitter=settings.WEAVIATE_RETRY_JITTER,
+        retry_after_max=settings.WEAVIATE_RETRY_AFTER_MAX,
     )
     app.state.weaviate_manager = weaviate_manager
     try:

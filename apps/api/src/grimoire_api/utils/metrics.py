@@ -77,3 +77,13 @@ external_api_calls = meter.create_counter(
 external_api_duration = meter.create_histogram(
     "external_api_duration_seconds", description="Duration of external API calls"
 )
+
+external_api_attempts = meter.create_counter(
+    "external_api_attempts_total",
+    description="Total number of external API call attempts",
+)
+
+external_api_retries = meter.create_counter(
+    "external_api_retries_total",
+    description="Total number of external API retries",
+)

@@ -6,6 +6,14 @@ from collections.abc import Awaitable, Callable
 
 import weaviate
 from weaviate.config import AdditionalConfig, Timeout
+from weaviate.exceptions import (
+    WeaviateConnectionError,
+    WeaviateGRPCUnavailableError,
+    WeaviateStartUpError,
+    WeaviateTimeoutError,
+)
+
+from ..utils.retry import RetryPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +33,13 @@ class WeaviateConnectionManager:
         startup_interval: float = 5.0,
         startup_timeout: float = 60.0,
         connect_timeout: float = 5.0,
+        query_timeout: float = 30.0,
+        insert_timeout: float = 90.0,
         monitor_interval: float = 5.0,
+        retry_backoff_base: float = 1.0,
+        retry_backoff_max: float = 10.0,
+        retry_jitter: float = 0.5,
+        retry_after_max: float = 30.0,
         on_connected: ConnectionCallback | None = None,
         on_disconnected: DisconnectionCallback | None = None,
     ) -> None:
@@ -36,10 +50,20 @@ class WeaviateConnectionManager:
         self.startup_interval = startup_interval
         self.startup_timeout = startup_timeout
         self.connect_timeout = connect_timeout
+        self.query_timeout = query_timeout
+        self.insert_timeout = insert_timeout
         self.monitor_interval = monitor_interval
+        self.retry_policy = RetryPolicy(
+            attempts=startup_attempts,
+            backoff_base=retry_backoff_base,
+            backoff_max=retry_backoff_max,
+            jitter=retry_jitter,
+            retry_after_max=retry_after_max,
+        )
         self.on_connected = on_connected
         self.on_disconnected = on_disconnected
         self.client: weaviate.WeaviateClient | None = None
+        self._retry_connection = True
         self._monitor_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
 
@@ -61,11 +85,18 @@ class WeaviateConnectionManager:
                 attempt, self.startup_attempts, remaining, deadline=deadline
             ):
                 break
+            if not self._retry_connection:
+                logger.error("Weaviate connection failed permanently; not retrying")
+                break
             if attempt < self.startup_attempts:
                 remaining = deadline - loop.time()
                 if remaining <= 0:
                     break
-                delay = min(self.startup_interval, remaining)
+                delay = min(
+                    self.retry_policy.delay(attempt),
+                    self.startup_interval,
+                    remaining,
+                )
                 logger.info(
                     "Retrying Weaviate connection in %.1f seconds",
                     delay,
@@ -138,7 +169,11 @@ class WeaviateConnectionManager:
                     port=self.port,
                     headers={"X-OpenAI-Api-Key": self.api_key},
                     additional_config=AdditionalConfig(
-                        timeout=Timeout(init=timeout, query=timeout)
+                        timeout=Timeout(
+                            init=timeout,
+                            query=self.query_timeout,
+                            insert=self.insert_timeout,
+                        )
                     ),
                 )
                 ready = await asyncio.to_thread(client.is_ready)
@@ -154,13 +189,37 @@ class WeaviateConnectionManager:
                         async with asyncio.timeout(callback_timeout):
                             await self.on_connected(client)
                 self.client = client
+                self._retry_connection = True
                 logger.info("Weaviate connection established%s", attempt_text)
                 return True
             except Exception as exc:
                 if "client" in locals():
                     await self._close_client(client)
+                self._retry_connection = self.is_retryable_error(exc) or isinstance(
+                    exc, RuntimeError
+                )
                 logger.warning("Weaviate connection failed%s: %s", attempt_text, exc)
                 return False
+
+    @staticmethod
+    def is_retryable_error(error: Exception) -> bool:
+        """Return whether a Weaviate connection failure is transient."""
+        current: BaseException | None = error
+        while current is not None:
+            if isinstance(
+                current,
+                (
+                    TimeoutError,
+                    OSError,
+                    WeaviateConnectionError,
+                    WeaviateGRPCUnavailableError,
+                    WeaviateStartUpError,
+                    WeaviateTimeoutError,
+                ),
+            ):
+                return True
+            current = current.__cause__
+        return False
 
     async def _disconnect(
         self, expected_client: weaviate.WeaviateClient | None = None
@@ -193,8 +252,9 @@ class WeaviateConnectionManager:
                 await asyncio.sleep(self.monitor_interval)
                 client = self.client
                 if client is None:
-                    logger.info("Attempting background Weaviate reconnection")
-                    await self._connect()
+                    if self._retry_connection:
+                        logger.info("Attempting background Weaviate reconnection")
+                        await self._connect()
                     continue
                 if await self.get_ready_client() is None:
                     await self._connect()

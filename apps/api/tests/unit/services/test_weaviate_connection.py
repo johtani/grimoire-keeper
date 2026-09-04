@@ -40,7 +40,12 @@ async def test_start_connects_and_stop_closes_client() -> None:
     client.is_ready.return_value = True
     on_connected = AsyncMock()
     on_disconnected = AsyncMock()
-    manager = make_manager(on_connected=on_connected, on_disconnected=on_disconnected)
+    manager = make_manager(
+        on_connected=on_connected,
+        on_disconnected=on_disconnected,
+        query_timeout=12,
+        insert_timeout=34,
+    )
 
     with patch(
         "grimoire_api.services.weaviate_connection.weaviate.connect_to_local",
@@ -50,6 +55,9 @@ async def test_start_connects_and_stop_closes_client() -> None:
         assert manager.get_client() is client
         assert manager.is_available
         connect.assert_called_once()
+        timeout = connect.call_args.kwargs["additional_config"].timeout
+        assert timeout.query == 12
+        assert timeout.insert == 34
         on_connected.assert_awaited_once_with(client)
 
         await asyncio.wait_for(manager.stop(), timeout=1)
