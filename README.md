@@ -82,28 +82,125 @@
    uv sync --all-packages
    ```
 
-4. **Start Weaviate / Weaviateの起動**
+4. **Check the local LLM / ローカルLLMの確認**
    ```bash
-   docker compose -f docker-compose.prod.yml up -d weaviate
+   curl --fail-with-body http://localhost:8080/v1/models
    ```
 
-5. **Initialize database / データベースの初期化**
+   The default Compose configuration connects from the worker container to the
+   host LLM at `http://host.docker.internal:8080/v1`. When the worker runs
+   directly on the host, use `LLM_API_BASE=http://localhost:8080/v1`. The LLM
+   must listen on an address reachable from Docker, not only `127.0.0.1`.
+
+   デフォルトのCompose構成では、workerコンテナからホスト上のLLMへ
+   `http://host.docker.internal:8080/v1` で接続します。workerをホスト上で直接
+   実行する場合は `LLM_API_BASE=http://localhost:8080/v1` を使用します。LLMは
+   `127.0.0.1` だけでなく、Dockerから到達可能なアドレスでlistenしてください。
+
+5. **Start all services (recommended) / 全サービスの起動（推奨）**
    ```bash
-   uv run python scripts/init_database.py init
-   # Weaviate が起動していない場合は SQLite のみ先に初期化可能:
-   # uv run python scripts/init_database.py sqlite
+   # First run only: prepare bind-mount directories for the non-root containers
+   sudo mkdir -p /opt/grimoire-keeper-data/{database,json,migration,weaviate-1.38.8}
+   sudo chown -R 10001:10001 \
+     /opt/grimoire-keeper-data/{database,json,migration}
+   sudo chmod 0750 /opt/grimoire-keeper-data/{database,json,migration}
+   sudo chown -R "$USER":"$USER" \
+     /opt/grimoire-keeper-data/weaviate-1.38.8
+
+   bash scripts/start.sh -d
    ```
 
-6. **Start the API / APIの起動**
+   This starts Web, API, the singleton Job Worker, and Weaviate with secrets
+   injected by Bitwarden Secrets Manager. Do not scale the worker beyond one
+   process for the same SQLite database.
+
+   Bitwarden Secrets Managerからシークレットを注入し、Web、API、単一のJob Worker、
+   Weaviateを起動します。同じSQLiteデータベースに対してworkerを複数起動しないでください。
+
+6. **Verify all services / 全サービスの動作確認**
    ```bash
-   bash scripts/dev.sh
+   # API readiness (also checks SQLite and Weaviate)
+   curl --fail-with-body http://localhost:8000/api/v1/health/ready
+
+   # Job Worker container health
+   docker compose -f docker-compose.prod.yml ps worker
+
+   # Weaviate readiness
+   curl --fail-with-body http://localhost:8089/v1/.well-known/ready
+
+   # Local LLM (when using the default local configuration)
+   curl --fail-with-body http://localhost:8080/v1/models
+
+   # Web UI
+   # Open http://localhost:8001 in a browser
    ```
 
-7. **Verify / 動作確認**
+7. **Process a URL and search / URLを処理して検索**
    ```bash
-   curl http://localhost:8000/api/v1/health
-   # ブラウザで http://localhost:8000/docs を開いて API ドキュメントを確認
+   curl -X POST "http://localhost:8000/api/v1/process-url" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.com", "memo": "Quick Start check"}'
+
+   # Replace {page_id} with the page_id returned above and wait for completion.
+   curl "http://localhost:8000/api/v1/process-status/{page_id}"
+
+   curl -X POST "http://localhost:8000/api/v1/search" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "example domain", "limit": 5}'
    ```
+
+   The registration request returns `202 Accepted`. Repeat the status request
+   until processing is completed, then run the search.
+
+   URL登録は `202 Accepted` を返します。処理が完了するまで状態確認を繰り返してから、
+   検索を実行してください。
+
+### Manual development startup / 開発環境での個別起動
+
+To run services individually, initialize the database and start each command in
+a separate terminal. Set the worker-only credentials (`JINA_API_KEY`,
+`OPENAI_API_KEY`, and, for a cloud LLM, `LLM_API_KEY`) securely in the worker's
+environment before starting it.
+
+サービスを個別に実行する場合は、データベースを初期化し、各コマンドを別ターミナルで
+起動します。worker起動前に、worker専用の認証情報（`JINA_API_KEY`、
+`OPENAI_API_KEY`、クラウドLLM利用時は `LLM_API_KEY`）を安全に環境へ設定してください。
+
+```bash
+# Terminal 1: Weaviate
+docker compose -f docker-compose.prod.yml up -d weaviate
+
+# Initialize once Weaviate is ready
+uv run python scripts/init_database.py init
+
+# Terminal 2: API
+bash scripts/dev.sh
+
+# Terminal 3: exactly one Job Worker
+uv run --package grimoire-api python -m grimoire_api.worker
+```
+
+### Jobs remain queued / ジョブが queued のままの場合
+
+The API only enqueues work. If the Job Worker is not running, processing remains
+`queued`. Check the worker state and logs, then verify its required credentials
+and its connections to Weaviate and the LLM:
+
+APIはジョブをキューへ登録するだけです。Job Workerが起動していない場合、処理は
+`queued` のまま進みません。workerの状態とログを確認し、必須の認証情報、Weaviate、
+LLMへの接続を確認してください。
+
+```bash
+docker compose -f docker-compose.prod.yml ps worker
+docker compose -f docker-compose.prod.yml logs --tail=100 worker
+docker compose -f docker-compose.prod.yml config | grep -A1 LLM_API_BASE
+```
+
+See [Development](docs/development.md#docker-からローカル-llm-へ接続できない場合) for
+container-side LLM checks and detailed troubleshooting.
+
+コンテナ内からのLLM疎通確認と詳細な診断方法は
+[Development](docs/development.md#docker-からローカル-llm-へ接続できない場合)を参照してください。
 
 ## 📖 Usage / 使用方法
 
@@ -444,11 +541,13 @@ DATABASE_PATH=./grimoire.db
 
 ### Docker Compose
 
-The project includes a `docker-compose.prod.yml` for running Weaviate:
-プロジェクトにはWeaviate実行用の`docker-compose.prod.yml`が含まれています：
+The project includes `docker-compose.prod.yml` for running Web, API, the Job
+Worker, Weaviate, and the optional Slack bot:
+プロジェクトにはWeb、API、Job Worker、Weaviate、任意のSlack botを実行するための
+`docker-compose.prod.yml`が含まれています：
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d weaviate
+bash scripts/start.sh -d
 ```
 
 ## 🤝 Contributing / 貢献
