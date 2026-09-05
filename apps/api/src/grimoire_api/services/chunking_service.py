@@ -1,8 +1,9 @@
 """Text chunking service using Chonkie."""
 
+import json
 from pathlib import Path
 
-from chonkie import MarkdownChef, RecursiveChunker
+from chonkie import MarkdownChef, RecursiveChunker, RecursiveRules
 from langdetect import LangDetectException, detect
 
 from ..models.external import FetchedDocument
@@ -40,9 +41,7 @@ class ChunkingService:
         # デフォルトチャンカー（日本語）
         self.default_chunker = self._create_chunker("markdown_jp.json")
         # 英語チャンカー（キャッシュ）
-        self.en_chunker = RecursiveChunker.from_recipe(
-            "markdown", lang="en", chunk_size=chunk_size
-        )
+        self.en_chunker = self._create_chunker("markdown_en.json")
 
     def _create_chunker(self, recipe_file: str) -> RecursiveChunker:
         """レシピファイルからチャンカーを作成.
@@ -54,12 +53,25 @@ class ChunkingService:
             RecursiveChunkerインスタンス
         """
         recipe_path = self.config_dir / recipe_file
-        if recipe_path.exists():
-            return RecursiveChunker.from_recipe(
-                path=str(recipe_path), chunk_size=self.chunk_size
-            )
-        # ファイルがない場合はデフォルトチャンカーを作成
-        return RecursiveChunker(chunk_size=self.chunk_size)
+        try:
+            recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+            rules_data = recipe["recipe"]["recursive_rules"]
+            rules = RecursiveRules.from_dict(rules_data)
+        except (
+            OSError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ValueError(
+                f"Failed to load chunking recipe: {recipe_path}"
+            ) from error
+
+        return RecursiveChunker(
+            rules=rules,
+            chunk_size=self.chunk_size,
+        )
 
     def _detect_language(self, text: str) -> str | None:
         """テキストから言語を検出する.

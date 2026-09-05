@@ -1,0 +1,62 @@
+{
+    "name": "markdown",
+    "schema": "v1",
+    "description": "Recipe for markdown documents in English",
+    "language": "en",
+    "metadata": {
+        "version": "0.1.0",
+        "author": "Chonkie Team",
+        "source": "https://huggingface.co/datasets/chonkie-ai/recipes",
+        "source_revision": "bd588a8b1beb3b387ab999f1f86806e7fcea3dd8"
+    },
+    "recipe": {
+        "delimiters": [". ", "! ", "? ", "\n"],
+        "include_delim": "prev",
+        "recursive_rules": {
+            "levels": [
+                {
+                    "delimiters": [
+                        "######",
+                        "#####",
+                        "####",
+                        "###",
+                        "##",
+                        "#"
+                    ],
+                    "whitespace": false,
+                    "include_delim": "next"
+                },
+                {
+                    "delimiters": [
+                        "\n\n",
+                        "\n\r"
+                    ],
+                    "whitespace": false,
+                    "include_delim": "prev"
+                },
+                {
+                    "delimiters": [
+                        "\n",
+                        "\r"
+                    ],
+                    "whitespace": false,
+                    "include_delim": "prev"
+                },
+                {
+                    "delimiters": [
+                        ". ",
+                        "! ",
+                        "? "
+                    ],
+                    "whitespace": false,
+                    "include_delim": "prev"
+                },
+                {
+                    "delimiters": null,
+                    "whitespace": false,
+                    "include_delim": "prev"
+                }
+            ]
+        }
+    }
+}
