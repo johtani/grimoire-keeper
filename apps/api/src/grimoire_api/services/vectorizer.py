@@ -1,8 +1,10 @@
 """Vectorization service for Weaviate."""
 
 import asyncio
+import json
 import logging
 from enum import Enum
+from time import monotonic
 from typing import Any, NoReturn
 
 import weaviate
@@ -145,21 +147,69 @@ def validate_weaviate_schema(client: weaviate.WeaviateClient) -> None:
 
 
 def _insert_objects_sync(
-    collection: Any, objects_to_insert: list[tuple[dict[str, Any], Any]]
+    collection: Any,
+    objects_to_insert: list[tuple[dict[str, Any], Any]],
+    *,
+    max_objects: int,
+    max_bytes: int,
+    concurrent_requests: int,
 ) -> None:
     """Weaviateオブジェクトをバッチ挿入し、個別エラーを検査する."""
-    with collection.batch.fixed_size(
-        batch_size=max(1, len(objects_to_insert)), concurrent_requests=1
-    ) as batch:
-        for properties, object_uuid in objects_to_insert:
-            batch.add_object(properties=properties, uuid=object_uuid)
+    batches: list[list[tuple[dict[str, Any], Any]]] = []
+    batch_sizes: list[int] = []
+    current_batch: list[tuple[dict[str, Any], Any]] = []
+    current_size = 0
 
-    failed_objects = collection.batch.failed_objects
-    if failed_objects:
-        messages = "; ".join(str(failure.message) for failure in failed_objects)
-        raise VectorizerError(
-            f"Failed to insert {len(failed_objects)} Weaviate objects: {messages}"
+    for properties, object_uuid in objects_to_insert:
+        object_size = len(
+            json.dumps(
+                {"properties": properties, "uuid": str(object_uuid)},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
         )
+        if object_size > max_bytes:
+            raise VectorizerError(
+                "Weaviate object exceeds batch byte limit: "
+                f"page_id={properties.get('pageId')}, uuid={object_uuid}, "
+                f"estimated_bytes={object_size}, max_bytes={max_bytes}"
+            )
+        if current_batch and (
+            len(current_batch) >= max_objects or current_size + object_size > max_bytes
+        ):
+            batches.append(current_batch)
+            batch_sizes.append(current_size)
+            current_batch = []
+            current_size = 0
+        current_batch.append((properties, object_uuid))
+        current_size += object_size
+
+    if current_batch:
+        batches.append(current_batch)
+        batch_sizes.append(current_size)
+
+    for batch_number, (objects, estimated_bytes) in enumerate(
+        zip(batches, batch_sizes, strict=True), start=1
+    ):
+        logger.info(
+            "Sending Weaviate batch %d/%d: objects=%d estimated_bytes=%d",
+            batch_number,
+            len(batches),
+            len(objects),
+            estimated_bytes,
+        )
+        with collection.batch.fixed_size(
+            batch_size=len(objects), concurrent_requests=concurrent_requests
+        ) as batch:
+            for properties, object_uuid in objects:
+                batch.add_object(properties=properties, uuid=object_uuid)
+
+        failed_objects = collection.batch.failed_objects
+        if failed_objects:
+            messages = "; ".join(str(failure.message) for failure in failed_objects)
+            raise VectorizerError(
+                f"Failed to insert {len(failed_objects)} Weaviate objects: {messages}"
+            )
 
 
 class VectorizerService:
@@ -267,6 +317,9 @@ class VectorizerService:
                 _insert_objects_sync,
                 page_collection,
                 [(page_properties, page_uuid)],
+                max_objects=settings.WEAVIATE_BATCH_MAX_OBJECTS,
+                max_bytes=settings.WEAVIATE_BATCH_MAX_BYTES,
+                concurrent_requests=settings.WEAVIATE_BATCH_CONCURRENCY,
             )
 
             chunk_objects = [
@@ -281,7 +334,12 @@ class VectorizerService:
                 for chunk_id, content in enumerate(chunks)
             ]
             await asyncio.to_thread(
-                _insert_objects_sync, chunk_collection, chunk_objects
+                _insert_objects_sync,
+                chunk_collection,
+                chunk_objects,
+                max_objects=settings.WEAVIATE_BATCH_MAX_OBJECTS,
+                max_bytes=settings.WEAVIATE_BATCH_MAX_BYTES,
+                concurrent_requests=settings.WEAVIATE_BATCH_CONCURRENCY,
             )
             return str(page_uuid)
         except Exception as e:
@@ -354,25 +412,50 @@ class VectorizerService:
             if not hasattr(result, "matches") or result.matches == 0:
                 return
 
-            for attempt in range(settings.WEAVIATE_DELETE_POLL_ATTEMPTS):
-                await asyncio.sleep(settings.WEAVIATE_DELETE_POLL_INTERVAL)
-                remaining = await asyncio.to_thread(
-                    collection.query.fetch_objects,
-                    filters=Filter.by_property("pageId").equal(page_id),
-                    limit=1,
+            started_at = monotonic()
+            deadline = started_at + settings.WEAVIATE_DELETE_TIMEOUT
+            attempt = 0
+            while True:
+                remaining_time = deadline - monotonic()
+                if remaining_time <= 0:
+                    break
+                await asyncio.sleep(
+                    min(settings.WEAVIATE_DELETE_POLL_INTERVAL, remaining_time)
                 )
+                attempt += 1
+                remaining_time = deadline - monotonic()
+                if remaining_time <= 0:
+                    break
+                try:
+                    remaining = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            collection.query.fetch_objects,
+                            filters=Filter.by_property("pageId").equal(page_id),
+                            limit=1,
+                        ),
+                        timeout=remaining_time,
+                    )
+                except TimeoutError:
+                    break
                 if not remaining.objects:
                     return
                 logger.debug(
-                    "Waiting for deletion for page %d (attempt %d/%d)",
+                    "Waiting for deletion for page %d "
+                    "(attempt=%d interval=%.3fs timeout=%.3fs condition=pageId==%d)",
                     page_id,
-                    attempt + 1,
-                    settings.WEAVIATE_DELETE_POLL_ATTEMPTS,
+                    attempt,
+                    settings.WEAVIATE_DELETE_POLL_INTERVAL,
+                    settings.WEAVIATE_DELETE_TIMEOUT,
+                    page_id,
                 )
-            raise VectorizerError(
-                f"Deletion of objects for page {page_id} "
-                "did not complete within timeout"
+            message = (
+                f"Deletion of objects for page {page_id} did not complete within "
+                f"timeout={settings.WEAVIATE_DELETE_TIMEOUT}s "
+                f"(poll_interval={settings.WEAVIATE_DELETE_POLL_INTERVAL}s, "
+                f"condition=pageId=={page_id})"
             )
+            logger.error(message)
+            raise VectorizerError(message) from TimeoutError(message)
         except VectorizerError:
             raise
         except Exception as e:

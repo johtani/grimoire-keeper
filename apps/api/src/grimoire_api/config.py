@@ -69,8 +69,11 @@ class Settings(BaseSettings):
     WEAVIATE_RETRY_BACKOFF_MAX: float = Field(default=5.0, ge=0)
     WEAVIATE_RETRY_JITTER: float = Field(default=0.25, ge=0)
     WEAVIATE_RETRY_AFTER_MAX: float = Field(default=10.0, ge=0)
-    WEAVIATE_DELETE_POLL_ATTEMPTS: int = Field(default=10, ge=1)
+    WEAVIATE_BATCH_MAX_OBJECTS: int = Field(default=100, ge=1)
+    WEAVIATE_BATCH_MAX_BYTES: int = Field(default=10 * 1024 * 1024, ge=1)
+    WEAVIATE_BATCH_CONCURRENCY: int = Field(default=1, ge=1)
     WEAVIATE_DELETE_POLL_INTERVAL: float = Field(default=0.1, ge=0)
+    WEAVIATE_DELETE_TIMEOUT: float = Field(default=1.0, gt=0)
     WEAVIATE_MONITOR_INTERVAL: float = 5.0
     WEAVIATE_WORKER_STOP_TIMEOUT: float = 10.0
 

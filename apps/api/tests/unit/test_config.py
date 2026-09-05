@@ -85,6 +85,33 @@ def test_retry_policy_defaults_are_bounded() -> None:
     assert settings.WEAVIATE_INSERT_TIMEOUT == 90.0
 
 
+def test_weaviate_batch_and_delete_wait_defaults_are_bounded() -> None:
+    settings = make_settings()
+
+    assert settings.WEAVIATE_BATCH_MAX_OBJECTS == 100
+    assert settings.WEAVIATE_BATCH_MAX_BYTES == 10 * 1024 * 1024
+    assert settings.WEAVIATE_BATCH_CONCURRENCY == 1
+    assert settings.WEAVIATE_DELETE_POLL_INTERVAL == 0.1
+    assert settings.WEAVIATE_DELETE_TIMEOUT == 1.0
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("WEAVIATE_BATCH_MAX_OBJECTS", 0),
+        ("WEAVIATE_BATCH_MAX_BYTES", 0),
+        ("WEAVIATE_BATCH_CONCURRENCY", 0),
+        ("WEAVIATE_DELETE_POLL_INTERVAL", -0.1),
+        ("WEAVIATE_DELETE_TIMEOUT", 0),
+    ],
+)
+def test_weaviate_batch_and_delete_wait_reject_invalid_values(
+    name: str, value: int | float
+) -> None:
+    with pytest.raises(ValidationError):
+        make_settings(**{name: value})  # type: ignore[arg-type]
+
+
 def test_retry_backoff_cap_cannot_be_below_base() -> None:
     with pytest.raises(ValueError, match="JINA_RETRY_BACKOFF_MAX"):
         make_settings(JINA_RETRY_BACKOFF_BASE=2, JINA_RETRY_BACKOFF_MAX=1)
