@@ -77,6 +77,24 @@ More detailed content here.
         assert chunker1 is chunker2
         assert chunker1 is chunking_service.en_chunker
 
+    def test_chunk_english_content_without_hugging_face_access(self):
+        """Test English chunking does not access Hugging Face at runtime."""
+        with patch(
+            "huggingface_hub.hf_hub_download",
+            side_effect=AssertionError("Hugging Face access is not allowed"),
+        ) as download:
+            service = ChunkingService(chunk_size=50)
+            chunks = service.chunk_text(
+                "First English sentence. Second English sentence. Third sentence.",
+                language="en",
+            )
+
+        assert chunks == [
+            "First English sentence. ",
+            "Second English sentence. Third sentence.",
+        ]
+        download.assert_not_called()
+
     def test_detect_language_returns_language_code(self, chunking_service):
         """Test that _detect_language returns a language code for valid text."""
         result = chunking_service._detect_language("This is an English text.")
