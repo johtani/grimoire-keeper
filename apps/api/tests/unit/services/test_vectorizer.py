@@ -1,5 +1,6 @@
 """Test vectorizer service."""
 
+import json
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
@@ -11,11 +12,122 @@ from grimoire_api.models.database import Page, ProcessingStep
 from grimoire_api.services.vectorizer import (
     EXPECTED_PROPERTIES,
     VectorizerService,
+    _insert_objects_sync,
     validate_weaviate_schema,
 )
 from grimoire_api.utils.exceptions import VectorizerError
 from grimoire_api.utils.retry import RetryPolicy
 from weaviate.classes.config import DataType
+
+
+def _estimated_object_bytes(properties: dict[str, Any], object_uuid: str) -> int:
+    return len(
+        json.dumps(
+            {"properties": properties, "uuid": object_uuid},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+
+
+class TestInsertObjectsSync:
+    @staticmethod
+    def _collection() -> MagicMock:
+        collection = MagicMock()
+        collection.batch.failed_objects = []
+        return collection
+
+    @pytest.mark.parametrize(
+        ("max_objects", "expected_batches"), [(4, 1), (3, 1), (2, 2)]
+    )
+    def test_splits_at_object_count_boundary(
+        self, max_objects: int, expected_batches: int
+    ) -> None:
+        collection = self._collection()
+        objects = [
+            ({"pageId": 7, "content": str(index)}, f"uuid-{index}")
+            for index in range(3)
+        ]
+
+        _insert_objects_sync(
+            collection,
+            objects,
+            max_objects=max_objects,
+            max_bytes=10_000,
+            concurrent_requests=2,
+        )
+
+        assert collection.batch.fixed_size.call_count == expected_batches
+        for call in collection.batch.fixed_size.call_args_list:
+            assert call.kwargs["concurrent_requests"] == 2
+
+    @pytest.mark.parametrize(("offset", "expected_batches"), [(0, 1), (-1, 2)])
+    def test_splits_at_estimated_byte_boundary(
+        self, offset: int, expected_batches: int
+    ) -> None:
+        collection = self._collection()
+        objects = [
+            ({"pageId": 7, "content": "あ"}, "uuid-1"),
+            ({"pageId": 7, "content": "bb"}, "uuid-2"),
+        ]
+        exact_size = sum(
+            _estimated_object_bytes(properties, object_uuid)
+            for properties, object_uuid in objects
+        )
+
+        _insert_objects_sync(
+            collection,
+            objects,
+            max_objects=10,
+            max_bytes=exact_size + offset,
+            concurrent_requests=1,
+        )
+
+        assert collection.batch.fixed_size.call_count == expected_batches
+
+    def test_rejects_single_object_over_byte_limit(self) -> None:
+        collection = self._collection()
+        properties = {"pageId": 42, "content": "oversized"}
+        object_uuid = "large-uuid"
+        estimated_bytes = _estimated_object_bytes(properties, object_uuid)
+
+        with pytest.raises(
+            VectorizerError,
+            match=(
+                rf"page_id=42, uuid=large-uuid, estimated_bytes={estimated_bytes}, "
+                rf"max_bytes={estimated_bytes - 1}"
+            ),
+        ):
+            _insert_objects_sync(
+                collection,
+                [(properties, object_uuid)],
+                max_objects=10,
+                max_bytes=estimated_bytes - 1,
+                concurrent_requests=1,
+            )
+
+        collection.batch.fixed_size.assert_not_called()
+
+    def test_logs_each_batch_diagnostics(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        collection = self._collection()
+        objects = [
+            ({"pageId": 7, "content": "one"}, "uuid-1"),
+            ({"pageId": 7, "content": "two"}, "uuid-2"),
+        ]
+
+        with caplog.at_level("INFO", logger="grimoire_api.services.vectorizer"):
+            _insert_objects_sync(
+                collection,
+                objects,
+                max_objects=1,
+                max_bytes=10_000,
+                concurrent_requests=1,
+            )
+
+        assert "Sending Weaviate batch 1/2: objects=1 estimated_bytes=" in caplog.text
+        assert "Sending Weaviate batch 2/2: objects=1 estimated_bytes=" in caplog.text
 
 
 class TestVectorizerService:
@@ -433,7 +545,7 @@ class TestVectorizerService:
     async def test_delete_existing_chunks_timeout(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
-        """タイムアウト（10回超え）で VectorizerError が発生するテスト."""
+        """deadline 超過時に待機条件を含む VectorizerError が発生する."""
         mock_collection = MagicMock()
         mock_result = MagicMock()
         mock_result.matches = 5
@@ -445,15 +557,23 @@ class TestVectorizerService:
         remaining_with_objects.objects = [MagicMock()]
         mock_collection.query.fetch_objects.return_value = remaining_with_objects
 
-        with patch(
-            "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
+        with (
+            patch(
+                "grimoire_api.services.vectorizer.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "grimoire_api.services.vectorizer.monotonic",
+                side_effect=[0.0, 0.0, 0.0, 1.0],
+            ),
         ):
             with pytest.raises(
-                VectorizerError, match="did not complete within timeout"
+                VectorizerError,
+                match=r"page 1.*timeout=1.0s.*poll_interval=0.1s.*pageId==1",
             ):
                 await vectorizer_service._delete_existing_chunks(mock_collection, 1)
 
-        assert mock_collection.query.fetch_objects.call_count == 10
+        assert mock_collection.query.fetch_objects.call_count == 1
 
     @pytest.mark.asyncio
     async def test_save_chunks_uses_asyncio_to_thread(
@@ -484,8 +604,6 @@ class TestVectorizerService:
             await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
 
         # asyncio.to_thread が _insert_objects_sync で呼ばれたことを確認
-        from grimoire_api.services.vectorizer import _insert_objects_sync
-
         insert_calls = [
             call
             for call in mock_to_thread.call_args_list
