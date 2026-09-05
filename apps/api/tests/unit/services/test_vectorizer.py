@@ -576,6 +576,41 @@ class TestVectorizerService:
         assert mock_collection.query.fetch_objects.call_count == 1
 
     @pytest.mark.asyncio
+    async def test_delete_existing_chunks_bounds_query_by_remaining_timeout(
+        self, vectorizer_service: VectorizerService
+    ) -> None:
+        mock_collection = MagicMock()
+        mock_collection.data.delete_many.return_value = SimpleNamespace(
+            matches=1, failed=0
+        )
+        wait_timeouts: list[float] = []
+
+        async def timeout_wait_for(awaitable: Any, *, timeout: float) -> Any:
+            wait_timeouts.append(timeout)
+            awaitable.close()
+            raise TimeoutError
+
+        with (
+            patch(
+                "grimoire_api.services.vectorizer.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "grimoire_api.services.vectorizer.asyncio.wait_for",
+                new=timeout_wait_for,
+            ),
+            patch(
+                "grimoire_api.services.vectorizer.monotonic",
+                side_effect=[0.0, 0.0, 0.25],
+            ),
+        ):
+            with pytest.raises(VectorizerError, match=r"timeout=1.0s") as exc_info:
+                await vectorizer_service._delete_existing_objects(mock_collection, 9)
+
+        assert isinstance(exc_info.value.__cause__, TimeoutError)
+        assert wait_timeouts == [pytest.approx(0.75)]
+
+    @pytest.mark.asyncio
     async def test_save_chunks_uses_asyncio_to_thread(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:

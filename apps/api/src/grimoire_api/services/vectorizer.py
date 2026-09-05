@@ -415,17 +415,28 @@ class VectorizerService:
             started_at = monotonic()
             deadline = started_at + settings.WEAVIATE_DELETE_TIMEOUT
             attempt = 0
-            while monotonic() < deadline:
+            while True:
                 remaining_time = deadline - monotonic()
+                if remaining_time <= 0:
+                    break
                 await asyncio.sleep(
                     min(settings.WEAVIATE_DELETE_POLL_INTERVAL, remaining_time)
                 )
                 attempt += 1
-                remaining = await asyncio.to_thread(
-                    collection.query.fetch_objects,
-                    filters=Filter.by_property("pageId").equal(page_id),
-                    limit=1,
-                )
+                remaining_time = deadline - monotonic()
+                if remaining_time <= 0:
+                    break
+                try:
+                    remaining = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            collection.query.fetch_objects,
+                            filters=Filter.by_property("pageId").equal(page_id),
+                            limit=1,
+                        ),
+                        timeout=remaining_time,
+                    )
+                except TimeoutError:
+                    break
                 if not remaining.objects:
                     return
                 logger.debug(
@@ -444,7 +455,7 @@ class VectorizerService:
                 f"condition=pageId=={page_id})"
             )
             logger.error(message)
-            raise VectorizerError(message)
+            raise VectorizerError(message) from TimeoutError(message)
         except VectorizerError:
             raise
         except Exception as e:
