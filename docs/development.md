@@ -485,9 +485,31 @@ APIへの切り替えは行いません。
 本文が空、タイトルが空、またはJSONが壊れている場合も同様です。
 
 ただし移行全体は停止せず、これらを修復待ちとして再インデックスから除外し、
-`data/migration/repair-pending.json`へ記録します。SQLiteとJSONは変更しません。
-Weaviateや埋め込みAPIの障害は修復待ちにせず、移行を失敗させます。移行後はレポートの
-ページをURL修正後にダウンロード工程から再処理します。
+`/opt/grimoire-keeper-data/migration/repair-pending.json`へ記録します。このホスト上の
+永続ファイルが本番環境での正本です。通常起動するAPIは同じディレクトリをread-onlyで
+マウントし、workerはマウントしません。SQLiteとJSONは変更しません。Weaviateや埋め込み
+APIの障害は修復待ちにせず、移行を失敗させます。
+
+移行後は管理画面の `Import Repair Report`、または次のAPIで正本をSQLiteのrepair caseへ
+取り込みます。取り込んだ対象と理由は管理画面のrepair一覧、または
+`GET /api/v1/repairs?status=all` で参照し、URL修正後にダウンロード工程から再処理します。
+
+```bash
+curl -fsS -X POST http://localhost:8000/api/v1/repairs/import
+curl -fsS 'http://localhost:8000/api/v1/repairs?status=all'
+```
+
+reportは自動削除しません。少なくとも旧Weaviateボリュームと移行前バックアップの
+ロールバック保持期間が終了し、全repair caseの確認が完了するまで保持します。cleanup時は
+管理画面または上記APIで未解決caseがないことを確認し、正本のパスを再確認してから
+
+```bash
+sudo test -f /opt/grimoire-keeper-data/migration/repair-pending.json
+sudo rm -- /opt/grimoire-keeper-data/migration/repair-pending.json
+```
+
+の順に対象ファイルだけを削除します。ディレクトリ自体は次回の移行・repair report用に
+残します。
 
 ### 検証
 
@@ -595,7 +617,9 @@ bash scripts/deploy.sh
 `tools/search_regression/` にあり、将来のWeaviate更新、埋め込みモデル変更、検索設定
 変更にも再利用できます。
 
-旧ボリュームのロールバック保持期間が終わるまではツールと `data/migration/` の結果を
-保持します。その後、検索比較を継続利用するか判断し、不要なら専用ディレクトリ、対応
-テスト、このドキュメントの移行専用コマンドを同じPRで削除します。詳細は
+旧ボリュームのロールバック保持期間が終わるまではツールと `data/migration/` の検索比較
+結果、および `/opt/grimoire-keeper-data/migration/repair-pending.json` を保持します。
+repair reportは全caseの確認完了後に上記手順で削除します。その後、検索比較を継続利用するか
+判断し、不要なら専用ディレクトリ、対応テスト、このドキュメントの移行専用コマンドを
+同じPRで削除します。詳細は
 `tools/weaviate_1_38_migration/README.md` を参照してください。
