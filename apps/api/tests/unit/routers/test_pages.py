@@ -7,6 +7,7 @@ from grimoire_api.dependencies import (
     get_file_repository,
     get_page_service,
     get_repair_deletion_service,
+    get_repair_scan_service,
     get_repair_service,
 )
 from grimoire_api.main import app
@@ -209,6 +210,21 @@ class TestPagesRouter:
         mock_service.update_url.assert_awaited_once_with(
             56, "https://example.com/bad%3E", "https://example.com/good"
         )
+
+    def test_scan_repairs_uses_scan_service(self) -> None:
+        mock_service = AsyncMock()
+        mock_service.scan.return_value = {
+            "scanned": 12,
+            "pending": 2,
+            "resolved": 1,
+        }
+        app.dependency_overrides[get_repair_scan_service] = lambda: mock_service
+
+        response = client.post("/api/v1/repairs/scan")
+
+        assert response.status_code == 200
+        assert response.json() == {"scanned": 12, "pending": 2, "resolved": 1}
+        mock_service.scan.assert_awaited_once_with()
 
     def test_update_page_url_rejects_malformed_suffix(self) -> None:
         app.dependency_overrides[get_repair_service] = lambda: AsyncMock()

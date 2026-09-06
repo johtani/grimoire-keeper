@@ -1,10 +1,15 @@
 """Tests for repair detection and management."""
 
+import asyncio
 import json
+import threading
+import time
 from pathlib import Path
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from grimoire_api.config import settings
 from grimoire_api.models.database import (
     JobKind,
     PageStatus,
@@ -123,6 +128,145 @@ async def test_scan_detects_missing_and_invalid_json(
     invalid = await repair_service.repair_repo.get_by_page_id(invalid_id)
     assert missing and missing.reasons[0]["code"] == "missing_json"
     assert invalid and invalid.reasons[0]["code"] == "invalid_json"
+
+
+async def test_scan_paginates_and_resolves_healthy_case(
+    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "REPAIR_SCAN_BATCH_SIZE", 2)
+    page_ids = [
+        await repair_service.page_repo.create_page(
+            f"https://example.com/page-{index}", str(index)
+        )
+        for index in range(5)
+    ]
+    for page_id in page_ids:
+        await repair_service.file_repo.save_json_file(
+            page_id, {"data": {"title": "title", "content": "content"}}
+        )
+    await repair_service.repair_repo.upsert_pending(
+        page_ids[0], "scan", [{"code": "missing_json", "detail": "missing"}]
+    )
+
+    result = await repair_service.scan()
+    repaired = await repair_service.repair_repo.get_by_page_id(page_ids[0])
+
+    assert result == {"scanned": 5, "pending": 0, "resolved": 1}
+    assert repaired is not None and repaired.status == RepairStatus.RESOLVED
+
+
+async def test_scan_uses_fixed_snapshot_upper_bound(
+    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "REPAIR_SCAN_BATCH_SIZE", 1)
+    first_id = await repair_service.page_repo.create_page(
+        "https://example.com/first", "first"
+    )
+    await repair_service.file_repo.save_json_file(
+        first_id, {"data": {"title": "title", "content": "content"}}
+    )
+    original = repair_service.page_repo.get_pages_after_id
+    added_id: int | None = None
+
+    async def add_page_after_snapshot(
+        cursor: int, upper_bound: int, limit: int
+    ) -> list:
+        nonlocal added_id
+        pages = await original(cursor, upper_bound, limit)
+        if added_id is None:
+            added_id = await repair_service.page_repo.create_page(
+                "https://example.com/added", "added"
+            )
+        return pages
+
+    monkeypatch.setattr(
+        repair_service.page_repo, "get_pages_after_id", add_page_after_snapshot
+    )
+
+    first = await repair_service.scan()
+    second = await repair_service.scan()
+
+    assert first == {"scanned": 1, "pending": 0, "resolved": 0}
+    assert second == {"scanned": 2, "pending": 1, "resolved": 0}
+
+
+async def test_scan_resumes_after_weaviate_failure(
+    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "REPAIR_SCAN_BATCH_SIZE", 1)
+    page_ids = [
+        await repair_service.page_repo.create_page(
+            f"https://example.com/resume-{index}", str(index)
+        )
+        for index in range(2)
+    ]
+    for page_id in page_ids:
+        await repair_service.file_repo.save_json_file(
+            page_id, {"data": {"title": "title", "content": "content"}}
+        )
+        await repair_service.page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    await repair_service.repair_repo.upsert_pending(
+        page_ids[0], "scan", [{"code": "missing_json", "detail": "missing"}]
+    )
+
+    fetch = MagicMock(
+        side_effect=[SimpleNamespace(objects=[object()]), RuntimeError("unavailable")]
+    )
+    client = MagicMock()
+    client.collections.get.return_value.query.fetch_objects = fetch
+    repair_service.weaviate_client = client
+
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await repair_service.scan()
+
+    checkpoint = await repair_service.page_repo.db.fetch_one(
+        "SELECT * FROM repair_scan_state WHERE id=1"
+    )
+    assert checkpoint is not None
+    assert checkpoint["cursor"] == page_ids[0]
+    assert checkpoint["scanned"] == 1
+    assert checkpoint["resolved"] == 1
+
+    fetch.side_effect = None
+    fetch.return_value = SimpleNamespace(objects=[object()])
+    result = await repair_service.scan()
+
+    assert result == {"scanned": 2, "pending": 0, "resolved": 1}
+
+
+async def test_weaviate_checks_have_bounded_concurrency_and_timeout(
+    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "REPAIR_SCAN_WEAVIATE_TIMEOUT", 0.2)
+    repair_service._weaviate_semaphore = asyncio.Semaphore(2)
+    active = maximum = 0
+    lock = threading.Lock()
+
+    def fetch_objects(**_kwargs: object) -> SimpleNamespace:
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return SimpleNamespace(objects=[object()])
+
+    client = MagicMock()
+    client.collections.get.return_value.query.fetch_objects = fetch_objects
+    repair_service.weaviate_client = client
+
+    await asyncio.gather(
+        *(repair_service._is_page_registered(index) for index in range(6))
+    )
+    assert maximum == 2
+
+    monkeypatch.setattr(settings, "REPAIR_SCAN_WEAVIATE_TIMEOUT", 0.001)
+    client.collections.get.return_value.query.fetch_objects = (
+        lambda **_kwargs: time.sleep(0.02)
+    )
+    with pytest.raises(TimeoutError):
+        await repair_service._is_page_registered(99)
 
 
 async def test_update_url_marks_page_failed_and_uses_current_url_guard(

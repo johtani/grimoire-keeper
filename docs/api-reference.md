@@ -431,8 +431,11 @@ Existing resolved cases are not reopened by an imported report.
 #### `POST /api/v1/repairs/scan`
 
 Scan all stored pages and create or update `pending` repair cases for pages whose
-cached source JSON is missing, invalid, or inconsistent. This endpoint has no
-request body.
+cached source JSON is missing, invalid, or inconsistent, or whose successfully
+processed page is missing from Weaviate. Pages are scanned in bounded ID batches.
+If a scan is interrupted, the next request resumes from its durable checkpoint;
+pages created after that scan started are handled by the following scan. This
+endpoint has no request body.
 
 **Response:**
 
@@ -443,6 +446,11 @@ request body.
   "resolved": 0
 }
 ```
+
+`pending` is the number of pages that are still invalid in this scan, including
+both newly detected and continuing cases. `resolved` is the number of previously
+pending cases that this scan verified as healthy. Counts include work completed
+before an interrupted scan was resumed.
 
 **Status Codes:**
 

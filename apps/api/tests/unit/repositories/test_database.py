@@ -47,6 +47,11 @@ class TestDatabaseInitialization:
         assert "idx_pages_last_success_step" in index_names
         assert "idx_cleanup_jobs_status_updated" in index_names
 
+        checkpoint = await temp_db.fetch_one("SELECT * FROM repair_scan_state")
+        assert checkpoint is not None
+        assert checkpoint["id"] == 1
+        assert checkpoint["upper_bound"] is None
+
     @pytest.mark.asyncio
     async def test_indexes_idempotent(self, temp_db: DatabaseConnection) -> None:
         """initialize_tables() を再度呼び出しても例外が発生しないことを確認."""
@@ -339,7 +344,7 @@ class TestLegacyDatabaseMigration:
 
         assert inspection.current_version == 2
         assert inspection.has_history is False
-        assert inspection.pending_versions == (3, 4, 5, 6, 7, 8)
+        assert inspection.pending_versions == tuple(range(3, LATEST_SCHEMA_VERSION + 1))
         assert inspection.backup_required is True
 
         async with aiosqlite.connect(db_path) as conn:

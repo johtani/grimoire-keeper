@@ -7,7 +7,7 @@ import aiosqlite
 
 from ..utils.exceptions import DatabaseError
 
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 
 
 class SchemaMigrationError(DatabaseError):
@@ -98,6 +98,16 @@ CLEANUP_JOB_COLUMNS = (
     "attempt",
     "error_message",
     "created_at",
+    "updated_at",
+)
+REPAIR_SCAN_STATE_COLUMNS = (
+    "id",
+    "upper_bound",
+    "cursor",
+    "scanned",
+    "pending",
+    "resolved",
+    "started_at",
     "updated_at",
 )
 
@@ -413,6 +423,23 @@ async def _migration_8(conn: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_9(conn: aiosqlite.Connection) -> None:
+    """Persist repair scan progress so interrupted scans can resume."""
+    await conn.execute(
+        """CREATE TABLE repair_scan_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            upper_bound INTEGER,
+            cursor INTEGER NOT NULL DEFAULT 0 CHECK (cursor >= 0),
+            scanned INTEGER NOT NULL DEFAULT 0 CHECK (scanned >= 0),
+            pending INTEGER NOT NULL DEFAULT 0 CHECK (pending >= 0),
+            resolved INTEGER NOT NULL DEFAULT 0 CHECK (resolved >= 0),
+            started_at TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    await conn.execute("INSERT INTO repair_scan_state (id) VALUES (1)")
+
+
 MIGRATIONS = (
     Migration(1, "create_pages_and_process_logs", _migration_1),
     Migration(2, "add_last_success_step", _migration_2),
@@ -422,6 +449,7 @@ MIGRATIONS = (
     Migration(6, "add_job_attempt_event_history", _migration_6),
     Migration(7, "add_state_constraints_and_query_indexes", _migration_7),
     Migration(8, "add_cleanup_jobs", _migration_8),
+    Migration(9, "add_repair_scan_checkpoint", _migration_9),
 )
 
 
@@ -490,6 +518,8 @@ def _expected_tables(version: int) -> dict[str, tuple[str, ...]]:
         tables["repair_cases"] = REPAIR_CASE_COLUMNS
     if version >= 8:
         tables["cleanup_jobs"] = CLEANUP_JOB_COLUMNS
+    if version >= 9:
+        tables["repair_scan_state"] = REPAIR_SCAN_STATE_COLUMNS
     return tables
 
 
@@ -557,7 +587,30 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 "Corrupt SQLite schema: invalid cleanup saga constraints"
             )
 
-    for table in set(expected) - {"pages"}:
+    if version >= 9:
+        scan_sql = await _table_sql(conn, "repair_scan_state")
+        if any(
+            check not in scan_sql
+            for check in (
+                "id = 1",
+                "cursor >= 0",
+                "scanned >= 0",
+                "pending >= 0",
+                "resolved >= 0",
+            )
+        ):
+            raise SchemaMigrationError(
+                "Corrupt SQLite schema: invalid repair scan constraints"
+            )
+        checkpoint = await (
+            await conn.execute("SELECT id FROM repair_scan_state")
+        ).fetchall()
+        if checkpoint != [(1,)]:
+            raise SchemaMigrationError(
+                "Corrupt SQLite schema: invalid repair scan checkpoint row"
+            )
+
+    for table in set(expected) - {"pages", "repair_scan_state"}:
         cursor = await conn.execute(f'PRAGMA foreign_key_list("{table}")')
         foreign_keys = {(row[3], row[2], row[4]) for row in await cursor.fetchall()}
         expected_foreign_keys = {("page_id", "pages", "id")}

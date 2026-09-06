@@ -145,6 +145,25 @@ async def get_weaviate_client(request: Request) -> weaviate.WeaviateClient:
     return client
 
 
+def get_repair_scan_service(
+    page_repo: PageRepository = Depends(get_page_repository),
+    repair_repo: RepairRepository = Depends(get_repair_repository),
+    file_repo: FileRepository = Depends(get_file_repository),
+    log_repo: LogRepository = Depends(get_log_repository),
+    job_repo: JobRepository = Depends(get_job_repository),
+    weaviate_client: weaviate.WeaviateClient = Depends(get_weaviate_client),
+) -> RepairService:
+    """Weaviate registrationも検査するrepair scan専用service."""
+    return RepairService(
+        page_repo,
+        repair_repo,
+        file_repo,
+        log_repo,
+        job_repo,
+        weaviate_client=weaviate_client,
+    )
+
+
 def get_vectorizer_service(
     page_repo: PageRepository = Depends(get_page_repository),
     file_repo: FileRepository = Depends(get_file_repository),
