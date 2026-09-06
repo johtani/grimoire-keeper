@@ -60,10 +60,10 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 ### URL 処理パイプライン
 
 1. `POST /api/v1/process-url` — 同期処理: 重複チェック、`Page` レコード作成、ID を返却
-2. バックグラウンドタスクが非同期で実行:
+2. 独立した単一 **Job Worker** が SQLite の永続キューを claim して非同期で実行:
    - **Jina Client** が Jina AI Reader API 経由でページコンテンツを取得
    - **LLM Service** が LiteLLM 経由で LLM を呼び出し → 要約 + 20 キーワードを JSON で返却 (デフォルトは `openai/qwen3-35b`、`LLM_MODEL` 環境変数で変更可能)
-   - **ChunkingService** がコンテンツを分割 (Chonkie 使用)、**VectorizerService** がチャンクを Weaviate コレクション `GrimoireChunk` に 3 つの名前付きベクトルで保存: `content_vector`、`title_vector`、`memo_vector` (要約チャンクは `isSummary=true` でフラグ付け)
+   - **ChunkingService** がコンテンツを分割 (Chonkie 使用)、**VectorizerService** がページ代表データを `GrimoirePage` (`title_vector`、`memo_vector`) に、本文チャンクを `GrimoireContentChunk` (`content_vector`) に保存。両 collection は `pageId` で対応付ける
 3. 各ステップで `Page` の `last_success_step` を更新してスマートリトライに対応
 
 処理ステート: `NULL → downloaded → llm_processed → vectorized → completed`
@@ -75,7 +75,7 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 ### データストレージ
 
 - **SQLite** (`DATABASE_PATH`): `pages` テーブル (URL, title, summary, keywords, weaviate_id, last_success_step) と `process_logs` テーブル
-- **Weaviate** (`WEAVIATE_HOST:WEAVIATE_PORT`): `GrimoireChunk` コレクション — セマンティック検索用ベクトルチャンク
+- **Weaviate** (`WEAVIATE_HOST:WEAVIATE_PORT`): `GrimoirePage` — `pageId`, URL, title, memo, summary, keywords, createdAt と `title_vector` / `memo_vector`; `GrimoireContentChunk` — `pageId`, `chunkId`, content と `content_vector`。Vectorizer と再インデックスは両方、検索は指定 vector 側、repair の登録確認は `GrimoirePage`、削除 cleanup は両方を対象とする
 - **JSON ファイル** (`JSON_STORAGE_PATH`): Jina の生コンテンツをページごとにキャッシュ (`data/json/{page_id}.json`)
 
 ### 重要ファイル
@@ -93,8 +93,8 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 
 環境変数は `.env` (テスト時は `.env.test`) から読み込まれます。必要な API キー:
 - `JINA_API_KEY` — Jina AI Reader
-- `GOOGLE_API_KEY` — Google Gemini (クラウド LLM 使用時のみ)
-- `OPENAI_API_KEY` — Weaviate text2vec-openai 埋め込み (`text-embedding-ada-002`)
+- `LLM_API_KEY` — LiteLLM 経由のクラウド LLM (ローカル LLM では `dummy` 可)
+- `OPENAI_API_KEY` — Weaviate text2vec-openai 埋め込み。モデルは `WEAVIATE_EMBEDDING_MODEL` (既定 `text-embedding-ada-002`) で指定
 
 `BWS_ACCESS_TOKEN` は `~/.config/bws.env` に保存します (リポジトリ外)。その他のシークレットは起動時に `bws run` が Bitwarden Secrets Manager から取得してサブプロセスに注入します (キーのプレフィックスは `GRIMOIRE_KEEPER_`)。`.env` には非秘密の設定値のみ記載します。開発は `scripts/dev.sh`、本番は `scripts/start.sh` を使用します。
 
@@ -117,6 +117,8 @@ Bitwarden Secrets Manager に登録するシークレット (プレフィック�
 - `GRIMOIRE_KEEPER_JINA_API_KEY`
 - `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` / `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` / `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` (Slack bot 用)
 - `GRIMOIRE_KEEPER_LLM_API_KEY` (クラウド LLM 使用時のみ)
+
+Compose はこれらを各プロセスの prefix なし環境変数へ変換します。API は SQLite 設定のみ、Worker は Jina・OpenAI・クラウド構成時の LLM、Bot は Slack の各キーを必要とします。Weaviate の model または dimensions を変更した場合は全ベクトルの再インデックスが必要です。schema を変更した際は、このファイルと `AGENTS.md` の collection・property・named vector の説明も同時に確認します。
 
 ## テストの注意事項
 

@@ -59,6 +59,22 @@
    chmod 600 ~/.config/bws.env
    ```
 
+   Register secrets in Bitwarden with the `GRIMOIRE_KEEPER_` prefix. Compose
+   maps them to the environment names used inside each process; keep only
+   non-secret settings in `.env`.
+
+   | Process | Bitwarden secret | Container environment |
+   |---|---|---|
+   | Worker | `GRIMOIRE_KEEPER_JINA_API_KEY` | `JINA_API_KEY` |
+   | Worker | `GRIMOIRE_KEEPER_OPENAI_API_KEY` | `OPENAI_API_KEY` |
+   | Worker (cloud LLM only) | `GRIMOIRE_KEEPER_LLM_API_KEY` | `LLM_API_KEY` |
+   | Bot | `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` | `SLACK_BOT_TOKEN` |
+   | Bot | `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` | `SLACK_SIGNING_SECRET` |
+   | Bot | `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` | `SLACK_APP_TOKEN` |
+
+   The API itself needs no external-service secret. A local, unauthenticated
+   LLM uses the non-secret `.env` value `LLM_API_KEY=dummy`.
+
    Long pages are split into partial summaries and combined hierarchically so
    that every LLM request remains within the configured context window.
    The input budget is `LLM_CONTEXT_WINDOW - LLM_MAX_OUTPUT_TOKENS`.
