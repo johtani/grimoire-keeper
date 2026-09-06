@@ -92,7 +92,11 @@ test('deletePage sends a DELETE request for the selected page', async () => {
     let request;
     const client = createApiClient(async (url, options) => {
         request = { url, options };
-        return { ok: true, json: async () => ({ status: 'deleting' }) };
+        return {
+            ok: true,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ status: 'deleting' })
+        };
     });
 
     await client.deletePage(267);
