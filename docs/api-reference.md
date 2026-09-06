@@ -158,11 +158,11 @@ Check the processing status of a specific URL.
 - `processing`: Still being processed
 - `completed`: Successfully completed
 - `failed`: Processing failed
-- `not_found`: Page ID not found
 
 **Status Codes:**
 - `200 OK`: Status retrieved successfully
-- Unknown IDs are represented by `status: "not_found"` in a `200 OK` response
+- `404 Not Found`: Page ID does not exist
+- `422 Unprocessable Entity`: `page_id` is not a positive integer
 
 **Example:**
 ```bash
@@ -332,6 +332,7 @@ they may contain page content or other sensitive data.
 **Status Codes:**
 - `200 OK`: Page found and returned
 - `404 Not Found`: Page not found
+- `422 Unprocessable Entity`: `page_id` is not a positive integer
 
 **Example:**
 ```bash
@@ -517,7 +518,9 @@ record exists. A latest job has status `queued`, `running`, `succeeded`, or
 {
   "error": {
     "code": "not_found",
-    "message": "Page not found"
+    "message": "Page not found",
+    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a",
+    "details": null
   }
 }
 ```
@@ -565,7 +568,9 @@ reprocessed.
 {
   "error": {
     "code": "conflict",
-    "message": "Current URL does not match"
+    "message": "Current URL does not match",
+    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a",
+    "details": null
   }
 }
 ```
@@ -577,6 +582,7 @@ reprocessed.
   "error": {
     "code": "validation_error",
     "message": "Request validation failed",
+    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a",
     "details": [
       {
         "location": ["body", "new_url"],
@@ -719,7 +725,9 @@ Retry processing for a specific failed page, resuming from the last successful s
 
 **Status Codes:**
 - `202 Accepted`: Retry job queued successfully
-- `500 Internal Server Error`: Page lookup or job registration error
+- `404 Not Found`: Page does not exist
+- `409 Conflict`: The page is not failed, or a queued/running job already exists
+- `422 Unprocessable Entity`: `page_id` is not a positive integer
 
 **Example:**
 ```bash
@@ -756,8 +764,9 @@ the restart point from `last_success_step`. Any other value returns
 
 **Status Codes:**
 - `202 Accepted`: Reprocessing job queued successfully
+- `404 Not Found`: Page does not exist
+- `409 Conflict`: A queued or running job already exists for the page
 - `422 Unprocessable Entity`: Unknown `from_step`
-- `500 Internal Server Error`: Page lookup or job registration error
 
 ---
 
@@ -808,28 +817,26 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed" \
 
 ## Error Responses
 
-All endpoints return consistent error responses:
+All endpoints return a consistent error envelope. `request_id` can be matched
+with server logs; `details` is `null` when no safe field-level details apply.
 
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid URL format",
-    "details": {
-      "field": "url",
-      "value": "invalid-url"
-    }
+    "code": "validation_error",
+    "message": "Request validation failed",
+    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a",
+    "details": []
   }
 }
 ```
 
 ### Common Error Codes
 
-- `VALIDATION_ERROR`: Request validation failed
-- `NOT_FOUND`: Resource not found
-- `PROCESSING_ERROR`: Internal processing error
-- `EXTERNAL_SERVICE_ERROR`: External API error
-- `DATABASE_ERROR`: Database operation error
+- `validation_error`: Request validation failed
+- `not_found`: Resource not found
+- `conflict`: Current state conflicts with the operation
+- `internal_error`: Internal processing error
 
 ## Rate Limiting
 
@@ -864,9 +871,9 @@ status_response = requests.get(
 )
 
 # Search
-search_response = requests.get(
+search_response = requests.post(
     "http://localhost:8000/api/v1/search",
-    params={"query": "machine learning", "limit": 5}
+    json={"query": "machine learning", "limit": 5}
 )
 ```
 
@@ -882,9 +889,11 @@ const processResponse = await fetch('http://localhost:8000/api/v1/process-url', 
 const { page_id } = await processResponse.json();
 
 // Search
-const searchResponse = await fetch(
-  `http://localhost:8000/api/v1/search?query=machine%20learning&limit=5`
-);
+const searchResponse = await fetch('http://localhost:8000/api/v1/search', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: 'machine learning', limit: 5 })
+});
 const searchResults = await searchResponse.json();
 
 // Retry failed page
@@ -907,9 +916,17 @@ URL 処理がいずれかのステージで失敗した場合、システムは�
 
 `pages.status` がページの現在状態の正本です。`process_logs` は監査履歴として保持されますが、
 過去の失敗ログだけを理由に失敗一覧や一括リトライの対象にはなりません。ジョブは SQLite の
-`jobs` テーブルへ永続化され、API 起動時に `queued` ジョブを再開し、中断された `running`
-ジョブを `queued` に戻します。同一ページに `queued` または `running` のジョブを複数登録する
-ことはできません。
+`jobs` テーブルへ永続化されます。API はジョブを登録するだけで、再開や復旧は行いません。
+独立した Job Worker が起動時に、中断されたすべての `running` ジョブを `queued` に戻し、
+attempt を1回消費した中断として記録してから、`queued` ジョブを claim します。同一ページに
+`queued` または `running` のジョブを複数登録することはできません。
+
+API だけを再起動しても queued ジョブは進みません。Worker を再起動すると running ジョブの
+復旧後に処理が再開されます。ジョブが止まって見える場合は `process-status` または管理画面で
+状態を確認し、次に `docker compose -f docker-compose.prod.yml ps worker` と
+`docker compose -f docker-compose.prod.yml logs --tail=100 worker` で Worker の health、claim、
+外部サービス接続エラーを確認してください。`running` の復旧は経過時間による stale 判定では
+なく Worker 起動時に行われ、retry 回数は job の `attempt` に反映されます。
 
 ### 処理ステージ
 

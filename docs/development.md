@@ -192,9 +192,9 @@ docker compose -f docker-compose.prod.yml logs --tail=100 worker
 `docker compose -f docker-compose.prod.yml config` のworkerに `extra_hosts` と
 `host-gateway` が含まれることも確認します。
 
-`GOOGLE_API_KEY` は `LLMService` から参照される互換変数ではありません。既存環境で
-Googleのキーをこの名前で管理している場合は、同じ値を
-`GRIMOIRE_KEEPER_LLM_API_KEY` としてBitwardenへ登録し直してください。
+旧構成でプロバイダー固有名のキーを管理している場合は、同じ値を
+`GRIMOIRE_KEEPER_LLM_API_KEY` としてBitwardenへ登録し直してください。互換 alias はなく、
+Worker 内では `LLM_API_KEY` だけを参照します。
 
 ## Weaviate 埋め込みモデルの設定と再インデックス
 
