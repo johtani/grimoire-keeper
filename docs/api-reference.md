@@ -519,8 +519,7 @@ record exists. A latest job has status `queued`, `running`, `succeeded`, or
   "error": {
     "code": "not_found",
     "message": "Page not found",
-    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a",
-    "details": null
+    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a"
   }
 }
 ```
@@ -569,8 +568,7 @@ reprocessed.
   "error": {
     "code": "conflict",
     "message": "Current URL does not match",
-    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a",
-    "details": null
+    "request_id": "4e593fd3-73af-4ac7-b84f-c26aef35b52a"
   }
 }
 ```
@@ -818,7 +816,7 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed" \
 ## Error Responses
 
 All endpoints return a consistent error envelope. `request_id` can be matched
-with server logs; `details` is `null` when no safe field-level details apply.
+with server logs; `details` is omitted when no safe field-level details apply.
 
 ```json
 {
