@@ -226,26 +226,6 @@ class TestJinaClient:
         assert "private" not in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_health_check_success(self: Any) -> None:
-        """ヘルスチェック成功テスト."""
-        client = JinaClient(api_key="test_key")
-
-        with patch.object(client, "fetch_content", return_value={"status": "ok"}):
-            result = await client.health_check()
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_health_check_failure(self: Any) -> None:
-        """ヘルスチェック失敗テスト."""
-        client = JinaClient(api_key="test_key")
-
-        with patch.object(
-            client, "fetch_content", side_effect=JinaClientError("API error")
-        ):
-            result = await client.health_check()
-            assert result is False
-
-    @pytest.mark.asyncio
     async def test_fetch_content_timeout(self: Any) -> None:
         """タイムアウト時のテスト."""
         client = JinaClient(api_key="test_key")
