@@ -5,16 +5,13 @@ from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from grimoire_api.dependencies import (
     get_file_repository,
+    get_page_deletion_service,
     get_page_service,
-    get_repair_deletion_service,
     get_repair_scan_service,
     get_repair_service,
 )
 from grimoire_api.main import app
-from grimoire_api.utils.exceptions import (
-    RepairDeletionConflictError,
-    RepairDeletionError,
-)
+from grimoire_api.utils.exceptions import PageDeletionConflictError, PageDeletionError
 
 client = TestClient(app)
 
@@ -263,14 +260,14 @@ class TestPagesRouter:
         assert response.status_code == 200
         assert response.json() == {"repairs": [], "total": 0}
 
-    def test_delete_pending_repair_page(self) -> None:
+    def test_delete_page(self) -> None:
         mock_service = AsyncMock()
         mock_service.delete_page.return_value = {
             "page_id": 56,
             "url": "https://example.com/bad",
             "status": "deleting",
         }
-        app.dependency_overrides[get_repair_deletion_service] = lambda: mock_service
+        app.dependency_overrides[get_page_deletion_service] = lambda: mock_service
 
         response = client.delete("/api/v1/pages/56")
 
@@ -278,13 +275,13 @@ class TestPagesRouter:
         assert response.json()["status"] == "deleting"
         mock_service.delete_page.assert_awaited_once_with(56)
 
-    def test_delete_repair_page_errors(self) -> None:
+    def test_delete_page_errors(self) -> None:
         mock_service = AsyncMock()
-        app.dependency_overrides[get_repair_deletion_service] = lambda: mock_service
+        app.dependency_overrides[get_page_deletion_service] = lambda: mock_service
         cases = [
             (LookupError("Page not found"), 404),
-            (RepairDeletionConflictError("not pending"), 409),
-            (RepairDeletionError("failed"), 500),
+            (PageDeletionConflictError("active job"), 409),
+            (PageDeletionError("failed"), 500),
         ]
         for error, expected_status in cases:
             mock_service.delete_page.side_effect = error

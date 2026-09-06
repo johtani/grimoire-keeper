@@ -130,7 +130,7 @@ class ApiClient {
         });
     }
 
-    async deleteRepairPage(pageId) {
+    async deletePage(pageId) {
         return this.request(`/api/v1/pages/${pageId}`, { method: 'DELETE' });
     }
 

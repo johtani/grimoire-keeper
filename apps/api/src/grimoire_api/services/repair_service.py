@@ -12,14 +12,12 @@ from weaviate.classes.query import Filter
 from ..config import settings
 from ..models.database import Page, PageStatus, RepairStatus
 from ..models.external import FetchedDocument
-from ..repositories.cleanup_job_repository import CleanupJobRepository
 from ..repositories.file_repository import FileRepository
 from ..repositories.job_repository import JobRepository
 from ..repositories.log_repository import LogRepository
 from ..repositories.page_repository import PageRepository
 from ..repositories.repair_repository import RepairRepository
 from ..utils.exceptions import (
-    DatabaseError,
     DuplicateUrlError,
     FileOperationError,
     GrimoireAPIError,
@@ -69,7 +67,6 @@ class RepairService:
         log_repo: LogRepository,
         job_repo: JobRepository,
         report_path: str | None = None,
-        cleanup_repo: CleanupJobRepository | None = None,
         weaviate_client: Any | None = None,
     ):
         self.page_repo = page_repo
@@ -77,7 +74,6 @@ class RepairService:
         self.file_repo = file_repo
         self.log_repo = log_repo
         self.job_repo = job_repo
-        self.cleanup_repo = cleanup_repo
         self.weaviate_client = weaviate_client
         self.report_path = Path(report_path or settings.REPAIR_REPORT_PATH)
         self._weaviate_semaphore = asyncio.Semaphore(
@@ -291,13 +287,3 @@ class RepairService:
             "new_url": new_url,
             "status": PageStatus.FAILED.value,
         }
-
-    async def delete_page(self, page_id: int) -> dict[str, Any]:
-        """pending repair ページの非同期削除を受付する."""
-        page = await self.page_repo.get_page(page_id)
-        if page is None:
-            raise LookupError("Page not found")
-        if self.cleanup_repo is None:
-            raise DatabaseError("Cleanup job repository is not available")
-        await self.cleanup_repo.enqueue(page_id)
-        return {"page_id": page_id, "url": page.url, "status": "deleting"}

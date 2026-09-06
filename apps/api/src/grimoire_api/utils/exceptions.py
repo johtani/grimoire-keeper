@@ -75,9 +75,9 @@ class FileOperationError(GrimoireAPIError):
     pass
 
 
-class RepairDeletionConflictError(GrimoireAPIError):
-    """Repair page cannot be deleted in its current state."""
+class PageDeletionConflictError(GrimoireAPIError):
+    """Page cannot be deleted in its current state."""
 
 
-class RepairDeletionError(GrimoireAPIError):
-    """Repair page deletion failed and may be retried."""
+class PageDeletionError(GrimoireAPIError):
+    """Page deletion failed and may be retried."""

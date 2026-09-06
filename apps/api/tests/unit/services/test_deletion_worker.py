@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock
 
+from grimoire_api.models.database import PageStatus
 from grimoire_api.repositories.cleanup_job_repository import CleanupJobRepository
-from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.deletion_worker import DeletionWorker
 
 
@@ -11,9 +11,7 @@ async def test_file_failure_is_persisted_and_retry_completes(
     temp_db, page_repo, file_repo
 ) -> None:
     page_id = await page_repo.create_page("https://delete.example", "delete")
-    await RepairRepository(temp_db).upsert_pending(
-        page_id, "scan", [{"code": "invalid", "detail": "bad"}]
-    )
+    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
     await file_repo.save_json_file(page_id, {"data": {}})
     cleanup_repo = CleanupJobRepository(temp_db)
     await cleanup_repo.enqueue(page_id)
@@ -38,9 +36,7 @@ async def test_finalize_failure_retries_external_deletes_safely(
     temp_db, page_repo, file_repo
 ) -> None:
     page_id = await page_repo.create_page("https://finalize.example", "delete")
-    await RepairRepository(temp_db).upsert_pending(
-        page_id, "scan", [{"code": "invalid", "detail": "bad"}]
-    )
+    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
     cleanup_repo = CleanupJobRepository(temp_db)
     await cleanup_repo.enqueue(page_id)
     vectorizer = AsyncMock()
@@ -57,3 +53,26 @@ async def test_finalize_failure_retries_external_deletes_safely(
     assert await worker.run_next()
     assert await page_repo.get_page(page_id) is None
     assert vectorizer.delete_page_from_index.await_count == 2
+
+
+async def test_weaviate_failure_is_persisted_and_retry_completes(
+    temp_db, page_repo, file_repo
+) -> None:
+    page_id = await page_repo.create_page("https://vector.example", "delete")
+    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    cleanup_repo = CleanupJobRepository(temp_db)
+    await cleanup_repo.enqueue(page_id)
+    vectorizer = AsyncMock()
+    vectorizer.delete_page_from_index.side_effect = RuntimeError("Weaviate unavailable")
+    worker = DeletionWorker(cleanup_repo, file_repo, vectorizer)
+
+    assert await worker.run_next()
+    row = await temp_db.fetch_one(
+        "SELECT status, error_message FROM cleanup_jobs WHERE page_id=?", (page_id,)
+    )
+    assert row is not None and row["status"] == "queued"
+    assert "Weaviate unavailable" in row["error_message"]
+
+    vectorizer.delete_page_from_index.side_effect = None
+    assert await worker.run_next()
+    assert await page_repo.get_page(page_id) is None

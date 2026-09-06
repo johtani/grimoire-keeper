@@ -599,39 +599,38 @@ reprocessed.
 4. After a job succeeds, the worker verifies the cached JSON and Weaviate object.
    If both are valid, it changes the repair case from `pending` to `resolved` and
    records `resolved_at`.
-5. Use `GET /api/v1/repairs?status=resolved` to audit resolved cases, or delete a
-   page while its repair case is still `pending` with the deletion API below.
+5. Use `GET /api/v1/repairs?status=resolved` to audit resolved cases. Repair and
+   normal pages use the same deletion API below.
 
 ---
 
-### Delete Pending Repair Page
+### Delete Page
 
 #### `DELETE /api/v1/pages/{page_id}`
 
-Permanently delete a page only when it has a `pending` repair case and no
-`queued` or `running` job. This removes its page and chunk objects from
-Weaviate, `data/json/{page_id}.json`, and the `pages`, `process_logs`, `jobs`,
-and `repair_cases` SQLite rows.
+Queue permanent deletion of a normal or repair page when it is not processing
+and has no `queued` or `running` processing job. The cleanup worker removes its
+page and chunk objects from Weaviate, `data/json/{page_id}.json`, and the
+`pages`, `process_logs`, `jobs`, `repair_cases`, and cleanup-job SQLite rows.
 
 Missing JSON files and Weaviate objects are treated as already deleted. If an
-external or database deletion fails, the page and repair case remain and a
-failure is recorded in `process_logs`; retry the same request to finish cleanup.
+external or database deletion fails, the durable cleanup job returns to the
+queue with its error and retries safely. Repeating the DELETE request while
+cleanup is pending returns the same operation without creating a duplicate.
 
 **Response:**
 ```json
 {
   "page_id": 123,
   "url": "https://example.com/unneeded",
-  "status": "deleted"
+  "status": "deleting"
 }
 ```
 
 **Status Codes:**
-- `200 OK`: Page and related data deleted
+- `202 Accepted`: Page deletion was queued, or was already queued
 - `404 Not Found`: Page does not exist
-- `409 Conflict`: Repair case is missing/resolved, or an active job exists
-- `500 Internal Server Error`: Partial deletion failed and may be retried
-- `503 Service Unavailable`: Weaviate is unavailable
+- `409 Conflict`: The page is processing, or a processing job is queued/running
 
 ---
 

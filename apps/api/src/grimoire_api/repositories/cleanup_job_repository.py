@@ -4,7 +4,7 @@ import aiosqlite
 
 from ..models.database import CleanupJob, CleanupJobStatus
 from ..utils.datetime import as_utc, utc_now_isoformat
-from ..utils.exceptions import DatabaseError, RepairDeletionConflictError
+from ..utils.exceptions import DatabaseError, PageDeletionConflictError
 from .database import DatabaseConnection
 
 
@@ -36,15 +36,10 @@ class CleanupJobRepository:
                 if page["status"] == "deleting" and existing is not None:
                     await conn.commit()
                     return self._row_to_job(existing)
-                repair = await (
-                    await conn.execute(
-                        "SELECT status FROM repair_cases WHERE page_id=?", (page_id,)
-                    )
-                ).fetchone()
-                if repair is None or repair["status"] != "pending":
+                if page["status"] == "processing":
                     await conn.rollback()
-                    raise RepairDeletionConflictError(
-                        "Only pages with a pending repair case can be deleted"
+                    raise PageDeletionConflictError(
+                        "Page is processing and cannot be deleted"
                     )
                 active = await (
                     await conn.execute(
@@ -55,9 +50,7 @@ class CleanupJobRepository:
                 ).fetchone()
                 if active is not None:
                     await conn.rollback()
-                    raise RepairDeletionConflictError(
-                        "Page has a queued or running job"
-                    )
+                    raise PageDeletionConflictError("Page has a queued or running job")
                 now = utc_now_isoformat()
                 await conn.execute(
                     "UPDATE pages SET status='deleting', updated_at=? WHERE id=?",
@@ -81,7 +74,7 @@ class CleanupJobRepository:
                 if row is None:
                     raise RuntimeError("Cleanup job was not created")
                 return self._row_to_job(row)
-        except (LookupError, RepairDeletionConflictError):
+        except (LookupError, PageDeletionConflictError):
             raise
         except Exception as exc:
             raise DatabaseError(f"Failed to enqueue cleanup job: {exc}") from exc

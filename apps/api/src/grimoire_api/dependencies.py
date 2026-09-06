@@ -16,6 +16,7 @@ from .repositories.repair_repository import RepairRepository
 from .services.chunking_service import ChunkingService
 from .services.jina_client import JinaClient
 from .services.llm_service import LLMService
+from .services.page_deletion_service import PageDeletionService
 from .services.page_service import PageService
 from .services.repair_service import RepairService
 from .services.retry_service import RetryService
@@ -174,17 +175,11 @@ def get_vectorizer_service(
     return VectorizerService(page_repo, file_repo, chunking_service, weaviate_client)
 
 
-def get_repair_deletion_service(
+def get_page_deletion_service(
     page_repo: PageRepository = Depends(get_page_repository),
-    repair_repo: RepairRepository = Depends(get_repair_repository),
-    file_repo: FileRepository = Depends(get_file_repository),
-    log_repo: LogRepository = Depends(get_log_repository),
-    job_repo: JobRepository = Depends(get_job_repository),
     cleanup_repo: CleanupJobRepository = Depends(get_cleanup_job_repository),
-) -> RepairService:
-    return RepairService(
-        page_repo, repair_repo, file_repo, log_repo, job_repo, cleanup_repo=cleanup_repo
-    )
+) -> PageDeletionService:
+    return PageDeletionService(page_repo, cleanup_repo)
 
 
 def get_search_service(
