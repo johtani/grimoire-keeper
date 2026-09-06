@@ -99,6 +99,22 @@ case "${migration_status}" in
         ;;
 esac
 
+# canonical URL key の衝突は自動統合せず、レポートを残して移行を中止する。
+echo "URL canonicalization衝突確認中..."
+collision_status=0
+bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps \
+    -v "${DATA_ROOT}/migration:/app/apps/api/data/migration:rw" api \
+    python ../../scripts/init_database.py url-collision-report || \
+    collision_status=$?
+if [ "${collision_status}" -ne 0 ]; then
+    if [ "${collision_status}" -eq 12 ]; then
+        echo "ERROR: canonical URLの衝突があります。migration reportを確認してください"
+    else
+        echo "ERROR: URL canonicalization衝突確認に失敗しました"
+    fi
+    exit 1
+fi
+
 if [ "${FORCE_SQLITE_BACKUP:-false}" = "true" ] && \
    [ -f "${DATA_ROOT}/database/grimoire.db" ]; then
     backup_required=true

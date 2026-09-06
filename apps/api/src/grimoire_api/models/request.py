@@ -11,6 +11,7 @@ from pydantic import (
     HttpUrl,
     StrictInt,
     StringConstraints,
+    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -23,7 +24,7 @@ class ProcessUrlRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    url: HttpUrl
+    url: Annotated[str, Field(json_schema_extra={"format": "uri"})]
     memo: str | None = None
 
     @field_validator("url", mode="before")
@@ -32,6 +33,7 @@ class ProcessUrlRequest(BaseModel):
         """Slack マークアップ由来の不正な末尾を正規化前に拒否する."""
         if isinstance(value, str) and re.search(r"(?:>|%3e)$", value, re.IGNORECASE):
             raise ValueError("URL must not end with '>' or '%3E'")
+        TypeAdapter(HttpUrl).validate_python(value)
         return value
 
 
@@ -53,13 +55,14 @@ class UpdatePageUrlRequest(BaseModel):
     """楽観ロック付きページURL更新リクエスト."""
 
     current_url: str
-    new_url: HttpUrl
+    new_url: Annotated[str, Field(json_schema_extra={"format": "uri"})]
 
     @field_validator("new_url", mode="before")
     @classmethod
     def reject_malformed_url_suffix(cls, value: object) -> object:
         if isinstance(value, str) and re.search(r"(?:>|%3e)$", value, re.IGNORECASE):
             raise ValueError("URL must not end with '>' or '%3E'")
+        TypeAdapter(HttpUrl).validate_python(value)
         return value
 
 

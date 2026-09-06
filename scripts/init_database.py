@@ -2,6 +2,7 @@
 """Database initialization script."""
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -18,9 +19,11 @@ from grimoire_api.repositories.migrations import (  # noqa: E402
     validate_database_schema,
 )
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
+from grimoire_api.utils.url import find_url_collisions  # noqa: E402
 
 MIGRATION_PENDING_EXIT_CODE = 10
 NEW_DATABASE_EXIT_CODE = 11
+URL_COLLISION_EXIT_CODE = 12
 
 
 async def initialize_database() -> bool:
@@ -182,6 +185,43 @@ async def migration_status() -> int:
     return 0
 
 
+async def url_collision_report() -> int:
+    """既存URLを変更せずcanonicalization衝突レポートを生成する."""
+    db_path = Path(settings.DATABASE_PATH)
+    report_path = Path(settings.URL_COLLISION_REPORT_PATH)
+    if not db_path.exists():
+        rows: list[tuple[int, str]] = []
+    else:
+        try:
+            db = DatabaseConnection(read_only=True)
+            table = await db.fetch_one(
+                "SELECT 1 AS present FROM sqlite_master "
+                "WHERE type='table' AND name='pages'"
+            )
+            if table is None:
+                rows = []
+            else:
+                records = await db.fetch_all("SELECT id, url FROM pages ORDER BY id")
+                rows = [(int(row["id"]), str(row["url"])) for row in records]
+        except Exception as e:
+            print(f"❌ URL collision scan failed: {e}")
+            return 1
+
+    collisions = find_url_collisions(rows, settings.URL_TRACKING_PARAMETERS)
+    report = {
+        "tracking_parameters": sorted(settings.URL_TRACKING_PARAMETERS),
+        "collision_count": len(collisions),
+        "collisions": collisions,
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"URL collision report: {report_path}")
+    print(f"Canonicalization collisions: {len(collisions)}")
+    return URL_COLLISION_EXIT_CODE if collisions else 0
+
+
 async def reset_database() -> bool:
     """データベースリセット（開発用）."""
     print("🗑️  Resetting database...")
@@ -223,6 +263,8 @@ Commands:
     check      Check database status
     migration-status
                Read-only migration preflight (exit 10=backup, 11=new DB)
+    url-collision-report
+               Report canonical URL collisions (exit 12=collisions found)
     reset      Reset database (WARNING: All data will be lost!)
     help       Show this help message
 
@@ -232,6 +274,7 @@ Examples:
     python scripts/init_database.py sqlite
     python scripts/init_database.py check
     python scripts/init_database.py migration-status
+    python scripts/init_database.py url-collision-report
     python scripts/init_database.py reset
 """)
 
@@ -246,6 +289,8 @@ async def main() -> None:
 
     if command == "migration-status":
         sys.exit(await migration_status())
+    if command == "url-collision-report":
+        sys.exit(await url_collision_report())
 
     print("🚀 Grimoire Keeper Database Manager")
     print("=" * 40)

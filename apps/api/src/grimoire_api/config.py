@@ -45,6 +45,8 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_PATH: str = "./grimoire.db"
+    URL_TRACKING_PARAMETERS: set[str] = Field(default_factory=set)
+    URL_COLLISION_REPORT_PATH: str = "./data/migration/url-collisions.json"
 
     # Weaviate
     WEAVIATE_HOST: str = "localhost"

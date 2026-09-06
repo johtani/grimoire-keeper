@@ -5,9 +5,11 @@ from dataclasses import dataclass
 
 import aiosqlite
 
+from ..config import settings
 from ..utils.exceptions import DatabaseError
+from ..utils.url import canonicalize_url, find_url_collisions
 
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 
 
 class SchemaMigrationError(DatabaseError):
@@ -440,6 +442,27 @@ async def _migration_9(conn: aiosqlite.Connection) -> None:
     await conn.execute("INSERT INTO repair_scan_state (id) VALUES (1)")
 
 
+async def _migration_10(conn: aiosqlite.Connection) -> None:
+    """Add a canonical URL key after refusing ambiguous existing data."""
+    cursor = await conn.execute("SELECT id, url FROM pages ORDER BY id")
+    rows = [(int(row[0]), str(row[1])) for row in await cursor.fetchall()]
+    keyed: list[tuple[str, int]] = []
+    for page_id, url in rows:
+        key = canonicalize_url(url, settings.URL_TRACKING_PARAMETERS)
+        keyed.append((key, page_id))
+    collisions = find_url_collisions(rows, settings.URL_TRACKING_PARAMETERS)
+    if collisions:
+        raise SchemaMigrationError(
+            "URL canonicalization collisions detected; run "
+            "'python scripts/init_database.py url-collision-report' "
+            f"({len(collisions)} collision group(s))"
+        )
+
+    await conn.execute("ALTER TABLE pages ADD COLUMN dedupe_key TEXT")
+    await conn.executemany("UPDATE pages SET dedupe_key=? WHERE id=?", keyed)
+    await conn.execute("CREATE UNIQUE INDEX idx_pages_dedupe_key ON pages(dedupe_key)")
+
+
 MIGRATIONS = (
     Migration(1, "create_pages_and_process_logs", _migration_1),
     Migration(2, "add_last_success_step", _migration_2),
@@ -450,6 +473,7 @@ MIGRATIONS = (
     Migration(7, "add_state_constraints_and_query_indexes", _migration_7),
     Migration(8, "add_cleanup_jobs", _migration_8),
     Migration(9, "add_repair_scan_checkpoint", _migration_9),
+    Migration(10, "add_url_dedupe_key", _migration_10),
 )
 
 
@@ -498,6 +522,8 @@ def _expected_tables(version: int) -> dict[str, tuple[str, ...]]:
         page_columns += ("last_success_step",)
     if version >= 3:
         page_columns += ("status",)
+    if version >= 10:
+        page_columns += ("dedupe_key",)
 
     process_log_columns = (
         PROCESS_LOG_COLUMNS
@@ -610,6 +636,21 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 "Corrupt SQLite schema: invalid repair scan checkpoint row"
             )
 
+    if version >= 10:
+        page_rows = await (
+            await conn.execute("SELECT id, url, dedupe_key FROM pages ORDER BY id")
+        ).fetchall()
+        invalid_page_ids = [
+            page_id
+            for page_id, url, dedupe_key in page_rows
+            if dedupe_key != canonicalize_url(url, settings.URL_TRACKING_PARAMETERS)
+        ]
+        if invalid_page_ids:
+            raise SchemaMigrationError(
+                "Stored URL dedupe keys do not match URL_TRACKING_PARAMETERS: "
+                f"page_ids={invalid_page_ids}"
+            )
+
     for table in set(expected) - {"pages", "repair_scan_state"}:
         cursor = await conn.execute(f'PRAGMA foreign_key_list("{table}")')
         foreign_keys = {(row[3], row[2], row[4]) for row in await cursor.fetchall()}
@@ -690,6 +731,12 @@ async def _validate_schema(conn: aiosqlite.Connection, version: int) -> None:
                 ("status", "updated_at", "id"),
                 False,
             )
+        if version >= 10:
+            required_indexes["idx_pages_dedupe_key"] = (
+                "pages",
+                ("dedupe_key",),
+                True,
+            )
         missing_indexes = set(required_indexes) - set(actual_indexes)
         if missing_indexes:
             raise SchemaMigrationError(
@@ -725,7 +772,11 @@ async def _detect_legacy_version(conn: aiosqlite.Connection) -> int:
     latest_tables = set(_expected_tables(LATEST_SCHEMA_VERSION))
     if tables == latest_tables:
         pages_sql = await _table_sql(conn, "pages")
-        if "last_success_step IS NULL OR last_success_step IN" in pages_sql:
+        if (
+            "last_success_step IS NULL OR last_success_step IN" in pages_sql
+            and await _column_names(conn, "pages")
+            == _expected_tables(LATEST_SCHEMA_VERSION)["pages"]
+        ):
             return LATEST_SCHEMA_VERSION
 
     version_7_tables = set(_expected_tables(7))

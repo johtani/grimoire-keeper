@@ -59,6 +59,23 @@ class TestProcessRouter:
             "has_memo": False,
         }
 
+    def test_process_url_passes_original_url_to_service(self) -> None:
+        mock_processor = AsyncMock()
+        mock_processor.prepare_url_processing.return_value = {
+            "status": "prepared",
+            "page_id": 1,
+            "log_id": 10,
+            "job_id": 100,
+            "message": "Processing prepared",
+        }
+        app.dependency_overrides[get_url_processor_service] = lambda: mock_processor
+        original = "HTTPS://Example.COM:443/article#section"
+
+        response = client.post("/api/v1/process-url", json={"url": original})
+
+        assert response.status_code == 202
+        mock_processor.prepare_url_processing.assert_awaited_once_with(original, None)
+
     def test_process_url_already_exists(self) -> None:
         """既存URLの重複リクエストのテスト."""
         mock_processor = AsyncMock()
@@ -104,7 +121,7 @@ class TestProcessRouter:
 
         assert response.status_code == 202
         mock_processor.prepare_url_processing.assert_called_once_with(
-            "https://example.com/", "test memo"
+            "https://example.com", "test memo"
         )
 
     def test_process_url_rejects_unused_slack_fields(self) -> None:

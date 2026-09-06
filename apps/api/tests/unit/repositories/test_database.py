@@ -46,6 +46,7 @@ class TestDatabaseInitialization:
         assert "idx_process_logs_status" in index_names
         assert "idx_pages_last_success_step" in index_names
         assert "idx_cleanup_jobs_status_updated" in index_names
+        assert "idx_pages_dedupe_key" in index_names
 
         checkpoint = await temp_db.fetch_one("SELECT * FROM repair_scan_state")
         assert checkpoint is not None
@@ -66,6 +67,7 @@ class TestDatabaseInitialization:
         assert "idx_process_logs_status" in index_names
         assert "idx_pages_last_success_step" in index_names
         assert "idx_cleanup_jobs_status_updated" in index_names
+        assert "idx_pages_dedupe_key" in index_names
 
     @pytest.mark.asyncio
     async def test_schema_history_created(self, temp_db: DatabaseConnection) -> None:
@@ -314,6 +316,36 @@ class TestLegacyDatabaseMigration:
             for migration in MIGRATIONS[:version]:
                 await migration.apply(conn)
             await conn.commit()
+
+    @pytest.mark.asyncio
+    async def test_url_collision_rolls_back_dedupe_key_migration(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = str(tmp_path / "url-collision.db")
+        await self.create_legacy_schema(db_path, 9)
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.executemany(
+                "INSERT INTO pages (url, title) VALUES (?, ?)",
+                [
+                    ("https://example.com:443/article#one", "one"),
+                    ("https://EXAMPLE.com/article#two", "two"),
+                ],
+            )
+            await conn.commit()
+
+        db = DatabaseConnection(db_path)
+        with pytest.raises(SchemaMigrationError, match="collisions detected"):
+            await db.initialize_tables()
+
+        async with aiosqlite.connect(db_path) as conn:
+            columns = await (await conn.execute("PRAGMA table_info(pages)")).fetchall()
+            history = await (
+                await conn.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                )
+            ).fetchall()
+        assert "dedupe_key" not in {row[1] for row in columns}
+        assert history == [(version,) for version in range(1, 10)]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("legacy_version", range(1, LATEST_SCHEMA_VERSION + 1))
