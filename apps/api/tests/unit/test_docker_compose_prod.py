@@ -289,6 +289,10 @@ def test_application_volume_permissions_follow_service_responsibilities() -> Non
         "/opt/grimoire-keeper-data/migration:/app/apps/api/data/migration:ro"
         in sections["api"]
     )
+    assert (
+        "REPAIR_REPORT_PATH=/app/apps/api/data/migration/repair-pending.json"
+        in sections["api"]
+    )
     assert "/opt/grimoire-keeper-data/database:/data" in sections["worker"]
     assert (
         "/opt/grimoire-keeper-data/json:/app/apps/api/data/json" in sections["worker"]
@@ -297,6 +301,8 @@ def test_application_volume_permissions_follow_service_responsibilities() -> Non
         "/opt/grimoire-keeper-data/json:/app/apps/api/data/json:ro"
         not in sections["worker"]
     )
+    assert "/opt/grimoire-keeper-data/migration" not in sections["worker"]
+    assert "REPAIR_REPORT_PATH" not in sections["worker"]
 
 
 def test_deploy_prepares_only_application_data_for_fixed_uid() -> None:

@@ -64,11 +64,17 @@ def test_migration_backup_handles_root_owned_json_atomically() -> None:
 
 
 def test_migration_uses_repair_pending_report_for_reindex_and_counts() -> None:
-    """再索引と件数検証が同じ修復待ちレポートを共有する."""
+    """再索引と件数検証が本番永続領域の同じレポートを共有する."""
     migrate_script = (
         Path(__file__).parents[5] / "tools" / "weaviate_1_38_migration" / "migrate.sh"
     ).read_text(encoding="utf-8")
 
+    assert 'DATA_ROOT="/opt/grimoire-keeper-data"' in migrate_script
+    assert 'MIGRATION_DIR="${DATA_ROOT}/migration"' in migrate_script
+    assert 'MIGRATION_DIR="${PROJECT_ROOT}/data/migration"' not in migrate_script
+    assert 'sudo mkdir -p "${MIGRATION_DIR}"' in migrate_script
+    assert 'sudo chown -R "${APP_UID}:${APP_GID}" "${MIGRATION_DIR}"' in migrate_script
+    assert 'sudo chmod 0750 "${MIGRATION_DIR}"' in migrate_script
     assert migrate_script.count('"${MIGRATION_DIR}:/migration"') == 3
     assert (
         migrate_script.count(

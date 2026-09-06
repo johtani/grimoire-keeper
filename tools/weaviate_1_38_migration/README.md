@@ -36,8 +36,10 @@ Python処理はツールコンテナ内で行います。JSONと本番データ�
 SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロック処理のため書き込み可能で
 マウントしますが、`dry-run`と`check-counts`はSQLite URIの`mode=ro`でSQL更新を禁止
 します。本番APIがroot所有で作成したWALファイルも扱えるよう、この2コマンドの
-コンテナはrootで実行します。生成する検索スナップショットとレポートは
-`data/migration/` へ書き込みます。
+コンテナはrootで実行します。`run.sh` が生成する移行前後の検索スナップショットと一時的な
+dry-run結果は `data/migration/` へ書き込みます。本番の `migrate.sh` が生成するrepair
+reportの正本は、コンテナ再作成後も残りAPIから参照できる
+`/opt/grimoire-keeper-data/migration/repair-pending.json` へ書き込みます。
 
 `preflight`はさらにSQLiteを`mode=ro`で実際に開き、`pages`の必須列、旧・新
 スキーマの互換性、成功済みページの抽出、および各ページに対応するJina JSONの存在を
@@ -47,7 +49,8 @@ SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロッ
 再インデックスは、URL末尾の`%3E`、取得元の`data.httpStatus`またはレスポンス
 `code`が示すHTTP 4xx/5xx、欠損・破損JSON、空の
 タイトル・本文、チャンク生成不能を修復待ちとして除外します。SQLiteとJSONは変更せず、
-`data/migration/repair-pending.json`へページID、URL、理由を保存します。件数検証では
+本番移行では `/opt/grimoire-keeper-data/migration/repair-pending.json` へページID、URL、
+理由を保存します。件数検証では
 `SQLite完了ページ数 = 移行対象数 + 修復待ち数`と、Weaviateページ数が移行対象数に
 一致することを確認します。
 
@@ -71,5 +74,8 @@ SQLiteのディレクトリだけは、稼働中DBのWAL共有メモリとロッ
 
 `tools/` にほかのツールがなければ、空になる `tools/__init__.py` も削除できます。
 
-実データを含む `data/migration/` と旧WeaviateボリュームはGit操作では削除されません。
-保持期間終了後も、削除対象を別途確認してから扱ってください。
+実データを含む `data/migration/`、本番の
+`/opt/grimoire-keeper-data/migration/repair-pending.json`、旧WeaviateボリュームはGit操作では
+削除されません。repair reportはロールバック保持期間が終わり、管理画面または
+`GET /api/v1/repairs?status=all` で全caseの確認完了後にだけ手動削除します。具体的な確認・
+cleanup手順は `docs/development.md` を参照してください。

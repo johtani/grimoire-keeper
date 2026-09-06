@@ -3,11 +3,12 @@
 set -e
 
 COMPOSE_FILE="docker-compose.prod.yml"
-PROJECT_ROOT="$(pwd)"
-MIGRATION_DIR="${PROJECT_ROOT}/data/migration"
+DATA_ROOT="/opt/grimoire-keeper-data"
+APP_UID=10001
+APP_GID=10001
+MIGRATION_DIR="${DATA_ROOT}/migration"
 REPAIR_PENDING_REPORT="${MIGRATION_DIR}/repair-pending.json"
 CONTAINER_REPAIR_PENDING_REPORT="/migration/repair-pending.json"
-DATA_ROOT="/opt/grimoire-keeper-data"
 OLD_WEAVIATE_DATA="${DATA_ROOT}/weaviate"
 NEW_WEAVIATE_DATA="${DATA_ROOT}/weaviate-1.38.8"
 BACKUP_ROOT="${DATA_ROOT}/backups"
@@ -50,8 +51,9 @@ if [ -f "${MIGRATION_MARKER}" ]; then
     exit 1
 fi
 
-mkdir -p "${MIGRATION_DIR}"
-sudo mkdir -p "${NEW_WEAVIATE_DATA}" "${BACKUP_ROOT}"
+sudo mkdir -p "${MIGRATION_DIR}" "${NEW_WEAVIATE_DATA}" "${BACKUP_ROOT}"
+sudo chown -R "${APP_UID}:${APP_GID}" "${MIGRATION_DIR}"
+sudo chmod 0750 "${MIGRATION_DIR}"
 sudo chown -R "${USER}:${USER}" "${NEW_WEAVIATE_DATA}" "${BACKUP_ROOT}"
 
 OLD_API_COMMIT="$(docker compose -f "${COMPOSE_FILE}" exec -T api \
