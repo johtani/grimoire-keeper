@@ -87,6 +87,7 @@ class Page:
     weaviate_id: str | None
     last_success_step: ProcessingStep | None = None
     status: PageStatus = PageStatus.QUEUED
+    dedupe_key: str | None = None
 
 
 @dataclass

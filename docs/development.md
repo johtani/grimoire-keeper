@@ -293,6 +293,31 @@ claim 数、heartbeat 数、step／attempt／logical job の所要時間を metr
 
 ## SQLiteスキーマの変更
 
+### URL canonicalization と重複判定
+
+入力URLは監査・表示・再取得のため original のまま `pages.url` に保存し、重複判定には
+別カラム `pages.dedupe_key` を使用します。dedupe key は scheme と host を小文字化し、
+HTTP 80 / HTTPS 443 のdefault portとfragmentを除去し、空pathを `/` にします。
+非ルートpathの末尾slash、queryの順序・値・重複、percent encoding、`www`、schemeは
+内容を変え得るため統合しません。
+
+tracking query parameterは `URL_TRACKING_PARAMETERS` にJSON配列で明示した名前だけを
+除去します（例: `["utm_source","utm_campaign"]`）。この設定は永続化済みdedupe keyの
+仕様なので、DB作成・移行後に変更しないでください。変更が必要な場合は新しいschema
+migrationとして全キーを再計算し、事前に衝突を解消します。
+
+既存DBを移行する前に次を実行します。DBは読み取り専用で開かれ、結果は
+`URL_COLLISION_REPORT_PATH` にページID、original URL、衝突したdedupe keyを出力します。
+
+```bash
+uv run python scripts/init_database.py url-collision-report
+```
+
+衝突時の終了コードは12です。migrationは同じ検査を再実行して停止し、自動統合や削除を
+行いません。レポートを確認して保持するページを決め、既存の安全な削除手順で衝突を
+解消してから再実行します。本番deployもmigrationより前にこのpreflightを実行します。
+移行前バックアップを保持し、旧コードへ戻す場合はSQLiteも同じバックアップへ戻します。
+
 SQLiteのスキーマは
 `apps/api/src/grimoire_api/repositories/migrations.py` の連番マイグレーションと
 `schema_migrations` テーブルで管理します。APIとworkerは起動時に未適用の変更を順番に

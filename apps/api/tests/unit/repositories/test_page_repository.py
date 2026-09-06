@@ -407,6 +407,22 @@ async def test_create_page_classifies_unique_error_by_sqlite_code() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repository_deduplicates_canonical_url_and_preserves_original(
+    page_repo: PageRepository,
+) -> None:
+    original = "https://example.com:443/article#first"
+    page_id = await page_repo.create_page(original, "title")
+
+    assert (
+        await page_repo.get_page_by_url("https://EXAMPLE.com/article#second") == page_id
+    )
+    page = await page_repo.get_page(page_id)
+    assert page is not None
+    assert page.url == original
+    assert page.dedupe_key == "https://example.com/article"
+
+
+@pytest.mark.asyncio
 async def test_create_page_preserves_other_integrity_error() -> None:
     """UNIQUE以外のintegrity errorをURL重複として扱わない."""
     error = aiosqlite.IntegrityError("UNIQUE constraint failed: misleading")

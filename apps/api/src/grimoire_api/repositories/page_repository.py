@@ -5,12 +5,14 @@ import sqlite3
 
 import aiosqlite
 
+from ..config import settings
 from ..models.database import Page, PageStatus, ProcessingStep
 from ..utils.datetime import as_utc, utc_isoformat, utc_now_isoformat
 from ..utils.exceptions import (
     DatabaseError,
     DuplicateUrlError,
 )
+from ..utils.url import canonicalize_url
 from .database import DatabaseConnection
 
 _ALLOWED_SORT_FIELDS = frozenset({"id", "url", "title", "created_at", "updated_at"})
@@ -39,6 +41,7 @@ class PageRepository:
     def __init__(
         self,
         db: DatabaseConnection | None = None,
+        tracking_parameters: set[str] | None = None,
     ):
         """初期化.
 
@@ -46,12 +49,21 @@ class PageRepository:
             db: データベース接続
         """
         self.db = db or DatabaseConnection()
+        self.tracking_parameters = (
+            settings.URL_TRACKING_PARAMETERS
+            if tracking_parameters is None
+            else tracking_parameters
+        )
+
+    def dedupe_key(self, url: str) -> str:
+        """URLから永続的な重複判定キーを生成する."""
+        return canonicalize_url(url, self.tracking_parameters)
 
     async def get_page_by_url(self, url: str) -> int | None:
         """URLでページIDを取得."""
         try:
-            query = "SELECT id FROM pages WHERE url = ?"
-            result = await self.db.fetch_one(query, (url,))
+            query = "SELECT id FROM pages WHERE dedupe_key = ?"
+            result = await self.db.fetch_one(query, (self.dedupe_key(url),))
             if result:
                 return int(result["id"])
             return None
@@ -62,11 +74,14 @@ class PageRepository:
         """Page作成."""
         try:
             query = """
-            INSERT INTO pages (url, title, memo, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', ?, ?)
+            INSERT INTO pages
+                (url, dedupe_key, title, memo, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'queued', ?, ?)
             """
             now = utc_now_isoformat()
-            lastrowid = await self.db.execute(query, (url, title, memo, now, now))
+            lastrowid = await self.db.execute(
+                query, (url, self.dedupe_key(url), title, memo, now, now)
+            )
             return lastrowid or 0
         except Exception as e:
             if _is_unique_constraint_error(e):
@@ -85,10 +100,11 @@ class PageRepository:
                     page_cursor = await conn.execute(
                         """
                         INSERT INTO pages
-                            (url, title, memo, status, created_at, updated_at)
-                        VALUES (?, ?, ?, 'queued', ?, ?)
+                            (url, dedupe_key, title, memo, status,
+                             created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 'queued', ?, ?)
                         """,
-                        (url, title, memo, now, now),
+                        (url, self.dedupe_key(url), title, memo, now, now),
                     )
                     page_id = int(page_cursor.lastrowid or 0)
 
@@ -124,7 +140,7 @@ class PageRepository:
         """ページ取得."""
         try:
             query = """
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages WHERE id = ?
             """
@@ -142,7 +158,7 @@ class PageRepository:
         try:
             placeholders = ", ".join("?" for _ in page_ids)
             query = f"""
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages WHERE id IN ({placeholders})
             """
@@ -215,7 +231,7 @@ class PageRepository:
 
         try:
             query = f"""
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages WHERE {" AND ".join(conditions)}
             """
@@ -292,16 +308,24 @@ class PageRepository:
                 await conn.execute("BEGIN IMMEDIATE")
                 duplicate = await (
                     await conn.execute(
-                        "SELECT id FROM pages WHERE url=? AND id<>?", (new_url, page_id)
+                        "SELECT id FROM pages WHERE dedupe_key=? AND id<>?",
+                        (self.dedupe_key(new_url), page_id),
                     )
                 ).fetchone()
                 if duplicate:
                     await conn.rollback()
                     raise DuplicateUrlError("URL already exists")
                 cursor = await conn.execute(
-                    """UPDATE pages SET url=?, status='failed', updated_at=?
+                    """UPDATE pages
+                    SET url=?, dedupe_key=?, status='failed', updated_at=?
                     WHERE id=? AND url=?""",
-                    (new_url, utc_now_isoformat(), page_id, current_url),
+                    (
+                        new_url,
+                        self.dedupe_key(new_url),
+                        utc_now_isoformat(),
+                        page_id,
+                        current_url,
+                    ),
                 )
                 await conn.commit()
                 return cursor.rowcount == 1
@@ -397,7 +421,7 @@ class PageRepository:
         """全ページ取得."""
         try:
             query = """
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages
             ORDER BY created_at DESC
@@ -424,7 +448,7 @@ class PageRepository:
         """固定した上限内のページをID keysetで取得する."""
         try:
             query = """
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages
             WHERE id > ? AND id <= ?
@@ -462,7 +486,7 @@ class PageRepository:
 
             order_clause = f"ORDER BY {sort_by} {order_upper}"
             query = f"""
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages
             {where_clause}
@@ -506,7 +530,7 @@ class PageRepository:
 
             order_clause = f"ORDER BY {sort} {order_upper}"
             query = f"""
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages
             {where_clause}
@@ -525,7 +549,7 @@ class PageRepository:
         """最後の成功ステップでページを取得."""
         try:
             query = """
-            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages
             WHERE last_success_step = ?
@@ -569,4 +593,5 @@ class PageRepository:
                 else None
             ),
             status=PageStatus(row["status"]),
+            dedupe_key=(row["dedupe_key"] if "dedupe_key" in row.keys() else None),
         )

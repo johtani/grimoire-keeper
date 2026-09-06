@@ -1,7 +1,7 @@
 """Tests for the database initialization command."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from grimoire_api.repositories.migrations import (
@@ -13,9 +13,11 @@ from grimoire_api.repositories.migrations import (
 from scripts.init_database import (
     MIGRATION_PENDING_EXIT_CODE,
     NEW_DATABASE_EXIT_CODE,
+    URL_COLLISION_EXIT_CODE,
     check_database_status,
     initialize_sqlite_only,
     migration_status,
+    url_collision_report,
 )
 
 
@@ -137,3 +139,39 @@ async def test_migration_status_rejects_unknown_schema(tmp_path: Path) -> None:
         ),
     ):
         assert await migration_status() == 1
+
+
+@pytest.mark.asyncio
+async def test_url_collision_report_is_deterministic_and_read_only(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "existing.db"
+    db_path.touch()
+    report_path = tmp_path / "report.json"
+    database = MagicMock()
+    database.fetch_one = AsyncMock(return_value={"present": 1})
+    database.fetch_all = AsyncMock(
+        return_value=[
+            {"id": 1, "url": "HTTPS://Example.com:443/a#one"},
+            {"id": 2, "url": "https://example.com/a#two"},
+        ]
+    )
+
+    with (
+        patch("scripts.init_database.settings.DATABASE_PATH", str(db_path)),
+        patch(
+            "scripts.init_database.settings.URL_COLLISION_REPORT_PATH",
+            str(report_path),
+        ),
+        patch("scripts.init_database.settings.URL_TRACKING_PARAMETERS", set()),
+        patch("scripts.init_database.DatabaseConnection", return_value=database),
+    ):
+        assert await url_collision_report() == URL_COLLISION_EXIT_CODE
+
+    assert '"collision_count": 1' in report_path.read_text()
+    assert database.method_calls == [
+        call.fetch_one(
+            "SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='pages'"
+        ),
+        call.fetch_all("SELECT id, url FROM pages ORDER BY id"),
+    ]
