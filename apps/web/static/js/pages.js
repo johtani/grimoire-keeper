@@ -282,12 +282,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) { alert('Reprocessing failed: ' + error.message); }
     };
 
-    window.deleteRepairPage = async function(pageId) {
-        const url = decodeURIComponent(document.getElementById('repairUrlInput').dataset.currentUrl);
-        if (!confirm(`Permanently delete this repair page and all related data?\n\n${url}`)) return;
+    window.deletePage = async function(pageId) {
+        const modalElement = document.getElementById('pageDetailModal');
+        const url = modalElement.dataset.pageUrl;
+        if (!confirm(`Permanently delete this page?\n\n${url}\n\nThis removes its SQLite record, stored JSON, and Weaviate objects. This action cannot be undone.`)) return;
         try {
-            await window.api.deleteRepairPage(pageId);
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('pageDetailModal')).hide();
+            await window.api.deletePage(pageId);
+            bootstrap.Modal.getOrCreateInstance(modalElement).hide();
             await Promise.all([loadPages(), loadRepairs()]);
         } catch (error) { alert('Page deletion failed: ' + error.message); }
     };
@@ -395,16 +396,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             ` : ''}
             
-            ${page.has_json_file ? `
-                <div class="row mt-3">
-                    <div class="col-12">
-                        <h6>Actions</h6>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <h6>Actions</h6>
+                    ${page.has_json_file ? `
                         <button class="btn btn-outline-info" onclick="window.api.openJsonInNewWindow(${page.id})">
                             📄 View Raw JSON Data
                         </button>
-                    </div>
+                    ` : ''}
+                    ${!['processing', 'queued', 'deleting'].includes(page.status) ? `
+                        <button class="btn btn-outline-danger" onclick="deletePage(${page.id})">
+                            Delete page and related data
+                        </button>
+                    ` : ''}
                 </div>
-            ` : ''}
+            </div>
 
             ${repair ? `<div class="row mt-3"><div class="col-12">
                 <h6>Repair</h6>
@@ -418,13 +424,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="input-group"><select class="form-select" id="repairStartStep">
                     <option value="download">Jina download</option><option value="llm">LLM processing</option><option value="vectorize">Weaviate registration</option>
                 </select><button class="btn btn-warning" onclick="startRepair(${page.id})">Start Repair</button></div>
-                ${repair.repair_status === 'pending' ? `<button class="btn btn-outline-danger mt-3" onclick="deleteRepairPage(${page.id})">Delete page and related data</button>` : ''}
                 ${repair.latest_job ? `<small class="d-block mt-2">Job #${repair.latest_job.id}: ${escapeHtml(repair.latest_job.status)}${repair.latest_job.error_message ? ' — ' + escapeHtml(repair.latest_job.error_message) : ''}</small>` : ''}
             </div></div>` : ''}
         `;
 
         document.getElementById('pageDetailContent').innerHTML = modalContent;
         const modalElement = document.getElementById('pageDetailModal');
+        modalElement.dataset.pageUrl = page.url;
         bootstrap.Modal.getOrCreateInstance(modalElement).show();
     }
 

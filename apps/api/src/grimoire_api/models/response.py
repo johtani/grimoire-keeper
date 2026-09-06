@@ -265,7 +265,7 @@ class UpdatePageUrlResponse(BaseModel):
 
 
 class DeletePageResponse(BaseModel):
-    """repair ページ削除レスポンス."""
+    """ページ削除受付レスポンス."""
 
     page_id: int
     url: str

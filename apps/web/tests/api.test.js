@@ -88,6 +88,19 @@ test('does not display a legacy FastAPI detail', async () => {
     );
 });
 
+test('deletePage sends a DELETE request for the selected page', async () => {
+    let request;
+    const client = createApiClient(async (url, options) => {
+        request = { url, options };
+        return { ok: true, json: async () => ({ status: 'deleting' }) };
+    });
+
+    await client.deletePage(267);
+
+    assert.equal(request.url, '/api/v1/pages/267');
+    assert.equal(request.options.method, 'DELETE');
+});
+
 test('uses a safe message for a non-JSON response', async () => {
     const client = createApiClient(async () => errorResponse(
         502,

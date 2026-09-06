@@ -9,8 +9,8 @@ from pydantic import JsonValue
 
 from ..dependencies import (
     get_file_repository,
+    get_page_deletion_service,
     get_page_service,
-    get_repair_deletion_service,
     get_repair_scan_service,
     get_repair_service,
 )
@@ -29,11 +29,12 @@ from ..models.response import (
     UpdatePageUrlResponse,
 )
 from ..repositories.file_repository import FileRepository
+from ..services.page_deletion_service import PageDeletionService
 from ..services.page_service import PageService
 from ..services.repair_service import RepairService
 from ..utils.exceptions import (
     FileOperationError,
-    RepairDeletionConflictError,
+    PageDeletionConflictError,
     ResourceConflictError,
     ResourceNotFoundError,
 )
@@ -148,15 +149,15 @@ async def update_page_url(
 )
 async def delete_page(
     page_id: Annotated[int, Path(gt=0)],
-    repair_service: RepairService = Depends(get_repair_deletion_service),
+    deletion_service: PageDeletionService = Depends(get_page_deletion_service),
 ) -> DeletePageResponse:
-    """pending repair のページと関連データを削除する."""
+    """ページと全ストレージの関連データを非同期で削除する."""
     try:
-        result = await repair_service.delete_page(page_id)
+        result = await deletion_service.delete_page(page_id)
         return DeletePageResponse.model_validate(result)
     except LookupError as exc:
         raise ResourceNotFoundError(str(exc)) from exc
-    except RepairDeletionConflictError as exc:
+    except PageDeletionConflictError as exc:
         raise ResourceConflictError(str(exc)) from exc
 
 
