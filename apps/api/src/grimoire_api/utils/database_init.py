@@ -31,24 +31,3 @@ async def ensure_database_initialized(db_path: str | None = None) -> bool:
     except Exception:
         logger.exception("Database initialization failed")
         raise
-
-
-async def reset_database(db_path: str | None = None) -> bool:
-    """データベースをリセット（テスト用）.
-
-    Args:
-        db_path: データベースファイルパス
-
-    Returns:
-        リセットが成功したかどうか
-    """
-    try:
-        if db_path and Path(db_path).exists():
-            Path(db_path).unlink()
-            logger.info(f"Database file removed: {db_path}")
-
-        return await ensure_database_initialized(db_path)
-
-    except Exception:
-        logger.exception("Database reset failed")
-        raise

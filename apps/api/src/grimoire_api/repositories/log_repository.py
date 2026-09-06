@@ -1,7 +1,6 @@
 """Log repository."""
 
-from ..models.database import ProcessLog
-from ..utils.datetime import as_utc, utc_now_isoformat
+from ..utils.datetime import utc_now_isoformat
 from ..utils.exceptions import DatabaseError
 from .database import DatabaseConnection
 
@@ -49,66 +48,6 @@ class LogRepository:
             return lastrowid or 0
         except Exception as e:
             raise DatabaseError(f"Failed to create log: {str(e)}")
-
-    async def get_logs_by_status(self, status: str) -> list[ProcessLog]:
-        """ステータス別ログ取得."""
-        try:
-            query = """
-            SELECT * FROM process_logs
-            WHERE status = ?
-            ORDER BY created_at DESC
-            """
-            results = await self.db.fetch_all(query, (status,))
-            return [
-                ProcessLog(
-                    id=row["id"],
-                    page_id=row["page_id"],
-                    job_id=row["job_id"],
-                    attempt=row["attempt"],
-                    url=row["url"],
-                    status=row["status"],
-                    error_message=row["error_message"],
-                    created_at=as_utc(row["created_at"]),
-                )
-                for row in results
-            ]
-        except Exception as e:
-            raise DatabaseError(f"Failed to get logs by status: {str(e)}")
-
-    async def get_all_logs(self, limit: int = 100, offset: int = 0) -> list[ProcessLog]:
-        """全ログ取得."""
-        try:
-            query = """
-            SELECT * FROM process_logs
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
-            """
-            results = await self.db.fetch_all(query, (limit, offset))
-            return [
-                ProcessLog(
-                    id=row["id"],
-                    page_id=row["page_id"],
-                    job_id=row["job_id"],
-                    attempt=row["attempt"],
-                    url=row["url"],
-                    status=row["status"],
-                    error_message=row["error_message"],
-                    created_at=as_utc(row["created_at"]),
-                )
-                for row in results
-            ]
-        except Exception as e:
-            raise DatabaseError(f"Failed to get all logs: {str(e)}")
-
-    async def get_failed_page_ids(self) -> set[int]:
-        """failedステータスのpage_idセットを取得."""
-        try:
-            rows = await self.db.fetch_all(
-                "SELECT DISTINCT page_id FROM process_logs WHERE status = 'failed' AND page_id IS NOT NULL"  # noqa: E501
-            )
-            return {row["page_id"] for row in rows}
-        except Exception as e:
-            raise DatabaseError(f"Failed to get failed page ids: {str(e)}")
 
     async def has_failed_log(self, page_id: int) -> bool:
         """指定ページの失敗ログが存在するか確認."""

@@ -22,6 +22,7 @@ from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.repair_service import RepairService
 from grimoire_api.utils.exceptions import DuplicateUrlError
+from tests.helpers import set_page_status
 
 
 @pytest.fixture
@@ -196,7 +197,7 @@ async def test_scan_resumes_after_weaviate_failure(
         await repair_service.file_repo.save_json_file(
             page_id, {"data": {"title": "title", "content": "content"}}
         )
-        await repair_service.page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+        await set_page_status(repair_service.page_repo, page_id, PageStatus.SUCCEEDED)
     await repair_service.repair_repo.upsert_pending(
         page_ids[0], "scan", [{"code": "missing_json", "detail": "missing"}]
     )

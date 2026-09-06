@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+from tests.helpers import get_process_logs
 
 
 class TestLogRepository:
@@ -35,36 +36,9 @@ class TestLogRepository:
         first_id = await log_repo.create_log(url, "job_claimed")
         second_id = await log_repo.create_log(url, "completed")
 
-        logs = await log_repo.get_all_logs()
+        logs = await get_process_logs(log_repo)
         assert second_id != first_id
-        assert {log.status for log in logs} >= {"job_claimed", "completed"}
-
-    @pytest.mark.asyncio
-    async def test_get_logs_by_status(self, log_repo: Any) -> None:
-        """ステータス別ログ取得テスト."""
-        urls = ["https://example1.com", "https://example2.com", "https://example3.com"]
-        statuses = ["started", "completed", "started"]
-
-        for url, status in zip(urls, statuses):
-            await log_repo.create_log(url, status)
-
-        started_logs = await log_repo.get_logs_by_status("started")
-        assert len(started_logs) == 2
-
-        completed_logs = await log_repo.get_logs_by_status("completed")
-        assert len(completed_logs) == 1
-
-        failed_logs = await log_repo.get_logs_by_status("failed")
-        assert len(failed_logs) == 0
-
-    @pytest.mark.asyncio
-    async def test_get_all_logs(self, log_repo: Any) -> None:
-        """全ログ取得テスト."""
-        for i in range(3):
-            await log_repo.create_log(f"https://example{i}.com", "started")
-
-        logs = await log_repo.get_all_logs()
-        assert len(logs) >= 3
+        assert {log["status"] for log in logs} >= {"job_claimed", "completed"}
 
     @pytest.mark.asyncio
     async def test_has_failed_log_returns_true_when_failed(

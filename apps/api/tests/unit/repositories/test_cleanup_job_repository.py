@@ -10,13 +10,14 @@ from grimoire_api.models.database import (
 from grimoire_api.repositories.cleanup_job_repository import CleanupJobRepository
 from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.utils.exceptions import PageDeletionConflictError
+from tests.helpers import set_page_status
 
 
 async def test_enqueue_is_idempotent_and_marks_page_deleting(
     temp_db, page_repo
 ) -> None:
     page_id = await page_repo.create_page("https://delete.example", "delete")
-    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
     repo = CleanupJobRepository(temp_db)
 
     first = await repo.enqueue(page_id)
@@ -31,7 +32,7 @@ async def test_enqueue_rejects_page_with_active_processing_job(
     temp_db, page_repo
 ) -> None:
     page_id = await page_repo.create_page("https://active.example", "active")
-    await page_repo.update_status(page_id, PageStatus.FAILED)
+    await set_page_status(page_repo, page_id, PageStatus.FAILED)
     await JobRepository(temp_db).enqueue(
         page_id, JobKind.INITIAL, PipelineStartStep.DOWNLOAD
     )
@@ -44,7 +45,7 @@ async def test_enqueue_rejects_processing_page_without_active_job(
     temp_db, page_repo
 ) -> None:
     page_id = await page_repo.create_page("https://processing.example", "processing")
-    await page_repo.update_status(page_id, PageStatus.PROCESSING)
+    await set_page_status(page_repo, page_id, PageStatus.PROCESSING)
 
     with pytest.raises(PageDeletionConflictError, match="processing"):
         await CleanupJobRepository(temp_db).enqueue(page_id)
@@ -52,7 +53,7 @@ async def test_enqueue_rejects_processing_page_without_active_job(
 
 async def test_running_job_is_recovered_after_interruption(temp_db, page_repo) -> None:
     page_id = await page_repo.create_page("https://recover.example", "recover")
-    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
     repo = CleanupJobRepository(temp_db)
     await repo.enqueue(page_id)
     claimed = await repo.claim_next()

@@ -263,14 +263,6 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to update summary/keywords: {str(e)}")
 
-    async def update_page_title(self, page_id: int, title: str) -> None:
-        """ページタイトル更新."""
-        try:
-            query = "UPDATE pages SET title = ?, updated_at = ? WHERE id = ?"
-            await self.db.execute(query, (title, utc_now_isoformat(), page_id))
-        except Exception as e:
-            raise DatabaseError(f"Failed to update page title: {str(e)}")
-
     async def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
         """Weaviate ID更新."""
         try:
@@ -288,16 +280,6 @@ class PageRepository:
             await self.db.execute(query, (step, utc_now_isoformat(), page_id))
         except Exception as e:
             raise DatabaseError(f"Failed to update success step: {str(e)}")
-
-    async def update_status(self, page_id: int, status: PageStatus) -> None:
-        """ページの現在状態を更新する."""
-        try:
-            await self.db.execute(
-                "UPDATE pages SET status=?, updated_at=? WHERE id=?",
-                (status.value, utc_now_isoformat(), page_id),
-            )
-        except Exception as e:
-            raise DatabaseError(f"Failed to update page status: {e}")
 
     async def update_url_if_current(
         self, page_id: int, current_url: str, new_url: str
@@ -417,21 +399,6 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to clear weaviate_id: {str(e)}")
 
-    async def get_all_pages(self, limit: int = 100, offset: int = 0) -> list[Page]:
-        """全ページ取得."""
-        try:
-            query = """
-            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, status, created_at, updated_at
-            FROM pages
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
-            """
-            results = await self.db.fetch_all(query, (limit, offset))
-            return [self._row_to_page(row) for row in results]
-        except Exception as e:
-            raise DatabaseError(f"Failed to get all pages: {str(e)}")
-
     async def get_max_page_id(self) -> int:
         """現在存在する最大ページIDを返す."""
         try:
@@ -499,17 +466,6 @@ class PageRepository:
             return [self._row_to_page(row) for row in results]
         except Exception as e:
             raise DatabaseError(f"Failed to get pages: {str(e)}")
-
-    async def count_pages(self, status_filter: str | None = None) -> int:
-        """ページ総数取得."""
-        try:
-            where_clause = self._status_where_clause(status_filter)
-
-            query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
-            result = await self.db.fetch_one(query)
-            return result["total"] if result else 0
-        except Exception as e:
-            raise DatabaseError(f"Failed to count pages: {str(e)}")
 
     async def list_pages(
         self,

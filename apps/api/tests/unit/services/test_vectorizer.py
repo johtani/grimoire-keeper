@@ -407,7 +407,7 @@ class TestVectorizerService:
         assert "invalid stored Jina response" not in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_save_chunks_to_weaviate(
+    async def test_save_page_to_weaviate(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
         """Weaviateへのチャンク保存テスト."""
@@ -427,7 +427,7 @@ class TestVectorizerService:
         chunks = ["chunk1", "chunk2"]
 
         # 処理実行
-        result = await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
+        result = await vectorizer_service._save_page_to_weaviate(mock_page, chunks)
 
         # 結果確認（UUID5で生成されたIDが返される）
         assert len(result) == 36  # UUID形式の文字列長
@@ -454,20 +454,20 @@ class TestVectorizerService:
         assert second_data["content"] == "chunk2"
 
     @pytest.mark.asyncio
-    async def test_delete_existing_chunks_failure(
+    async def test_delete_existing_objects_failure(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
-        """_delete_existing_chunks が失敗時に例外を伝播するテスト."""
+        """_delete_existing_objects が失敗時に例外を伝播するテスト."""
         mock_collection = MagicMock()
         mock_collection.data.delete_many.side_effect = Exception(
             "Weaviate delete error"
         )
 
         with pytest.raises(Exception, match="Weaviate delete error"):
-            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+            await vectorizer_service._delete_existing_objects(mock_collection, 1)
 
     @pytest.mark.asyncio
-    async def test_delete_existing_chunks_no_matches(
+    async def test_delete_existing_objects_no_matches(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
         """削除対象なし（matches=0）の場合はポーリングしないテスト."""
@@ -480,13 +480,13 @@ class TestVectorizerService:
         with patch(
             "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
         ) as mock_sleep:
-            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+            await vectorizer_service._delete_existing_objects(mock_collection, 1)
 
         mock_collection.query.fetch_objects.assert_not_called()
         mock_sleep.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_existing_chunks_completes_on_first_check(
+    async def test_delete_existing_objects_completes_on_first_check(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
         """初回確認で削除完了する場合のテスト (sleep→check 順)."""
@@ -504,14 +504,14 @@ class TestVectorizerService:
         with patch(
             "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
         ) as mock_sleep:
-            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+            await vectorizer_service._delete_existing_objects(mock_collection, 1)
 
         # sleep→check 順のため: sleep 1回 → check 1回 → 完了
         mock_collection.query.fetch_objects.assert_called_once()
         mock_sleep.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_delete_existing_chunks_completes_after_retries(
+    async def test_delete_existing_objects_completes_after_retries(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
         """数回リトライ後に削除完了する場合のテスト (sleep→check 順)."""
@@ -535,14 +535,14 @@ class TestVectorizerService:
         with patch(
             "grimoire_api.services.vectorizer.asyncio.sleep", new_callable=AsyncMock
         ) as mock_sleep:
-            await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+            await vectorizer_service._delete_existing_objects(mock_collection, 1)
 
         # sleep→check 順のため: sleep と check が同じ回数
         assert mock_collection.query.fetch_objects.call_count == 3
         assert mock_sleep.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_delete_existing_chunks_timeout(
+    async def test_delete_existing_objects_timeout(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
         """deadline 超過時に待機条件を含む VectorizerError が発生する."""
@@ -571,12 +571,12 @@ class TestVectorizerService:
                 VectorizerError,
                 match=r"page 1.*timeout=1.0s.*poll_interval=0.1s.*pageId==1",
             ):
-                await vectorizer_service._delete_existing_chunks(mock_collection, 1)
+                await vectorizer_service._delete_existing_objects(mock_collection, 1)
 
         assert mock_collection.query.fetch_objects.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_delete_existing_chunks_bounds_query_by_remaining_timeout(
+    async def test_delete_existing_objects_bounds_query_by_remaining_timeout(
         self, vectorizer_service: VectorizerService
     ) -> None:
         mock_collection = MagicMock()
@@ -614,7 +614,7 @@ class TestVectorizerService:
     async def test_save_chunks_uses_asyncio_to_thread(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
-        """_save_chunks_to_weaviate が asyncio.to_thread で insert することを確認."""
+        """_save_page_to_weaviate が asyncio.to_thread で insert することを確認."""
         mock_page = Page(
             id=1,
             url="https://example.com",
@@ -636,7 +636,7 @@ class TestVectorizerService:
             "grimoire_api.services.vectorizer.asyncio.to_thread",
             side_effect=fake_to_thread,
         ) as mock_to_thread:
-            await vectorizer_service._save_chunks_to_weaviate(mock_page, chunks)
+            await vectorizer_service._save_page_to_weaviate(mock_page, chunks)
 
         # asyncio.to_thread が _insert_objects_sync で呼ばれたことを確認
         insert_calls = [
@@ -796,7 +796,7 @@ class TestVectorizerService:
         )
 
         with pytest.raises(VectorizerError, match="Failed to save page to Weaviate"):
-            await vectorizer_service._save_chunks_to_weaviate(mock_page, ["chunk1"])
+            await vectorizer_service._save_page_to_weaviate(mock_page, ["chunk1"])
 
     @pytest.mark.asyncio
     async def test_health_check_success(

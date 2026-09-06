@@ -503,7 +503,7 @@ class TestSearchService:
         with pytest.raises(VectorizerError, match="Keyword search error"):
             await search_service.keyword_search([])
 
-    def test_convert_search_results_v4_null_properties(
+    def test_convert_page_results_null_properties(
         self, search_service: SearchService
     ) -> None:
         """NULLプロパティを含む検索結果変換テスト."""
@@ -526,9 +526,9 @@ class TestSearchService:
 
         # NULLプロパティはPydanticの型制約に違反するためValidationErrorが発生する
         with pytest.raises(ValidationError):
-            search_service._convert_search_results_v4(mock_response)
+            search_service._convert_page_results(mock_response)
 
-    def test_convert_search_results_v4_certainty(
+    def test_convert_page_results_certainty(
         self, search_service: SearchService
     ) -> None:
         """検索結果変換テスト（certainty）."""
@@ -550,14 +550,12 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        results = search_service._convert_search_results_v4(mock_response)
+        results = search_service._convert_page_results(mock_response)
 
         assert len(results) == 1
         assert results[0].score == 0.95
 
-    def test_convert_search_results_v4_distance(
-        self, search_service: SearchService
-    ) -> None:
+    def test_convert_page_results_distance(self, search_service: SearchService) -> None:
         """検索結果変換テスト（distance）."""
         mock_obj = MagicMock()
         mock_obj.metadata.certainty = None
@@ -577,7 +575,7 @@ class TestSearchService:
         mock_response = MagicMock()
         mock_response.objects = [mock_obj]
 
-        results = search_service._convert_search_results_v4(mock_response)
+        results = search_service._convert_page_results(mock_response)
 
         assert len(results) == 1
         assert results[0].score == 0.8  # 1.0 - 0.2

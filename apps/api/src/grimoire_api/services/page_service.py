@@ -27,26 +27,6 @@ class PageService:
         self.log_repo = log_repo
         self.file_repo = file_repo
 
-    @staticmethod
-    def compute_page_status(
-        summary: str | None,
-        weaviate_id: str | None,
-        has_failed_log: bool,
-    ) -> str:
-        """ページステータスを計算する.
-
-        Args:
-            summary: 要約テキスト
-            weaviate_id: Weaviate ID
-            has_failed_log: failedログが存在するか
-
-        Returns:
-            ステータス文字列 ("completed" / "failed" / "processing")
-        """
-        if summary and weaviate_id:
-            return "completed"
-        return "failed" if has_failed_log else "processing"
-
     async def list_pages(
         self,
         limit: int = 20,

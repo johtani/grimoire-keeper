@@ -279,10 +279,6 @@ class SearchService:
             for obj in response.objects
         ]
 
-    def _convert_search_results_v4(self, response: Any) -> list[SearchResult]:
-        """旧内部APIとの互換用にページ代表結果として変換する."""
-        return self._convert_page_results(response)
-
     @staticmethod
     def _result_from_page(
         page: Page, score: float, chunk_id: int, content: str
