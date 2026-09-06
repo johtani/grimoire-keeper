@@ -408,6 +408,34 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get all pages: {str(e)}")
 
+    async def get_max_page_id(self) -> int:
+        """現在存在する最大ページIDを返す."""
+        try:
+            row = await self.db.fetch_one(
+                "SELECT COALESCE(MAX(id), 0) AS max_id FROM pages"
+            )
+            return int(row["max_id"]) if row else 0
+        except Exception as e:
+            raise DatabaseError(f"Failed to get maximum page ID: {str(e)}") from e
+
+    async def get_pages_after_id(
+        self, cursor: int, upper_bound: int, limit: int
+    ) -> list[Page]:
+        """固定した上限内のページをID keysetで取得する."""
+        try:
+            query = """
+            SELECT id, url, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, status, created_at, updated_at
+            FROM pages
+            WHERE id > ? AND id <= ?
+            ORDER BY id ASC
+            LIMIT ?
+            """
+            rows = await self.db.fetch_all(query, (cursor, upper_bound, limit))
+            return [self._row_to_page(row) for row in rows]
+        except Exception as e:
+            raise DatabaseError(f"Failed to scan pages by ID: {str(e)}") from e
+
     @staticmethod
     def _validate_sort_params(sort_field: str, order: str) -> str:
         """ソートパラメータのホワイトリスト検証を行い、正規化した order を返す."""

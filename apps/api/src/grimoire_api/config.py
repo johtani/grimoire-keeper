@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # File Storage
     JSON_STORAGE_PATH: str = "./data/json"
     REPAIR_REPORT_PATH: str = "./data/migration/repair-pending.json"
+    REPAIR_SCAN_BATCH_SIZE: int = Field(default=100, ge=1)
+    REPAIR_SCAN_WEAVIATE_CONCURRENCY: int = Field(default=4, ge=1)
+    REPAIR_SCAN_WEAVIATE_TIMEOUT: float = Field(default=10.0, gt=0)
 
     # Build Info
     GIT_COMMIT: str = "unknown"

@@ -11,6 +11,7 @@ from ..dependencies import (
     get_file_repository,
     get_page_service,
     get_repair_deletion_service,
+    get_repair_scan_service,
     get_repair_service,
 )
 from ..models.database import RepairStatus
@@ -71,7 +72,7 @@ async def import_repairs(
 
 @router.post("/repairs/scan", response_model=RepairScanResponse)
 async def scan_repairs(
-    repair_service: RepairService = Depends(get_repair_service),
+    repair_service: RepairService = Depends(get_repair_scan_service),
 ) -> RepairScanResponse:
     result = await repair_service.scan()
     return RepairScanResponse.model_validate(result)

@@ -1,14 +1,16 @@
 """Detection and management of pages requiring repair."""
 
+import asyncio
 import json
 import re
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
+from weaviate.classes.query import Filter
 
 from ..config import settings
-from ..models.database import PageStatus, RepairStatus
+from ..models.database import Page, PageStatus, RepairStatus
 from ..models.external import FetchedDocument
 from ..repositories.cleanup_job_repository import CleanupJobRepository
 from ..repositories.file_repository import FileRepository
@@ -68,6 +70,7 @@ class RepairService:
         job_repo: JobRepository,
         report_path: str | None = None,
         cleanup_repo: CleanupJobRepository | None = None,
+        weaviate_client: Any | None = None,
     ):
         self.page_repo = page_repo
         self.repair_repo = repair_repo
@@ -75,7 +78,11 @@ class RepairService:
         self.log_repo = log_repo
         self.job_repo = job_repo
         self.cleanup_repo = cleanup_repo
+        self.weaviate_client = weaviate_client
         self.report_path = Path(report_path or settings.REPAIR_REPORT_PATH)
+        self._weaviate_semaphore = asyncio.Semaphore(
+            settings.REPAIR_SCAN_WEAVIATE_CONCURRENCY
+        )
 
     async def _validate_page(self, page_id: int, url: str) -> list[dict[str, str]]:
         try:
@@ -93,17 +100,56 @@ class RepairService:
             )
         return validate_stored_source(page_id, url, source)
 
+    async def _is_page_registered(self, page_id: int) -> bool:
+        client = self.weaviate_client
+        if client is None:
+            raise RuntimeError("Weaviate client is not configured")
+        collection = client.collections.get(settings.WEAVIATE_PAGE_COLLECTION_NAME)
+        async with self._weaviate_semaphore:
+            async with asyncio.timeout(settings.REPAIR_SCAN_WEAVIATE_TIMEOUT):
+                response = await asyncio.to_thread(
+                    collection.query.fetch_objects,
+                    filters=Filter.by_property("pageId").equal(page_id),
+                    limit=1,
+                )
+        return bool(response.objects)
+
+    async def _validate_scan_page(self, page: Page) -> list[dict[str, str]]:
+        if page.id is None:
+            return []
+        reasons = await self._validate_page(page.id, page.url)
+        if (
+            self.weaviate_client is not None
+            and page.status == PageStatus.SUCCEEDED
+            and not await self._is_page_registered(page.id)
+        ):
+            reasons.append(
+                {
+                    "code": "missing_weaviate_page",
+                    "detail": f"page {page.id} is not registered in Weaviate",
+                }
+            )
+        return reasons
+
     async def scan(self) -> dict[str, int]:
-        pages = await self.page_repo.get_all_pages(limit=100000)
-        detected = 0
-        for page in pages:
-            if page.id is None:
-                continue
-            reasons = await self._validate_page(page.id, page.url)
-            if reasons:
-                await self.repair_repo.upsert_pending(page.id, "scan", reasons)
-                detected += 1
-        return {"scanned": len(pages), "pending": detected, "resolved": 0}
+        """固定snapshotをbounded batchで検査し、中断時は次回再開する."""
+        upper_bound = await self.page_repo.get_max_page_id()
+        state = await self.repair_repo.begin_or_resume_scan(upper_bound)
+        while True:
+            pages = await self.page_repo.get_pages_after_id(
+                state["cursor"], state["upper_bound"], settings.REPAIR_SCAN_BATCH_SIZE
+            )
+            if not pages:
+                return await self.repair_repo.complete_scan()
+
+            results = await asyncio.gather(
+                *(self._validate_scan_page(page) for page in pages)
+            )
+            for page, reasons in zip(pages, results, strict=True):
+                if page.id is None:
+                    continue
+                await self.repair_repo.record_scan_result(page.id, reasons)
+                state["cursor"] = page.id
 
     async def import_report(self) -> dict[str, int]:
         try:

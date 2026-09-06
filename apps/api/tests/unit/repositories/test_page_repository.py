@@ -343,6 +343,22 @@ class TestPageRepository:
 
         assert await file_repo.file_exists(page_id)
 
+    @pytest.mark.asyncio
+    async def test_scan_pages_uses_id_keyset_with_fixed_upper_bound(
+        self, page_repo: Any
+    ) -> None:
+        ids = [
+            await page_repo.create_page(f"https://example.com/{index}", str(index))
+            for index in range(5)
+        ]
+        upper_bound = await page_repo.get_max_page_id()
+        await page_repo.create_page("https://example.com/later", "later")
+
+        first = await page_repo.get_pages_after_id(0, upper_bound, 2)
+        second = await page_repo.get_pages_after_id(first[-1].id, upper_bound, 10)
+
+        assert [page.id for page in [*first, *second]] == ids
+
 
 class TestConcurrentPageRepository:
     """PageRepository 並行処理テストクラス."""
