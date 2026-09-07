@@ -270,6 +270,10 @@ async def test_update_url_marks_page_failed_and_uses_current_url_guard(
         "https://example.com/bad%3E", "title"
     )
 
+    await repair_service.page_repo.db.execute(
+        "UPDATE pages SET status='failed' WHERE id=?", (page_id,)
+    )
+
     result = await repair_service.update_url(
         page_id, "https://example.com/bad%3E", "https://example.com/good"
     )
@@ -290,6 +294,10 @@ async def test_update_url_rejects_duplicate(repair_service: RepairService) -> No
     )
     await repair_service.page_repo.create_page("https://example.com/two", "two")
 
+    await repair_service.page_repo.db.execute(
+        "UPDATE pages SET status='failed' WHERE id=?", (page_id,)
+    )
+
     with pytest.raises(FileExistsError):
         await repair_service.update_url(
             page_id, "https://example.com/one", "https://example.com/two"
@@ -301,7 +309,107 @@ async def test_repository_preserves_database_error_for_duplicate(
 ) -> None:
     first = await repair_service.page_repo.create_page("https://a.example", "a")
     await repair_service.page_repo.create_page("https://b.example", "b")
+    await repair_service.page_repo.db.execute(
+        "UPDATE pages SET status='failed' WHERE id=?", (first,)
+    )
+
     with pytest.raises(DuplicateUrlError):
         await repair_service.page_repo.update_url_if_current(
             first, "https://a.example", "https://b.example"
         )
+
+
+@pytest.mark.parametrize(
+    ("page_status", "job_status"),
+    [
+        (page_status, job_status)
+        for page_status in ("queued", "processing", "deleting", "failed")
+        for job_status in (None, "queued", "running")
+        if page_status != "failed" or job_status is not None
+    ],
+)
+async def test_update_url_rejects_busy_page_without_side_effects(
+    repair_service: RepairService, page_status: str, job_status: str | None
+) -> None:
+    from grimoire_api.utils.exceptions import PageUrlUpdateConflictError
+
+    repo = repair_service.page_repo
+    page_id = await repo.create_page("https://example.com/old", "title")
+    if job_status:
+        await repo.db.execute(
+            "INSERT INTO jobs (page_id, kind, status, start_step, created_at) "
+            "VALUES (?, 'reprocess', ?, 'download', '2026-01-01T00:00:00+00:00')",
+            (page_id, job_status),
+        )
+    await repo.db.execute(
+        "UPDATE pages SET status=? WHERE id=?", (page_status, page_id)
+    )
+    before = await repo.get_page(page_id)
+    logs = await repo.db.fetch_all("SELECT * FROM process_logs")
+    repairs = await repo.db.fetch_all("SELECT * FROM repair_cases")
+    with pytest.raises(PageUrlUpdateConflictError):
+        await repair_service.update_url(
+            page_id, "https://example.com/old", "https://example.com/new"
+        )
+    assert await repo.get_page(page_id) == before
+    assert await repo.db.fetch_all("SELECT * FROM process_logs") == logs
+    assert await repo.db.fetch_all("SELECT * FROM repair_cases") == repairs
+
+
+@pytest.mark.parametrize("enqueue_first", [True, False])
+async def test_url_update_serializes_with_enqueue(
+    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch, enqueue_first: bool
+) -> None:
+    import aiosqlite
+    from grimoire_api.models.database import JobKind, PipelineStartStep
+    from grimoire_api.utils.exceptions import PageUrlUpdateConflictError
+
+    repo = repair_service.page_repo
+    page_id = await repo.create_page("https://example.com/old", "title")
+    await repo.db.execute("UPDATE pages SET status='failed' WHERE id=?", (page_id,))
+    first_ready = asyncio.Event()
+    second_started = asyncio.Event()
+    original_commit = aiosqlite.Connection.commit
+    original_execute = aiosqlite.Connection.execute
+    first_task = None
+
+    async def commit(conn):
+        if asyncio.current_task() is first_task:
+            first_ready.set()
+            await asyncio.wait_for(second_started.wait(), timeout=5)
+        return await original_commit(conn)
+
+    def execute(conn, sql, parameters=None):
+        if sql == "BEGIN IMMEDIATE" and asyncio.current_task() is not first_task:
+            second_started.set()
+        return original_execute(conn, sql, parameters)
+
+    monkeypatch.setattr(aiosqlite.Connection, "commit", commit)
+    monkeypatch.setattr(aiosqlite.Connection, "execute", execute)
+
+    async def enqueue():
+        return await JobRepository(repo.db).enqueue(
+            page_id, JobKind.REPROCESS, PipelineStartStep.DOWNLOAD
+        )
+
+    async def update():
+        return await repo.update_url_if_current(
+            page_id, "https://example.com/old", "https://example.com/new"
+        )
+
+    first_task = asyncio.create_task(enqueue() if enqueue_first else update())
+    await asyncio.wait_for(first_ready.wait(), timeout=5)
+    second_task = asyncio.create_task(update() if enqueue_first else enqueue())
+    results = await asyncio.wait_for(
+        asyncio.gather(first_task, second_task, return_exceptions=True), timeout=10
+    )
+    assert not isinstance(results[0], BaseException)
+    if enqueue_first:
+        assert isinstance(results[1], PageUrlUpdateConflictError)
+    else:
+        assert not isinstance(results[1], BaseException)
+    page = await repo.get_page(page_id)
+    assert page and page.status == PageStatus.QUEUED
+    assert page.url == (
+        "https://example.com/old" if enqueue_first else "https://example.com/new"
+    )

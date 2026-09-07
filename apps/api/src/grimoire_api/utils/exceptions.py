@@ -81,3 +81,7 @@ class PageDeletionConflictError(GrimoireAPIError):
 
 class PageDeletionError(GrimoireAPIError):
     """Page deletion failed and may be retried."""
+
+
+class PageUrlUpdateConflictError(GrimoireAPIError):
+    """Page URL cannot be updated in its current state."""
