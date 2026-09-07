@@ -6,7 +6,7 @@ import aiosqlite
 
 from ..models.database import Job, JobKind, JobStatus, PipelineStartStep, ProcessingStep
 from ..utils.datetime import as_utc, utc_isoformat, utc_now, utc_now_isoformat
-from ..utils.exceptions import DatabaseError
+from ..utils.exceptions import DatabaseError, ResourceConflictError
 from .database import DatabaseConnection
 
 
@@ -23,6 +23,16 @@ class JobRepository:
         try:
             async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
+                deleting = await (
+                    await conn.execute(
+                        """SELECT 1 FROM pages WHERE id=? AND
+                        (status='deleting' OR EXISTS
+                            (SELECT 1 FROM cleanup_jobs WHERE page_id=pages.id))""",
+                        (page_id,),
+                    )
+                ).fetchone()
+                if deleting is not None:
+                    raise ResourceConflictError("Page is being deleted")
                 cursor = await conn.execute(
                     """INSERT INTO jobs
                     (page_id, kind, status, start_step, created_at)
@@ -42,6 +52,8 @@ class JobRepository:
                 )
                 await conn.commit()
                 return job_id
+        except ResourceConflictError:
+            raise
         except Exception as e:
             raise DatabaseError(f"Failed to enqueue job: {e}")
 

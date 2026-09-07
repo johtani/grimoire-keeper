@@ -70,6 +70,20 @@ class TestRetryRouter:
             (
                 "/api/v1/retry/999",
                 "retry_single_page",
+                ResourceConflictError("Page is being deleted"),
+                409,
+                "conflict",
+            ),
+            (
+                "/api/v1/reprocess/999",
+                "reprocess_page",
+                ResourceConflictError("Page is being deleted"),
+                409,
+                "conflict",
+            ),
+            (
+                "/api/v1/retry/999",
+                "retry_single_page",
                 ResourceConflictError("An active job already exists"),
                 409,
                 "conflict",
