@@ -61,12 +61,14 @@ class TestListPages:
         assert pages[0].id == page_id
 
     @pytest.mark.asyncio
-    async def test_list_pages_status_filter_completed(self, page_repo: Any) -> None:
+    async def test_list_pages_status_filter_completed(
+        self, page_repo: Any, set_page_status: Any
+    ) -> None:
         """completed フィルターが summary+weaviate_id 両方あるページのみ返す."""
         page_id1 = await page_repo.create_page("https://example1.com", "Title1")
         await page_repo.update_summary_keywords(page_id1, "summary", ["kw"])
         await page_repo.update_weaviate_id(page_id1, "uuid-1")
-        await page_repo.update_status(page_id1, PageStatus.SUCCEEDED)
+        await set_page_status(page_repo, page_id1, PageStatus.SUCCEEDED)
 
         await page_repo.create_page("https://example2.com", "Title2")
 
@@ -76,13 +78,13 @@ class TestListPages:
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_processing(
-        self, page_repo: Any, temp_db: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """processing フィルターが failed ログのないページのみ返す."""
         await page_repo.create_page("https://processing.com", "Processing")
 
         page_id_failed = await page_repo.create_page("https://failed.com", "Failed")
-        await page_repo.update_status(page_id_failed, PageStatus.FAILED)
+        await set_page_status(page_repo, page_id_failed, PageStatus.FAILED)
 
         pages, total = await page_repo.list_pages(status_filter="processing")
         assert total == 1
@@ -90,13 +92,13 @@ class TestListPages:
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_failed(
-        self, page_repo: Any, temp_db: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """failed フィルターが failed ログのあるページのみ返す."""
         await page_repo.create_page("https://processing.com", "Processing")
 
         page_id_failed = await page_repo.create_page("https://failed.com", "Failed")
-        await page_repo.update_status(page_id_failed, PageStatus.FAILED)
+        await set_page_status(page_repo, page_id_failed, PageStatus.FAILED)
 
         pages, total = await page_repo.list_pages(status_filter="failed")
         assert total == 1
@@ -157,7 +159,7 @@ class TestPageRepository:
 
     @pytest.mark.asyncio
     async def test_get_searchable_pages_by_ids_applies_filters(
-        self, page_repo: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """本文検索用のページ属性・除外キーワードをSQLiteで絞り込む."""
         target_id = await page_repo.create_page(
@@ -166,7 +168,7 @@ class TestPageRepository:
         await page_repo.update_summary_keywords(
             target_id, "summary", ["python", "asyncio"]
         )
-        await page_repo.update_status(target_id, PageStatus.SUCCEEDED)
+        await set_page_status(page_repo, target_id, PageStatus.SUCCEEDED)
 
         excluded_id = await page_repo.create_page(
             "https://docs.example/old-python", "Old Python"
@@ -174,7 +176,7 @@ class TestPageRepository:
         await page_repo.update_summary_keywords(
             excluded_id, "summary", ["python", "legacy"]
         )
-        await page_repo.update_status(excluded_id, PageStatus.SUCCEEDED)
+        await set_page_status(page_repo, excluded_id, PageStatus.SUCCEEDED)
 
         result = await page_repo.get_searchable_pages_by_ids(
             [target_id, excluded_id, 999999],
@@ -187,11 +189,11 @@ class TestPageRepository:
 
     @pytest.mark.asyncio
     async def test_get_searchable_pages_by_ids_applies_date_range(
-        self, page_repo: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """本文検索用の日付範囲で対象ページを絞り込む."""
         page_id = await page_repo.create_page("https://docs.example", "Docs")
-        await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+        await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
 
         page = await page_repo.get_page(page_id)
         assert page is not None
@@ -212,7 +214,7 @@ class TestPageRepository:
 
     @pytest.mark.asyncio
     async def test_get_searchable_pages_by_ids_rejects_non_succeeded_pages(
-        self, page_repo: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """候補内でも成功状態でないページは検索対象にしない."""
         succeeded_id = await page_repo.create_page("https://ok.example", "OK")
@@ -220,8 +222,8 @@ class TestPageRepository:
             "https://processing.example", "Processing"
         )
         failed_id = await page_repo.create_page("https://failed.example", "Failed")
-        await page_repo.update_status(succeeded_id, PageStatus.SUCCEEDED)
-        await page_repo.update_status(failed_id, PageStatus.FAILED)
+        await set_page_status(page_repo, succeeded_id, PageStatus.SUCCEEDED)
+        await set_page_status(page_repo, failed_id, PageStatus.FAILED)
 
         result = await page_repo.get_searchable_pages_by_ids(
             [succeeded_id, processing_id, failed_id, 999999]
@@ -275,17 +277,6 @@ class TestPageRepository:
         assert page.keywords == ["keyword1", "keyword2", "keyword3"]
 
     @pytest.mark.asyncio
-    async def test_update_page_title(self, page_repo: Any) -> None:
-        """ページタイトル更新テスト."""
-        page_id = await page_repo.create_page("https://example.com", "Old Title")
-
-        new_title = "New Title"
-        await page_repo.update_page_title(page_id, new_title)
-
-        page = await page_repo.get_page(page_id)
-        assert page.title == new_title
-
-    @pytest.mark.asyncio
     async def test_update_weaviate_id(self, page_repo: Any) -> None:
         """Weaviate ID更新テスト."""
         page_id = await page_repo.create_page("https://example.com", "Test Title")
@@ -295,31 +286,6 @@ class TestPageRepository:
 
         page = await page_repo.get_page(page_id)
         assert page.weaviate_id == weaviate_id
-
-    @pytest.mark.asyncio
-    async def test_get_all_pages(self, page_repo: Any) -> None:
-        """全ページ取得テスト."""
-        page_ids = []
-        for i in range(3):
-            page_id = await page_repo.create_page(
-                f"https://example{i}.com", f"Test Title {i}"
-            )
-            page_ids.append(page_id)
-
-        pages = await page_repo.get_all_pages()
-        assert len(pages) == 3
-
-        retrieved_ids = [page.id for page in pages]
-        assert retrieved_ids == list(reversed(page_ids))
-
-    @pytest.mark.asyncio
-    async def test_get_all_pages_with_limit(self, page_repo: Any) -> None:
-        """制限付き全ページ取得テスト."""
-        for i in range(5):
-            await page_repo.create_page(f"https://example{i}.com", f"Test Title {i}")
-
-        pages = await page_repo.get_all_pages(limit=3)
-        assert len(pages) == 3
 
     @pytest.mark.asyncio
     async def test_get_pages_invalid_sort_field(self, page_repo: Any) -> None:
@@ -389,7 +355,7 @@ class TestConcurrentPageRepository:
         # DB には重複レコードが存在しない
         page_id = await page_repo.get_page_by_url(url)
         assert page_id == successes[0]
-        pages = await page_repo.get_all_pages()
+        pages = await page_repo.get_pages(limit=100)
         assert sum(1 for p in pages if p.url == url) == 1
 
 

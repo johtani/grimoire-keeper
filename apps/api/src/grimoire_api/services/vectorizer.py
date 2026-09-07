@@ -388,10 +388,6 @@ class VectorizerService:
                 f"Failed to remove page {page_id} from Weaviate: {str(e)}"
             ) from e
 
-    async def _save_chunks_to_weaviate(self, page_data: Page, chunks: list[str]) -> str:
-        """後方互換用の内部エイリアス."""
-        return await self._save_page_to_weaviate(page_data, chunks)
-
     @staticmethod
     def _format_created_at(page_data: Page) -> str:
         return utc_isoformat(page_data.created_at)
@@ -481,10 +477,6 @@ class VectorizerService:
                 return True, "connection", None
             current = current.__cause__
         return False, "permanent", None
-
-    async def _delete_existing_chunks(self, collection: Any, page_id: int) -> None:
-        """後方互換用の内部エイリアス."""
-        await self._delete_existing_objects(collection, page_id)
 
     async def health_check(self) -> bool:
         try:

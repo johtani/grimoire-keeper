@@ -36,25 +36,6 @@ def page_service() -> PageService:
     return PageService(page_repo=page_repo, log_repo=log_repo, file_repo=file_repo)
 
 
-class TestComputePageStatus:
-    """compute_page_status の単体テスト."""
-
-    def test_completed_when_summary_and_weaviate_id(self) -> None:
-        """summary と weaviate_id が両方ある場合 completed."""
-        assert PageService.compute_page_status("summary", "uuid", False) == "completed"
-        assert PageService.compute_page_status("summary", "uuid", True) == "completed"
-
-    def test_failed_when_has_failed_log(self) -> None:
-        """failed ログがあれば failed."""
-        assert PageService.compute_page_status(None, None, True) == "failed"
-        assert PageService.compute_page_status("summary", None, True) == "failed"
-
-    def test_processing_when_no_failed_log(self) -> None:
-        """failed ログがなければ processing."""
-        assert PageService.compute_page_status(None, None, False) == "processing"
-        assert PageService.compute_page_status("summary", None, False) == "processing"
-
-
 class TestListPages:
     """list_pages のテスト."""
 
@@ -70,7 +51,6 @@ class TestListPages:
             status=PageStatus.SUCCEEDED,
         )
         page_service.page_repo.list_pages.return_value = ([page], 1)  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
         page_service.file_repo.get_existing_page_ids.return_value = {1}  # type: ignore[attr-defined]
 
         result, total = await page_service.list_pages()
@@ -88,7 +68,6 @@ class TestListPages:
         """failed ログなし → processing ステータス."""
         page = make_page(id=2, status=PageStatus.PROCESSING)
         page_service.page_repo.list_pages.return_value = ([page], 1)  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
         page_service.file_repo.get_existing_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         result, total = await page_service.list_pages()
@@ -101,7 +80,6 @@ class TestListPages:
         """failed ログあり → failed ステータス."""
         page = make_page(id=3, status=PageStatus.FAILED)
         page_service.page_repo.list_pages.return_value = ([page], 1)  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = {3}  # type: ignore[attr-defined]
         page_service.file_repo.get_existing_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         result, _ = await page_service.list_pages()
@@ -114,7 +92,6 @@ class TestListPages:
     ) -> None:
         """list_pages がパラメータをリポジトリに正しく渡す."""
         page_service.page_repo.list_pages.return_value = ([], 0)  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
         page_service.file_repo.get_existing_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         await page_service.list_pages(
@@ -129,7 +106,6 @@ class TestListPages:
     async def test_list_pages_empty(self, page_service: PageService) -> None:
         """ページが0件の場合."""
         page_service.page_repo.list_pages.return_value = ([], 0)  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
         page_service.file_repo.get_existing_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         result, total = await page_service.list_pages()
@@ -161,7 +137,6 @@ class TestGetPageDetail:
         )
         page_service.page_repo.get_page.return_value = page  # type: ignore[attr-defined]
         page_service.log_repo.get_latest_error.return_value = None  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         result = await page_service.get_page_detail(1)
 
@@ -179,7 +154,6 @@ class TestGetPageDetail:
         page = make_page(id=2, status=PageStatus.FAILED)
         page_service.page_repo.get_page.return_value = page  # type: ignore[attr-defined]
         page_service.log_repo.get_latest_error.return_value = "some error"  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = {2}  # type: ignore[attr-defined]
 
         result = await page_service.get_page_detail(2)
 
@@ -193,7 +167,6 @@ class TestGetPageDetail:
         page = make_page(id=3, status=PageStatus.PROCESSING)
         page_service.page_repo.get_page.return_value = page  # type: ignore[attr-defined]
         page_service.log_repo.get_latest_error.return_value = None  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         result = await page_service.get_page_detail(3)
 
@@ -214,7 +187,6 @@ class TestGetPageDetail:
         )
         page_service.page_repo.get_page.return_value = page  # type: ignore[attr-defined]
         page_service.log_repo.get_latest_error.return_value = None  # type: ignore[attr-defined]
-        page_service.log_repo.get_failed_page_ids.return_value = set()  # type: ignore[attr-defined]
 
         result = await page_service.get_page_detail(1)
 

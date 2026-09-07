@@ -14,6 +14,7 @@ from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
+from grimoire_api.utils.datetime import utc_now_isoformat
 
 
 class ResponsiveEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
@@ -73,3 +74,31 @@ async def page_repo(
 async def log_repo(temp_db: DatabaseConnection) -> LogRepository:
     """ログリポジトリフィクスチャ."""
     return LogRepository(db=temp_db)
+
+
+@pytest.fixture
+def set_page_status():
+    """Return a test-only helper for arranging persisted page status."""
+
+    async def set_status(page_repo, page_id, status) -> None:
+        await page_repo.db.execute(
+            "UPDATE pages SET status=?, updated_at=? WHERE id=?",
+            (status.value, utc_now_isoformat(), page_id),
+        )
+
+    return set_status
+
+
+@pytest.fixture
+def get_process_logs():
+    """Return a test-only helper for reading immutable process events."""
+
+    async def get_logs(log_repo, *, page_id=None, limit=100):
+        where = "WHERE page_id = ?" if page_id is not None else ""
+        params = (page_id, limit) if page_id is not None else (limit,)
+        return await log_repo.db.fetch_all(
+            f"SELECT * FROM process_logs {where} ORDER BY created_at DESC LIMIT ?",
+            params,
+        )
+
+    return get_logs

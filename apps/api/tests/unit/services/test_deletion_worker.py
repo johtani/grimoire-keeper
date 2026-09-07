@@ -8,10 +8,10 @@ from grimoire_api.services.deletion_worker import DeletionWorker
 
 
 async def test_file_failure_is_persisted_and_retry_completes(
-    temp_db, page_repo, file_repo
+    temp_db, page_repo, file_repo, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://delete.example", "delete")
-    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
     await file_repo.save_json_file(page_id, {"data": {}})
     cleanup_repo = CleanupJobRepository(temp_db)
     await cleanup_repo.enqueue(page_id)
@@ -33,10 +33,10 @@ async def test_file_failure_is_persisted_and_retry_completes(
 
 
 async def test_finalize_failure_retries_external_deletes_safely(
-    temp_db, page_repo, file_repo
+    temp_db, page_repo, file_repo, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://finalize.example", "delete")
-    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
     cleanup_repo = CleanupJobRepository(temp_db)
     await cleanup_repo.enqueue(page_id)
     vectorizer = AsyncMock()
@@ -56,10 +56,10 @@ async def test_finalize_failure_retries_external_deletes_safely(
 
 
 async def test_weaviate_failure_is_persisted_and_retry_completes(
-    temp_db, page_repo, file_repo
+    temp_db, page_repo, file_repo, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://vector.example", "delete")
-    await page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+    await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
     cleanup_repo = CleanupJobRepository(temp_db)
     await cleanup_repo.enqueue(page_id)
     vectorizer = AsyncMock()

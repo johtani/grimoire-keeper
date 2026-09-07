@@ -257,6 +257,7 @@ class TestRetryLogGeneration:
         self,
         retry_service: RetryService,
         repos: tuple[PageRepository, LogRepository],
+        get_process_logs,
     ) -> None:
         """リトライ実行後に completed ログが生成されること."""
         page_repo, log_repo = repos
@@ -271,12 +272,11 @@ class TestRetryLogGeneration:
         await retry_service.retry_single_page(page_id)
 
         # 全ログを取得し、このページのログを確認
-        all_logs = await log_repo.get_all_logs(limit=50)
-        page_logs = [log for log in all_logs if log.page_id == page_id]
+        page_logs = await get_process_logs(log_repo, page_id=page_id, limit=50)
 
         # 失敗ログ (事前挿入) + リトライログ の 2 件が存在する
         assert len(page_logs) == 2
 
-        statuses = {log.status for log in page_logs}
+        statuses = {log["status"] for log in page_logs}
         assert "failed" in statuses  # 元の失敗ログ
         assert "completed" in statuses  # リトライ完了ログ

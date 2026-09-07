@@ -288,7 +288,7 @@ class TestConcurrentUrlProcessor:
         from grimoire_api.repositories.page_repository import PageRepository
 
         page_repo = PageRepository(db=temp_db)
-        pages = await page_repo.get_all_pages()
+        pages = await page_repo.get_pages(limit=100)
         assert sum(1 for p in pages if p.url == url) == 1
         page_id = next(p.id for p in pages if p.url == url)
         log_count = await temp_db.fetch_one(

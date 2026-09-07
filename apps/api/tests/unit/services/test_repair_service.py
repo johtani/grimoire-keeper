@@ -183,7 +183,9 @@ async def test_scan_uses_fixed_snapshot_upper_bound(
 
 
 async def test_scan_resumes_after_weaviate_failure(
-    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch
+    repair_service: RepairService,
+    monkeypatch: pytest.MonkeyPatch,
+    set_page_status,
 ) -> None:
     monkeypatch.setattr(settings, "REPAIR_SCAN_BATCH_SIZE", 1)
     page_ids = [
@@ -196,7 +198,7 @@ async def test_scan_resumes_after_weaviate_failure(
         await repair_service.file_repo.save_json_file(
             page_id, {"data": {"title": "title", "content": "content"}}
         )
-        await repair_service.page_repo.update_status(page_id, PageStatus.SUCCEEDED)
+        await set_page_status(repair_service.page_repo, page_id, PageStatus.SUCCEEDED)
     await repair_service.repair_repo.upsert_pending(
         page_ids[0], "scan", [{"code": "missing_json", "detail": "missing"}]
     )

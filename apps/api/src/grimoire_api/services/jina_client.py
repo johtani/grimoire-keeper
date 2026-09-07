@@ -133,15 +133,3 @@ class JinaClient:
         if isinstance(error, httpx.TransportError):
             return True, "transport", None
         return False, "permanent", None
-
-    async def health_check(self) -> bool:
-        """ヘルスチェック.
-
-        Returns:
-            APIが利用可能かどうか
-        """
-        try:
-            await self.fetch_content("https://example.com")
-            return True
-        except JinaClientError:
-            return False

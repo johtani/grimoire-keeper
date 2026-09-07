@@ -5,7 +5,6 @@ from functools import lru_cache
 import weaviate
 from fastapi import Depends, Request
 
-from .config import settings
 from .repositories.cleanup_job_repository import CleanupJobRepository
 from .repositories.database import DatabaseConnection
 from .repositories.file_repository import FileRepository
@@ -15,14 +14,12 @@ from .repositories.page_repository import PageRepository
 from .repositories.repair_repository import RepairRepository
 from .services.chunking_service import ChunkingService
 from .services.jina_client import JinaClient
-from .services.llm_service import LLMService
 from .services.page_deletion_service import PageDeletionService
 from .services.page_service import PageService
 from .services.repair_service import RepairService
 from .services.retry_service import RetryService
 from .services.search_service import SearchService
 from .services.url_processor import UrlProcessorService
-from .services.vectorizer import VectorizerService
 from .utils.exceptions import ServiceUnavailableError
 
 # ---------------------------------------------------------------------------
@@ -46,13 +43,6 @@ def get_file_repository() -> FileRepository:
 def get_chunking_service() -> ChunkingService:
     """チャンキングサービスシングルトン."""
     return ChunkingService()
-
-
-@lru_cache
-def get_summary_chunking_service() -> ChunkingService:
-    """要約専用設定のチャンキングサービスシングルトン."""
-    input_budget = settings.LLM_CONTEXT_WINDOW - settings.LLM_MAX_OUTPUT_TOKENS
-    return ChunkingService(chunk_size=max(1, input_budget // 2))
 
 
 @lru_cache
@@ -118,14 +108,6 @@ def get_page_service(
     return PageService(page_repo, log_repo, file_repo)
 
 
-def get_llm_service(
-    file_repo: FileRepository = Depends(get_file_repository),
-    chunking_service: ChunkingService = Depends(get_summary_chunking_service),
-) -> LLMService:
-    """LLM サービス依存性注入."""
-    return LLMService(file_repo, chunking_service=chunking_service)
-
-
 # ---------------------------------------------------------------------------
 # Weaviate-dependent services (weaviate_client comes from app.state)
 # ---------------------------------------------------------------------------
@@ -163,16 +145,6 @@ def get_repair_scan_service(
         job_repo,
         weaviate_client=weaviate_client,
     )
-
-
-def get_vectorizer_service(
-    page_repo: PageRepository = Depends(get_page_repository),
-    file_repo: FileRepository = Depends(get_file_repository),
-    chunking_service: ChunkingService = Depends(get_chunking_service),
-    weaviate_client: weaviate.WeaviateClient = Depends(get_weaviate_client),
-) -> VectorizerService:
-    """ベクトル化サービス依存性注入."""
-    return VectorizerService(page_repo, file_repo, chunking_service, weaviate_client)
 
 
 def get_page_deletion_service(

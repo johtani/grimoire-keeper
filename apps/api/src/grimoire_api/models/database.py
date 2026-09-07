@@ -108,20 +108,6 @@ class Job:
 
 
 @dataclass
-class ProcessLog:
-    """処理ログデータモデル."""
-
-    id: int | None
-    page_id: int | None
-    job_id: int | None
-    attempt: int | None
-    url: str
-    status: str
-    error_message: str | None
-    created_at: datetime
-
-
-@dataclass
 class RepairCase:
     """永続化された修復ケース."""
 
