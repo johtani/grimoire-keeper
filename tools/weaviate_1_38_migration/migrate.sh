@@ -40,6 +40,15 @@ if [ -z "${BWS_ACCESS_TOKEN}" ] || ! command -v bws &> /dev/null; then
     exit 1
 fi
 
+# 停止・バックアップ前にBWS由来の埋め込みキーを確認する。値は出力しない。
+if ! bws run -- sh -c 'case "${GRIMOIRE_KEEPER_OPENAI_API_KEY:-}" in
+    *[![:space:]]*) exit 0 ;;
+    *) exit 1 ;;
+esac'; then
+    echo "ERROR: BWS の GRIMOIRE_KEEPER_OPENAI_API_KEY が必要です"
+    exit 1
+fi
+
 if [ ! -d "${OLD_WEAVIATE_DATA}" ]; then
     echo "ERROR: 旧Weaviateデータが見つかりません: ${OLD_WEAVIATE_DATA}"
     exit 1

@@ -118,7 +118,7 @@ Bitwarden Secrets Manager に登録するシークレット (プレフィック�
 - `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` / `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` / `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` (Slack bot 用)
 - `GRIMOIRE_KEEPER_LLM_API_KEY` (クラウド LLM 使用時のみ)
 
-Compose はこれらを各プロセスの prefix なし環境変数へ変換します。API は SQLite 設定のみ、Worker は Jina・OpenAI・クラウド構成時の LLM、Bot は Slack の各キーを必要とします。Weaviate の model または dimensions を変更した場合は全ベクトルの再インデックスが必要です。schema を変更した際は、このファイルと `AGENTS.md` の collection・property・named vector の説明も同時に確認します。
+Compose はこれらを各プロセスの prefix なし環境変数へ変換します。API の起動には SQLite 設定、ベクトル検索には OpenAI キーが必要です。API コンテナでの再インデックスにも同じキーを渡します。Worker は Jina・OpenAI・クラウド構成時の LLM、Bot は Slack の各キーを必要とします。Weaviate の model または dimensions を変更した場合は全ベクトルの再インデックスが必要です。schema を変更した際は、このファイルと `AGENTS.md` の collection・property・named vector の説明も同時に確認します。
 
 ## テストの注意事項
 

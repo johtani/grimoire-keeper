@@ -16,13 +16,13 @@
 | 対象 | Bitwarden の key 名 | process 内の環境変数 | 必須条件 |
 |---|---|---|---|
 | Worker | `GRIMOIRE_KEEPER_JINA_API_KEY` | `JINA_API_KEY` | 常時 |
-| Worker | `GRIMOIRE_KEEPER_OPENAI_API_KEY` | `OPENAI_API_KEY` | 常時（Weaviate 埋め込み） |
+| API / Worker / 再インデックス | `GRIMOIRE_KEEPER_OPENAI_API_KEY` | `OPENAI_API_KEY` | ベクトル検索・埋め込み生成時 |
 | Worker | `GRIMOIRE_KEEPER_LLM_API_KEY` | `LLM_API_KEY` | cloud LLM 利用時 |
 | Bot | `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` | `SLACK_BOT_TOKEN` | Bot 起動時 |
 | Bot | `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` | `SLACK_SIGNING_SECRET` | Bot 起動時 |
 | Bot | `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` | `SLACK_APP_TOKEN` | Bot 起動時 |
 
-`docker-compose.prod.yml` が Bitwarden の prefix 付き key を process 内の prefix なし環境変数へ渡します。API は SQLite の設定だけで起動でき、外部サービスの secret は不要です。ローカルの認証不要 LLM では `LLM_API_KEY=dummy` を非秘密設定として `.env` に置けます。それ以外の API key や token は `.env` に保存しません。
+`docker-compose.prod.yml` が Bitwarden の prefix 付き key を process 内の prefix なし環境変数へ渡します。API は SQLite の設定だけで起動できますが、ベクトル検索と API コンテナでの再インデックスには OpenAI キーが必要です。ローカルの認証不要 LLM では `LLM_API_KEY=dummy` を非秘密設定として `.env` に置けます。それ以外の API key や token は `.env` に保存しません。
 
 ## デプロイ手順
 
