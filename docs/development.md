@@ -16,6 +16,9 @@ worker は同じ SQLite に対して必ず1プロセスだけ起動してくだ�
 APIプロセスに必須なのはSQLiteの `DATABASE_PATH` だけです。Jina、LLM、Weaviateが停止中、
 または処理用APIキーが未設定でも、URL登録、状態確認、リトライ受付は利用できます。登録済みの
 ジョブはSQLiteに保持され、必要な外部サービスを設定したworkerが復旧した後に処理されます。
+ベクトル検索には API プロセスにも `OPENAI_API_KEY` が必要です。Compose は BWS の
+`GRIMOIRE_KEEPER_OPENAI_API_KEY` を API と Worker に渡し、API コンテナでの再インデックスも
+同じ設定を使用します。移行スクリプトはサービス停止前に BWS のキーが空でないことを確認します。
 検索などWeaviateを直接利用するAPIは、Weaviate停止中は縮退応答または503を返します。
 
 ### URL 処理メトリクス
@@ -114,7 +117,14 @@ Bitwarden Secrets Manager には `GRIMOIRE_KEEPER_LLM_API_KEY` という名前�
 本番では `docker-compose.prod.yml` がWorkerへ `LLM_API_KEY` を渡します。開発時のWorkerは、
 同じ名前の環境変数を設定したシェルから起動してください。`OPENAI_API_KEY` は Weaviate の
 埋め込み用であり、要約LLM用とは別です。`scripts/dev.sh` はAPIだけを起動するため、これらの
-処理用キーやBitwardenへの接続を必要としません。
+処理用キーやBitwardenへの接続を起動条件にしません。ただし開発 API でベクトル検索を
+使う場合は、`OPENAI_API_KEY` を安全に環境へ設定してから起動してください。
+BWS の prefix 付きキーを直接渡す場合は、次のように子シェル内で変換します。
+キーを `.env` に保存したり、展開済みの環境設定をログへ出力したりしないでください。
+
+```bash
+bws run -- sh -c 'export OPENAI_API_KEY="$GRIMOIRE_KEEPER_OPENAI_API_KEY"; exec bash scripts/dev.sh'
+```
 
 ローカルの OpenAI 互換サーバーを使う場合、ホスト上でworkerを直接実行するときは
 `LLM_API_BASE=http://localhost:8080/v1` を使用します。Composeのworkerからホスト上の

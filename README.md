@@ -66,13 +66,15 @@
    | Process | Bitwarden secret | Container environment |
    |---|---|---|
    | Worker | `GRIMOIRE_KEEPER_JINA_API_KEY` | `JINA_API_KEY` |
-   | Worker | `GRIMOIRE_KEEPER_OPENAI_API_KEY` | `OPENAI_API_KEY` |
+   | API / Worker / Reindex | `GRIMOIRE_KEEPER_OPENAI_API_KEY` | `OPENAI_API_KEY` |
    | Worker (cloud LLM only) | `GRIMOIRE_KEEPER_LLM_API_KEY` | `LLM_API_KEY` |
    | Bot | `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` | `SLACK_BOT_TOKEN` |
    | Bot | `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` | `SLACK_SIGNING_SECRET` |
    | Bot | `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` | `SLACK_APP_TOKEN` |
 
-   The API itself needs no external-service secret. A local, unauthenticated
+   The API needs `OPENAI_API_KEY` for vector search; reindexing in the API
+   container uses the same key. URL registration can start without this key.
+   A local, unauthenticated
    LLM uses the non-secret `.env` value `LLM_API_KEY=dummy`.
 
    Long pages are split into partial summaries and combined hierarchically so

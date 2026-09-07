@@ -635,3 +635,63 @@ def test_containerized_rollback_uses_host_verified_commit(
     assert checks
     assert all(check.status == "PASS" for check in checks)
     assert "docker command" not in {check.name for check in checks}
+
+
+@pytest.mark.parametrize("key", [None, "", " \t\n", "test-embedding-key"])
+def test_migration_checks_bws_key_before_mutations(
+    tmp_path: Path, key: str | None
+) -> None:
+    """BWS子プロセスのキーを検証し、値を出力せず停止作業前に失敗する。"""
+    import subprocess
+
+    script = (
+        Path(__file__).parents[5] / "tools/weaviate_1_38_migration/migrate.sh"
+    ).read_text()
+    # 実際の事前検証部分だけを実行し、本番データへの操作を避ける。
+    preflight = script.split('if [ ! -d "${OLD_WEAVIATE_DATA}" ]; then', 1)[0]
+    assert "sudo " not in preflight
+    assert "docker compose" not in preflight
+    (tmp_path / ".env").touch()
+    bws = tmp_path / "bws"
+    bws.write_text('#!/bin/sh\nshift 2\nexec "$@"\n')
+    bws.chmod(0o755)
+    env = {"PATH": f"{tmp_path}:/usr/bin:/bin", "BWS_ACCESS_TOKEN": "test-token"}
+    if key is not None:
+        env["GRIMOIRE_KEEPER_OPENAI_API_KEY"] = key
+    result = subprocess.run(
+        ["bash", "-c", preflight],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == (0 if key == "test-embedding-key" else 1)
+    if result.returncode:
+        assert "GRIMOIRE_KEEPER_OPENAI_API_KEY が必要です" in result.stdout
+    else:
+        assert result.stdout == ""
+    assert "test-embedding-key" not in result.stdout + result.stderr
+    assert "test-token" not in result.stdout + result.stderr
+
+
+def test_migration_reindex_commands_inherit_api_environment() -> None:
+    """移行の再インデックス・件数確認がBWS配下のAPIサービスを使う。"""
+    import shlex
+
+    script = (
+        (Path(__file__).parents[5] / "tools/weaviate_1_38_migration/migrate.sh")
+        .read_text()
+        .replace("\\\n", " ")
+    )
+    commands = [
+        shlex.split(line)
+        for line in script.splitlines()
+        if line.startswith("bws run -- docker compose") and " run --rm " in line
+    ]
+    assert len(commands) == 3
+    for command in commands:
+        assert command[:3] == ["bws", "run", "--"]
+        assert command[command.index("api") + 1] == "python"
+        assert "--env" not in command and "-e" not in command
+    assert sum("../../scripts/reindex_weaviate.py" in cmd for cmd in commands) == 2

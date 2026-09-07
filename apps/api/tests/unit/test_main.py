@@ -17,9 +17,13 @@ async def test_lifespan_starts_and_stops_manager_after_database_init() -> None:
         patch(
             "grimoire_api.main.ensure_database_initialized", new=AsyncMock()
         ) as initialize,
-        patch("grimoire_api.main.WeaviateConnectionManager", return_value=manager),
+        patch("grimoire_api.main.settings.OPENAI_API_KEY", "test-embedding-key"),
+        patch(
+            "grimoire_api.main.WeaviateConnectionManager", return_value=manager
+        ) as manager_class,
     ):
         async with lifespan(app):
+            assert manager_class.call_args.kwargs["api_key"] == "test-embedding-key"
             manager.start.assert_awaited_once()
             assert not hasattr(app.state, "job_worker")
 

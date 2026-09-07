@@ -88,14 +88,16 @@ def test_worker_has_claim_loop_healthcheck_and_allows_graceful_stop() -> None:
     assert "restart: unless-stopped" in worker_section
 
 
-def test_only_worker_receives_processing_credentials() -> None:
-    """AI処理用キーはworkerだけへ渡す."""
+def test_api_and_worker_receive_embedding_credentials() -> None:
+    """埋め込みキーはAPIとworker、Jina・LLMキーはworkerへ渡す."""
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     api_section = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
     worker_section = compose.split("\n  worker:", 1)[1].split("\n  weaviate:", 1)[0]
 
+    assert "OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY:-}" in api_section
+    assert "OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}" in worker_section
+
     processing_keys = (
-        "OPENAI_API_KEY=${GRIMOIRE_KEEPER_OPENAI_API_KEY}",
         "JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}",
         "LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}",
     )
@@ -337,3 +339,43 @@ def test_production_compose_renders(tmp_path: Path) -> None:
         check=True,
         cwd=PROJECT_ROOT,
     )
+
+
+@pytest.mark.parametrize("key", ["", "test-compose-embedding-key"])
+def test_api_embedding_environment_interpolation(tmp_path: Path, key: str) -> None:
+    """本番ComposeがBWS名をAPI内の環境変数へ変換する。"""
+    import json
+    import os
+
+    if shutil.which("docker") is None:
+        pytest.skip("docker CLI is not installed")
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    (tmp_path / "compose.yml").write_text(compose)
+    (tmp_path / ".env").touch()
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("GRIMOIRE_KEEPER_", "COMPOSE_"))
+    }
+    env["GRIMOIRE_KEEPER_OPENAI_API_KEY"] = key
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(tmp_path / "compose.yml"),
+            "config",
+            "--format",
+            "json",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    services = json.loads(result.stdout)["services"]
+    assert services["api"]["environment"]["OPENAI_API_KEY"] == key
+    assert services["worker"]["environment"]["OPENAI_API_KEY"] == key
+    assert "JINA_API_KEY" not in services["api"]["environment"]
+    assert "LLM_API_KEY" not in services["api"]["environment"]
