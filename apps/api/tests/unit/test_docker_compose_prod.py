@@ -99,7 +99,7 @@ def test_api_and_worker_receive_embedding_credentials() -> None:
 
     processing_keys = (
         "JINA_API_KEY=${GRIMOIRE_KEEPER_JINA_API_KEY}",
-        "LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY}",
+        "LLM_API_KEY=${GRIMOIRE_KEEPER_LLM_API_KEY:-${LLM_API_KEY:-}}",
     )
     assert all(key not in api_section for key in processing_keys)
     assert all(key in worker_section for key in processing_keys)
@@ -379,3 +379,48 @@ def test_api_embedding_environment_interpolation(tmp_path: Path, key: str) -> No
     assert services["worker"]["environment"]["OPENAI_API_KEY"] == key
     assert "JINA_API_KEY" not in services["api"]["environment"]
     assert "LLM_API_KEY" not in services["api"]["environment"]
+
+
+@pytest.mark.parametrize(
+    ("bws_key", "expected"),
+    [(None, "dummy"), ("", "dummy"), ("provider-key", "provider-key")],
+)
+def test_worker_llm_api_key_environment_interpolation(
+    tmp_path: Path, bws_key: str | None, expected: str
+) -> None:
+    """BWSの実キーを優先し、未設定または空ならローカル設定を維持する."""
+    import json
+    import os
+
+    if shutil.which("docker") is None:
+        pytest.skip("docker CLI is not installed")
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    (tmp_path / "compose.yml").write_text(compose)
+    (tmp_path / ".env").write_text("LLM_API_KEY=dummy\n")
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("GRIMOIRE_KEEPER_", "COMPOSE_", "LLM_API_KEY"))
+    }
+    if bws_key is not None:
+        env["GRIMOIRE_KEEPER_LLM_API_KEY"] = bws_key
+
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(tmp_path / "compose.yml"),
+            "config",
+            "--format",
+            "json",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    services = json.loads(result.stdout)["services"]
+    assert services["worker"]["environment"]["LLM_API_KEY"] == expected

@@ -22,6 +22,14 @@ def test_local_llm_allows_dummy_api_key() -> None:
     assert make_settings().missing_worker_required_vars() == []
 
 
+@pytest.mark.parametrize("llm_api_key", ["", " "])
+def test_local_llm_rejects_empty_api_key(llm_api_key: str) -> None:
+    """ローカル互換APIでも空のキーはworker起動時に拒否する."""
+    settings = make_settings(LLM_API_KEY=llm_api_key)
+
+    assert settings.missing_worker_required_vars() == ["LLM_API_KEY"]
+
+
 def test_cloud_llm_accepts_real_api_key() -> None:
     """クラウドLLMでは実APIキーを許可する."""
     settings = make_settings(LLM_API_BASE="", LLM_API_KEY="provider-key")
