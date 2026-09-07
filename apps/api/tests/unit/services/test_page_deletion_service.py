@@ -7,7 +7,6 @@ from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.page_deletion_service import PageDeletionService
 from grimoire_api.utils.exceptions import PageDeletionConflictError
-from tests.helpers import set_page_status
 
 
 @pytest.fixture
@@ -15,7 +14,9 @@ def deletion_service(temp_db, page_repo) -> PageDeletionService:
     return PageDeletionService(page_repo, CleanupJobRepository(temp_db))
 
 
-async def test_normal_page_deletion_is_accepted(deletion_service, page_repo) -> None:
+async def test_normal_page_deletion_is_accepted(
+    deletion_service, page_repo, set_page_status
+) -> None:
     page_id = await page_repo.create_page("https://example.com/delete", "delete")
     await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
 
@@ -30,7 +31,9 @@ async def test_normal_page_deletion_is_accepted(deletion_service, page_repo) -> 
     assert page is not None and page.status == PageStatus.DELETING
 
 
-async def test_deletion_is_idempotent(deletion_service, page_repo, temp_db) -> None:
+async def test_deletion_is_idempotent(
+    deletion_service, page_repo, temp_db, set_page_status
+) -> None:
     page_id = await page_repo.create_page("https://example.com/repeat", "repeat")
     await set_page_status(page_repo, page_id, PageStatus.FAILED)
 
@@ -44,7 +47,7 @@ async def test_deletion_is_idempotent(deletion_service, page_repo, temp_db) -> N
 
 
 async def test_pending_repair_page_uses_the_same_deletion_path(
-    deletion_service, page_repo, temp_db
+    deletion_service, page_repo, temp_db, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://example.com/repair", "repair")
     await set_page_status(page_repo, page_id, PageStatus.FAILED)
@@ -63,7 +66,7 @@ async def test_missing_page_is_rejected(deletion_service) -> None:
 
 
 async def test_active_processing_job_is_rejected(
-    deletion_service, page_repo, temp_db
+    deletion_service, page_repo, temp_db, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://example.com/active", "active")
     await set_page_status(page_repo, page_id, PageStatus.FAILED)
@@ -75,7 +78,9 @@ async def test_active_processing_job_is_rejected(
         await deletion_service.delete_page(page_id)
 
 
-async def test_processing_page_state_is_rejected(deletion_service, page_repo) -> None:
+async def test_processing_page_state_is_rejected(
+    deletion_service, page_repo, set_page_status
+) -> None:
     page_id = await page_repo.create_page("https://example.com/processing", "active")
     await set_page_status(page_repo, page_id, PageStatus.PROCESSING)
 

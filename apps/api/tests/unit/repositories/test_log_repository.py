@@ -3,7 +3,6 @@
 from typing import Any
 
 import pytest
-from tests.helpers import get_process_logs
 
 
 class TestLogRepository:
@@ -30,7 +29,9 @@ class TestLogRepository:
         assert log_id is not None
 
     @pytest.mark.asyncio
-    async def test_events_are_appended_instead_of_updated(self, log_repo: Any) -> None:
+    async def test_events_are_appended_instead_of_updated(
+        self, log_repo: Any, get_process_logs: Any
+    ) -> None:
         """進捗イベントは既存行を上書きせず追記する."""
         url = "https://example.com"
         first_id = await log_repo.create_log(url, "job_claimed")

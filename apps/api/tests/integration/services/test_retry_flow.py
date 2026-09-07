@@ -8,7 +8,6 @@ from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.retry_service import RetryService
-from tests.helpers import get_process_logs
 
 
 @pytest.fixture
@@ -258,6 +257,7 @@ class TestRetryLogGeneration:
         self,
         retry_service: RetryService,
         repos: tuple[PageRepository, LogRepository],
+        get_process_logs,
     ) -> None:
         """リトライ実行後に completed ログが生成されること."""
         page_repo, log_repo = repos

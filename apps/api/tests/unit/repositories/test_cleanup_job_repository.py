@@ -10,11 +10,10 @@ from grimoire_api.models.database import (
 from grimoire_api.repositories.cleanup_job_repository import CleanupJobRepository
 from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.utils.exceptions import PageDeletionConflictError
-from tests.helpers import set_page_status
 
 
 async def test_enqueue_is_idempotent_and_marks_page_deleting(
-    temp_db, page_repo
+    temp_db, page_repo, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://delete.example", "delete")
     await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
@@ -29,7 +28,7 @@ async def test_enqueue_is_idempotent_and_marks_page_deleting(
 
 
 async def test_enqueue_rejects_page_with_active_processing_job(
-    temp_db, page_repo
+    temp_db, page_repo, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://active.example", "active")
     await set_page_status(page_repo, page_id, PageStatus.FAILED)
@@ -42,7 +41,7 @@ async def test_enqueue_rejects_page_with_active_processing_job(
 
 
 async def test_enqueue_rejects_processing_page_without_active_job(
-    temp_db, page_repo
+    temp_db, page_repo, set_page_status
 ) -> None:
     page_id = await page_repo.create_page("https://processing.example", "processing")
     await set_page_status(page_repo, page_id, PageStatus.PROCESSING)
@@ -51,7 +50,9 @@ async def test_enqueue_rejects_processing_page_without_active_job(
         await CleanupJobRepository(temp_db).enqueue(page_id)
 
 
-async def test_running_job_is_recovered_after_interruption(temp_db, page_repo) -> None:
+async def test_running_job_is_recovered_after_interruption(
+    temp_db, page_repo, set_page_status
+) -> None:
     page_id = await page_repo.create_page("https://recover.example", "recover")
     await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
     repo = CleanupJobRepository(temp_db)

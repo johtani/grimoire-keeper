@@ -22,7 +22,6 @@ from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.repair_service import RepairService
 from grimoire_api.utils.exceptions import DuplicateUrlError
-from tests.helpers import set_page_status
 
 
 @pytest.fixture
@@ -184,7 +183,9 @@ async def test_scan_uses_fixed_snapshot_upper_bound(
 
 
 async def test_scan_resumes_after_weaviate_failure(
-    repair_service: RepairService, monkeypatch: pytest.MonkeyPatch
+    repair_service: RepairService,
+    monkeypatch: pytest.MonkeyPatch,
+    set_page_status,
 ) -> None:
     monkeypatch.setattr(settings, "REPAIR_SCAN_BATCH_SIZE", 1)
     page_ids = [

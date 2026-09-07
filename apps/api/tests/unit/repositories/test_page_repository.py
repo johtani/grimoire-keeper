@@ -13,7 +13,6 @@ from grimoire_api.repositories.cleanup_job_repository import CleanupJobRepositor
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.utils.exceptions import DatabaseError, DuplicateUrlError
-from tests.helpers import set_page_status
 
 
 async def test_enqueue_cleanup_job_is_atomic(temp_db, page_repo) -> None:
@@ -62,7 +61,9 @@ class TestListPages:
         assert pages[0].id == page_id
 
     @pytest.mark.asyncio
-    async def test_list_pages_status_filter_completed(self, page_repo: Any) -> None:
+    async def test_list_pages_status_filter_completed(
+        self, page_repo: Any, set_page_status: Any
+    ) -> None:
         """completed フィルターが summary+weaviate_id 両方あるページのみ返す."""
         page_id1 = await page_repo.create_page("https://example1.com", "Title1")
         await page_repo.update_summary_keywords(page_id1, "summary", ["kw"])
@@ -77,7 +78,7 @@ class TestListPages:
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_processing(
-        self, page_repo: Any, temp_db: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """processing フィルターが failed ログのないページのみ返す."""
         await page_repo.create_page("https://processing.com", "Processing")
@@ -91,7 +92,7 @@ class TestListPages:
 
     @pytest.mark.asyncio
     async def test_list_pages_status_filter_failed(
-        self, page_repo: Any, temp_db: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """failed フィルターが failed ログのあるページのみ返す."""
         await page_repo.create_page("https://processing.com", "Processing")
@@ -158,7 +159,7 @@ class TestPageRepository:
 
     @pytest.mark.asyncio
     async def test_get_searchable_pages_by_ids_applies_filters(
-        self, page_repo: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """本文検索用のページ属性・除外キーワードをSQLiteで絞り込む."""
         target_id = await page_repo.create_page(
@@ -188,7 +189,7 @@ class TestPageRepository:
 
     @pytest.mark.asyncio
     async def test_get_searchable_pages_by_ids_applies_date_range(
-        self, page_repo: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """本文検索用の日付範囲で対象ページを絞り込む."""
         page_id = await page_repo.create_page("https://docs.example", "Docs")
@@ -213,7 +214,7 @@ class TestPageRepository:
 
     @pytest.mark.asyncio
     async def test_get_searchable_pages_by_ids_rejects_non_succeeded_pages(
-        self, page_repo: Any
+        self, page_repo: Any, set_page_status: Any
     ) -> None:
         """候補内でも成功状態でないページは検索対象にしない."""
         succeeded_id = await page_repo.create_page("https://ok.example", "OK")
