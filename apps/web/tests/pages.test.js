@@ -62,7 +62,7 @@ function createPagesContext(confirmResult) {
     };
     vm.createContext(context);
     vm.runInContext(pagesSource, context);
-    return { confirmations, context, deleteCalls, get modalHidden() { return modalHidden; } };
+    return { elements, confirmations, context, deleteCalls, get modalHidden() { return modalHidden; } };
 }
 
 test('confirms URL and all affected stores before deleting a page', async () => {
@@ -87,3 +87,41 @@ test('does not call the deletion API when confirmation is cancelled', async () =
     assert.deepEqual(state.deleteCalls, []);
     assert.equal(state.modalHidden, false);
 });
+
+
+for (const [status, jobStatus, disabled] of [
+    ['queued', null, true],
+    ['processing', null, true],
+    ['deleting', null, true],
+    ['failed', 'queued', true],
+    ['failed', 'running', true],
+    ['failed', 'failed', false],
+    ['succeeded', 'succeeded', false],
+]) {
+    test(`URL editing for page ${status} and job ${jobStatus}`, async () => {
+        const state = createPagesContext(true);
+        state.context.window.api.getPageDetail = async () => ({
+            id: 1, url: 'https://example.com/old', status, keywords: []
+        });
+        state.context.window.api.getPageRepair = async () => ({
+            json_validation: { valid: true }, reasons: [],
+            latest_job: jobStatus ? { id: 1, status: jobStatus } : null
+        });
+        await state.context.window.showRepairDetail(1);
+        const html = state.elements.pageDetailContent.innerHTML;
+        assert.equal(/id="repairUrlInput" disabled/.test(html), disabled);
+        assert.equal(/onclick="saveRepairUrl\(1\)" disabled/.test(html), disabled);
+        const updates = [];
+        state.context.window.api.updatePageUrl = async (...args) => updates.push(args);
+        state.elements.repairUrlInput = {
+            disabled,
+            dataset: { currentUrl: encodeURIComponent('https://example.com/old') },
+            value: 'https://example.com/new'
+        };
+        await state.context.window.saveRepairUrl(1);
+        assert.equal(updates.length, disabled ? 0 : 1);
+        if (!disabled) assert.deepEqual(updates[0], [
+            1, 'https://example.com/old', 'https://example.com/new'
+        ]);
+    });
+}

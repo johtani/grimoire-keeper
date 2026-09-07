@@ -262,6 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.saveRepairUrl = async function(pageId) {
         const input = document.getElementById('repairUrlInput');
+        if (input.disabled) return;
         const currentUrl = decodeURIComponent(input.dataset.currentUrl);
         const newUrl = input.value.trim();
         if (newUrl === currentUrl) return;
@@ -323,6 +324,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function displayPageDetailModal(page, repair = null) {
+        const urlEditingDisabled = ['queued', 'processing', 'deleting'].includes(page.status)
+            || ['queued', 'running'].includes(repair?.latest_job?.status);
         const keywords = Array.isArray(page.keywords) ? page.keywords : 
                         (typeof page.keywords === 'string' ? JSON.parse(page.keywords || '[]') : []);
         
@@ -415,9 +418,10 @@ document.addEventListener('DOMContentLoaded', function() {
             ${repair ? `<div class="row mt-3"><div class="col-12">
                 <h6>Repair</h6>
                 <div class="mb-2"><label class="form-label">URL</label>
-                    <div class="input-group"><input id="repairUrlInput" class="form-control" data-current-url="${encodeURIComponent(page.url)}" value="${escapeHtml(page.url)}">
-                    <button class="btn btn-outline-warning" onclick="saveRepairUrl(${page.id})">Review & Save</button></div>
+                    <div class="input-group"><input id="repairUrlInput" ${urlEditingDisabled ? 'disabled' : ''} class="form-control" data-current-url="${encodeURIComponent(page.url)}" value="${escapeHtml(page.url)}">
+                    <button class="btn btn-outline-warning" onclick="saveRepairUrl(${page.id})" ${urlEditingDisabled ? 'disabled' : ''}>Review & Save</button></div>
                 </div>
+                ${urlEditingDisabled ? '<p class="text-muted">URL editing is unavailable while this page is queued, processing, or deleting.</p>' : ''}
                 <p><strong>Stored JSON:</strong> ${repair.json_validation.valid ? 'Valid' : 'Invalid'} ·
                    <strong>Weaviate:</strong> ${repair.weaviate_registered === null ? 'Unavailable' : (repair.weaviate_registered ? 'Registered' : 'Missing')}</p>
                 <div class="mb-2">${repair.reasons.map(reason => `<div class="alert alert-warning py-1 mb-1"><strong>${escapeHtml(reason.code)}</strong>: ${escapeHtml(reason.detail)}</div>`).join('')}</div>

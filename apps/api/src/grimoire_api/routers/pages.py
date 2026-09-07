@@ -35,6 +35,7 @@ from ..services.repair_service import RepairService
 from ..utils.exceptions import (
     FileOperationError,
     PageDeletionConflictError,
+    PageUrlUpdateConflictError,
     ResourceConflictError,
     ResourceNotFoundError,
 )
@@ -133,7 +134,7 @@ async def update_page_url(
         return UpdatePageUrlResponse.model_validate(result)
     except LookupError as exc:
         raise ResourceNotFoundError(str(exc)) from exc
-    except (FileExistsError, RuntimeError) as exc:
+    except (FileExistsError, RuntimeError, PageUrlUpdateConflictError) as exc:
         raise ResourceConflictError(str(exc)) from exc
 
 

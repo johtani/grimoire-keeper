@@ -11,6 +11,7 @@ from ..utils.datetime import as_utc, utc_isoformat, utc_now_isoformat
 from ..utils.exceptions import (
     DatabaseError,
     DuplicateUrlError,
+    PageUrlUpdateConflictError,
 )
 from ..utils.url import canonicalize_url
 from .database import DatabaseConnection
@@ -288,6 +289,23 @@ class PageRepository:
         try:
             async with self.db.connect() as conn:
                 await conn.execute("BEGIN IMMEDIATE")
+                page = await (
+                    await conn.execute(
+                        "SELECT status FROM pages WHERE id=?", (page_id,)
+                    )
+                ).fetchone()
+                active = await (
+                    await conn.execute(
+                        "SELECT 1 FROM jobs WHERE page_id=? "
+                        "AND status IN ('queued', 'running') LIMIT 1",
+                        (page_id,),
+                    )
+                ).fetchone()
+                if (page and page[0] in ("queued", "processing", "deleting")) or active:
+                    await conn.rollback()
+                    raise PageUrlUpdateConflictError(
+                        "Page is queued, processing, or deleting; URL cannot be updated"
+                    )
                 duplicate = await (
                     await conn.execute(
                         "SELECT id FROM pages WHERE dedupe_key=? AND id<>?",
@@ -311,7 +329,7 @@ class PageRepository:
                 )
                 await conn.commit()
                 return cursor.rowcount == 1
-        except DuplicateUrlError:
+        except (DuplicateUrlError, PageUrlUpdateConflictError):
             raise
         except DatabaseError:
             raise

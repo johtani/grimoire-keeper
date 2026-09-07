@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 from grimoire_api.dependencies import (
     get_file_repository,
@@ -11,7 +12,11 @@ from grimoire_api.dependencies import (
     get_repair_service,
 )
 from grimoire_api.main import app
-from grimoire_api.utils.exceptions import PageDeletionConflictError, PageDeletionError
+from grimoire_api.utils.exceptions import (
+    PageDeletionConflictError,
+    PageDeletionError,
+    PageUrlUpdateConflictError,
+)
 
 client = TestClient(app)
 
@@ -234,9 +239,17 @@ class TestPagesRouter:
         )
         assert response.status_code == 422
 
-    def test_update_page_url_returns_conflict(self) -> None:
+    @pytest.mark.parametrize(
+        "error",
+        [
+            FileExistsError("URL already exists"),
+            RuntimeError("Current URL does not match"),
+            PageUrlUpdateConflictError("Page has an active job"),
+        ],
+    )
+    def test_update_page_url_returns_conflict(self, error: Exception) -> None:
         mock_service = AsyncMock()
-        mock_service.update_url.side_effect = FileExistsError("URL already exists")
+        mock_service.update_url.side_effect = error
         app.dependency_overrides[get_repair_service] = lambda: mock_service
         response = client.patch(
             "/api/v1/pages/56/url",
