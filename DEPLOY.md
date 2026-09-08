@@ -245,13 +245,152 @@ docker compose -f docker-compose.prod.yml logs --tail=100 | grep ERROR
 ```
 
 ### データバックアップ
-```bash
-# データベースバックアップ
-sudo cp -r /opt/grimoire-keeper-data /backup/$(date +%Y%m%d)
 
-# 復元
-sudo cp -r /backup/20241201 /opt/grimoire-keeper-data
+SQLite・JSON・Weaviate は、すべての書き込みを止めた同じ時点のセットとして保存・復元します。
+`deploy.sh` の SQLite 自動バックアップだけでは、サービス再開後の全体復旧はできません。
+以下はリポジトリルートで Bash を使用する手順です。各ブロックは同じシェルで順に実行し、
+途中で失敗したらサービスを停止したまま原因を確認してください。
+
+#### 停止と保存対象の確認
+
+手動の再インデックス・repair・移行コマンド、別 Compose やローカルで起動した API・worker、
+自動実行ジョブも停止します。稼働中の Weaviate コンテナから実際の保存先と image を記録し、
+`WEAVIATE_DATA_PATH` の変更やデータルート外の bind mount も対象にします。
+
+```bash
+set -euo pipefail
+DATA_ROOT=/opt/grimoire-keeper-data
+BACKUP_PARENT=/backup/grimoire-keeper
+weaviate_container=$(docker compose -f docker-compose.prod.yml ps -q weaviate)
+test -n "$weaviate_container"
+WEAVIATE_DATA_PATH=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/weaviate"}}{{.Source}}{{end}}{{end}}' "$weaviate_container")
+WEAVIATE_IMAGE=$(docker inspect --format '{{.Config.Image}}' "$weaviate_container")
+test -n "$WEAVIATE_DATA_PATH"
+# 対応する image はローカルに保持する。可変 tag を使用している場合は digest も記録する。
+docker inspect --format '{{.Image}}' "$weaviate_container"
+export WEAVIATE_DATA_PATH WEAVIATE_IMAGE
+# 入口と書き込みプロセスを先に停止し、その後 Weaviate を正常停止する。
+docker compose -f docker-compose.prod.yml stop web bot api worker
+docker compose -f docker-compose.prod.yml stop weaviate
+test -z "$(docker compose -f docker-compose.prod.yml ps --status running -q)"
 ```
+
+停止後、次のブロックで `database`（WAL/SHM を含むディレクトリ全体）、`json`、
+repair report を含む `migration`、Weaviate を保存します。バックアップはデータディレクトリの
+外に置き、過去のバックアップを再帰コピーしません。`migration` がない旧環境は空として保存します。
+全コピー成功時だけ `.partial` を外すため、途中失敗した保存先は復元に使用しません。
+
+<!-- backup-files:start -->
+```bash
+sudo mkdir -p "$BACKUP_PARENT"
+backup_tmp=$(sudo mktemp -d "$BACKUP_PARENT/backup-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX.partial")
+for name in database json; do
+  sudo test -d "$DATA_ROOT/$name"
+  sudo cp -a "$DATA_ROOT/$name" "$backup_tmp/$name"
+done
+sudo mkdir "$backup_tmp/migration"
+if sudo test -d "$DATA_ROOT/migration"; then
+  sudo cp -a "$DATA_ROOT/migration/." "$backup_tmp/migration/"
+fi
+sudo test -d "$WEAVIATE_DATA_PATH"
+sudo cp -a "$WEAVIATE_DATA_PATH" "$backup_tmp/weaviate"
+# .env は非秘密設定のみ。Bitwarden のシークレットは書き出さない。
+sudo cp -a .env docker-compose.prod.yml "$backup_tmp/"
+git rev-parse HEAD | sudo tee "$backup_tmp/git-commit.txt" >/dev/null
+printf '%s\n' "$WEAVIATE_DATA_PATH" | sudo tee "$backup_tmp/weaviate-data-path.txt" >/dev/null
+printf '%s\n' "$WEAVIATE_IMAGE" | sudo tee "$backup_tmp/weaviate-image.txt" >/dev/null
+sudo touch "$backup_tmp/COMPLETE"
+BACKUP_DIR=${backup_tmp%.partial}
+sudo mv -T "$backup_tmp" "$BACKUP_DIR"
+printf 'バックアップ完了: %s\n' "$BACKUP_DIR"
+```
+<!-- backup-files:end -->
+
+`sudo` と `cp -a` で数値所有者・権限を保持します。バックアップ全体を `10001:10001` に
+変更しません。通常の運用再開は `bash scripts/start.sh -d` を使用し、下記の起動後検証を行います。
+
+#### 復元
+
+復元元 `BACKUP_DIR` を選び、保存した commit・非秘密設定・Compose・Weaviate image と
+保存先を確認します。バックアップの `.env` をシェルで `source` しないでください。
+旧コードに戻す場合は記録された commit と対応する image を用意し、非秘密設定を復元します。
+Bitwarden のシークレットは起動時に注入します。保存先を変更する場合は Compose の bind mount
+も一致させてください。Weaviate データは保存時と同じバージョンで起動します。
+
+再度、上記と同じ順で全サービスと手動更新処理を停止します。復元元は停止・確認後に指定します。
+
+```bash
+BACKUP_DIR='/backup/grimoire-keeper/backup-<保存時刻と識別子>'
+sudo cat "$BACKUP_DIR/git-commit.txt" "$BACKUP_DIR/weaviate-image.txt" "$BACKUP_DIR/weaviate-data-path.txt"
+# 確認した値を設定する（通常は保存時と同じ値）。
+DATA_ROOT=/opt/grimoire-keeper-data
+export WEAVIATE_DATA_PATH=/opt/grimoire-keeper-data/weaviate-1.38.8
+export WEAVIATE_IMAGE=cr.weaviate.io/semitechnologies/weaviate:1.38.8
+```
+
+復元先は互いに重複しない実ディレクトリを指定し、バックアップ保存先を含めないでください。
+十分な空き容量を確認します。以下は全データを一時ディレクトリに展開してから、既存データを
+隣接する退避ディレクトリへ移動します。上書きコピーしないので古い JSON や WAL が残りません。
+途中失敗時は起動せず、表示された退避先を保持して原因を解消し、3 種のデータを同じセットに
+揃え直します。復元完了後も退避先とバックアップは検証が終わるまで保持します。
+
+<!-- restore-files:start -->
+```bash
+case "$BACKUP_DIR" in *.partial) echo '未完了のバックアップです' >&2; exit 1;; esac
+sudo test -f "$BACKUP_DIR/COMPLETE"
+for name in database json migration weaviate; do
+  sudo test -d "$BACKUP_DIR/$name"
+done
+sources=(database json migration weaviate)
+targets=("$DATA_ROOT/database" "$DATA_ROOT/json" "$DATA_ROOT/migration" "$WEAVIATE_DATA_PATH")
+stages=()
+for i in "${!sources[@]}"; do
+  target=${targets[$i]}
+  test -n "$target" && test "$target" != /
+  test ! -L "$target"
+  sudo mkdir -p "$(dirname "$target")"
+  stage=$(sudo mktemp -d "${target}.restore-XXXXXX")
+  stages+=("$stage")
+  sudo cp -a "$BACKUP_DIR/${sources[$i]}" "$stage/restored"
+  printf '復元作業・既存データ退避先: %s\n' "$stage"
+done
+for i in "${!sources[@]}"; do
+  target=${targets[$i]}
+  stage=${stages[$i]}
+  if sudo test -e "$target"; then
+    sudo mv -T "$target" "$stage/previous"
+  fi
+  sudo mv -T "$stage/restored" "$target"
+done
+```
+<!-- restore-files:end -->
+
+起動前に所有権を確認します。現行アプリでは次を実行します。旧コードを復元する場合は、
+そのバージョンの実行 UID/GID に合わせます。Weaviate は `cp -a` で保持した所有権を確認し、
+アプリ用 UID へ一括変更しません。
+
+```bash
+sudo chown -R 10001:10001 "$DATA_ROOT/database" "$DATA_ROOT/json" "$DATA_ROOT/migration"
+sudo chmod 0750 "$DATA_ROOT/database" "$DATA_ROOT/json" "$DATA_ROOT/migration"
+sudo stat -c '%u:%g %a %n' "$DATA_ROOT/database" "$DATA_ROOT/database/grimoire.db" \
+  "$DATA_ROOT/json" "$DATA_ROOT/migration" "$WEAVIATE_DATA_PATH"
+# 記録したコードと設定を用意した後、対応するイメージで起動する。
+bash scripts/start.sh -d --build
+```
+
+#### 起動後検証
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T api python ../../scripts/init_database.py check
+curl --fail http://localhost:8089/v1/.well-known/ready
+curl --fail http://localhost:8001/api/v1/health
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs --tail=100 api worker weaviate
+```
+
+worker が healthy になるまで確認し、保存済みページの本文取得と代表的な検索を UI で確認します。
+検証に失敗した場合は入口・API・worker を停止し、Weaviate も停止して原因を調べます。
+SQLite・JSON・Weaviate の一部だけを別時点へ戻して運用を再開しないでください。
 
 ## トラブルシューティング
 
