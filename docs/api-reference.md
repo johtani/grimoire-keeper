@@ -963,3 +963,24 @@ curl -X POST "http://localhost:8000/api/v1/retry-failed"
 ```bash
 curl -X GET "http://localhost:8000/api/v1/pages?status=failed"
 ```
+
+### 検索の対象と探索打ち切り
+
+`POST /api/v1/search` と `POST /api/v1/search/keywords` は、SQLite上で
+`status=succeeded` のページを対象とします。URL部分一致、日付範囲、キーワードの
+OR一致、除外キーワードをSQLiteで適用し、対象の `pageId` をWeaviateへ渡します。
+検索結果のページ属性もSQLiteから取得し、取得時に状態と条件を再確認します。
+本文検索はチャンク単位の結果を返し、同じページが複数回現れる場合があります。
+
+レスポンスの `truncated`（boolean、既定値false）は、候補の探索上限で打ち切った
+可能性を示します。trueの場合は、結果が0件でも条件一致ページが存在しないとは
+限りません。フィルターを狭めて再検索してください。`total` は返却件数であり、
+条件一致ページの総数ではありません。要求した `limit` 件を取得した通常の終了は
+探索打ち切りに含めません。
+
+対象IDは100件ずつ分割して検索し、各グループで100候補ずつ、最大1000候補まで
+取得します。全グループの上位候補をスコア順に統合して `limit` 件を返します。
+最後の1000候補目まで取得しても必要件数を満たさず、候補終了を確認できなかった
+グループがあれば `truncated=true` です。キーワード検索は関連度順位を保証しません。
+ベクトル検索はWeaviateの近似検索であり、`truncated=false` は厳密な最近傍順位や
+SQLiteとWeaviateをまたぐ同一時点のスナップショットを保証しません。

@@ -47,6 +47,7 @@ class TestSearchService:
                 page_id: pages[page_id] for page_id in page_ids if page_id in pages
             }
         )
+        page_repo.get_searchable_page_ids = AsyncMock(return_value=list(pages))
         page_repo.get_pages_by_ids = AsyncMock(return_value=pages)
         return SearchService(weaviate_client=mock_weaviate_client, page_repo=page_repo)
 
@@ -155,7 +156,7 @@ class TestSearchService:
         assert call_args[1]["target_vector"] == "content_vector"
         assert call_args[1]["limit"] == 100
         assert call_args[1]["offset"] == 0
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None
 
     @pytest.mark.asyncio
     async def test_vector_search_with_filters(
@@ -205,7 +206,7 @@ class TestSearchService:
         assert call_args[1]["target_vector"] == "content_vector"
         assert call_args[1]["limit"] == 100
         assert call_args[1]["offset"] == 0
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None
         repo_call = search_service.page_repo.get_searchable_pages_by_ids.call_args
         assert repo_call.args[1] == filters
 
@@ -261,7 +262,7 @@ class TestSearchService:
         assert call_args[1]["target_vector"] == "memo_vector"
         assert call_args[1]["limit"] == 100
         assert call_args[1]["offset"] == 0
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None
 
     @pytest.mark.asyncio
     async def test_keyword_search(
@@ -321,7 +322,7 @@ class TestSearchService:
         calls = collection.query.near_text.call_args_list
         assert [call.kwargs["offset"] for call in calls] == [0, 100]
         assert all(call.kwargs["limit"] == 100 for call in calls)
-        assert all(call.kwargs["filters"] is None for call in calls)
+        assert all(call.kwargs["filters"] is not None for call in calls)
 
     @pytest.mark.asyncio
     async def test_search_stops_at_candidate_scan_limit(
@@ -346,6 +347,7 @@ class TestSearchService:
         results = await search_service.vector_search("query", limit=5)
 
         assert results == []
+        assert results.truncated is True
         assert collection.query.near_text.call_count == 10
         calls = collection.query.near_text.call_args_list
         assert calls[-1].kwargs["offset"] == 900
@@ -423,4 +425,4 @@ class TestSearchService:
         assert call_args[1]["target_vector"] == "title_vector"
         assert call_args[1]["limit"] == 100
         assert call_args[1]["offset"] == 0
-        assert call_args[1]["filters"] is None
+        assert call_args[1]["filters"] is not None

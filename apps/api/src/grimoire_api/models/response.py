@@ -117,6 +117,7 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     """検索レスポンス."""
 
+    truncated: bool = False
     results: list[SearchResult]
     total: int
     query: str

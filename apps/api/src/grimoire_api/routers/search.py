@@ -54,6 +54,7 @@ async def search(
 
         return SearchResponse(
             results=results,
+            truncated=getattr(results, "truncated", False),
             total=len(results),
             query=request.query,
         )
@@ -87,6 +88,7 @@ async def search_by_keywords(
 
     return SearchResponse(
         results=results,
+        truncated=getattr(results, "truncated", False),
         total=len(results),
         query=" ".join(request.keywords),
     )

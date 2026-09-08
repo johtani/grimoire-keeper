@@ -55,10 +55,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function displayResults(response) {
+        const warning = response.truncated
+            ? '<div class="alert alert-warning">Search stopped before all candidates were checked. Results may be incomplete. Try narrowing your filters.</div>'
+            : '';
         if (!response.results || response.results.length === 0) {
-            resultsContainer.innerHTML = `
+            resultsContainer.innerHTML = warning + `
                 <div class="alert alert-info">
-                    <h6>No results found</h6>
+                    <h6>${response.truncated ? 'No results in checked candidates' : 'No results found'}</h6>
                     <p class="mb-0">Try adjusting your search query or filters.</p>
                 </div>
             `;
@@ -77,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
 
-        resultsContainer.innerHTML = resultsHtml;
+        resultsContainer.innerHTML = warning + resultsHtml;
         
         // Add click handlers for expandable text
         addExpandableTextHandlers();

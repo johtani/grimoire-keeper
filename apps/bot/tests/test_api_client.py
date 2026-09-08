@@ -34,9 +34,12 @@ async def test_process_url_success(api_client, bot_contract_fixture):
 
 
 @pytest.mark.asyncio
-async def test_search_content_success(api_client, bot_contract_fixture):
+@pytest.mark.parametrize("truncated", [None, False, True])
+async def test_search_content_success(api_client, bot_contract_fixture, truncated):
     """検索成功テスト"""
     mock_response = bot_contract_fixture("search.json")
+    if truncated is not None:
+        mock_response["truncated"] = truncated
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = mock_response

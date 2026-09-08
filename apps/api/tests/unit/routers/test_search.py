@@ -270,3 +270,23 @@ class TestSearchRouter:
         )
 
         assert response.status_code == 200
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+@pytest.mark.parametrize(
+    "endpoint,method,payload",
+    [
+        ("/api/v1/search", "vector_search", {"query": "query"}),
+        ("/api/v1/search/keywords", "keyword_search", {"keywords": ["keyword"]}),
+    ],
+)
+def test_search_completion_metadata(truncated, endpoint, method, payload):
+    from grimoire_api.services.search_service import SearchResults
+
+    service = AsyncMock()
+    getattr(service, method).return_value = SearchResults([], truncated)
+    app.dependency_overrides[get_search_service] = lambda: service
+    response = client.post(endpoint, json=payload)
+    assert response.status_code == 200
+    assert response.json()["truncated"] is truncated
+    assert response.json()["total"] == 0

@@ -181,8 +181,39 @@ class PageRepository:
 
         unique_page_ids = list(dict.fromkeys(page_ids))
         placeholders = ", ".join("?" for _ in unique_page_ids)
-        conditions = [f"id IN ({placeholders})", "status = ?"]
-        params: list[object] = [*unique_page_ids, PageStatus.SUCCEEDED.value]
+        conditions, params = self._search_conditions(filters, exclude_keywords)
+        conditions.append(f"id IN ({placeholders})")
+        params.extend(unique_page_ids)
+
+        try:
+            query = f"""
+            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
+                   last_success_step, status, created_at, updated_at
+            FROM pages WHERE {" AND ".join(conditions)}
+            """
+            rows = await self.db.fetch_all(query, tuple(params))
+            pages = [self._row_to_page(row) for row in rows]
+            return {page.id: page for page in pages if page.id is not None}
+        except Exception as e:
+            raise DatabaseError(f"Failed to filter searchable pages: {str(e)}")
+
+    async def get_searchable_page_ids(
+        self, filters: dict | None = None, exclude_keywords: list[str] | None = None
+    ) -> list[int]:
+        """SQLiteの検索条件に一致するIDを安定した順序で返す."""
+        conditions, params = self._search_conditions(filters, exclude_keywords)
+        rows = await self.db.fetch_all(
+            f"SELECT id FROM pages WHERE {' AND '.join(conditions)} ORDER BY id",
+            tuple(params),
+        )
+        return [int(row["id"]) for row in rows]
+
+    @staticmethod
+    def _search_conditions(
+        filters: dict | None, exclude_keywords: list[str] | None
+    ) -> tuple[list[str], list[object]]:
+        conditions = ["status = ?"]
+        params: list[object] = [PageStatus.SUCCEEDED.value]
         filters = filters or {}
 
         url = filters.get("url")
@@ -230,17 +261,7 @@ class PageRepository:
             )
             params.append(keyword)
 
-        try:
-            query = f"""
-            SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
-                   last_success_step, status, created_at, updated_at
-            FROM pages WHERE {" AND ".join(conditions)}
-            """
-            rows = await self.db.fetch_all(query, tuple(params))
-            pages = [self._row_to_page(row) for row in rows]
-            return {page.id: page for page in pages if page.id is not None}
-        except Exception as e:
-            raise DatabaseError(f"Failed to filter searchable pages: {str(e)}")
+        return conditions, params
 
     async def update_summary_keywords(
         self, page_id: int, summary: str, keywords: list[str]

@@ -71,12 +71,17 @@ async def test_grimoire_help_response_is_same_for_empty_text_and_help():
 
 
 @pytest.mark.asyncio
-async def test_search_command_renders_api_contract_fixture(bot_contract_fixture):
+@pytest.mark.parametrize("truncated", [None, False, True])
+async def test_search_command_renders_api_contract_fixture(
+    bot_contract_fixture, truncated
+):
     """検索コマンドが API 契約のレスポンスを Block Kit に変換する."""
     app = Mock(spec=App)
     register_command_handlers(app)
     handler = app.command.return_value.call_args.args[0]
     api_response = bot_contract_fixture("search.json")
+    if truncated is not None:
+        api_response["truncated"] = truncated
     ack = AsyncMock()
     respond = AsyncMock()
 

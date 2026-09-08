@@ -151,3 +151,19 @@ test('renders expandable summary and content without data-full-text', async () =
         assert.equal(element.classList.contains('text-truncate-2'), true);
     }
 });
+
+for (const results of [[], [{ page_id: 1, title: 'title', url: 'https://example.com', score: 0.9 }]]) {
+    test(`shows truncated search warning with ${results.length} results`, async () => {
+        const page = createSearchPage({ query: 'test', results, truncated: true });
+        await page.elements.searchForm.listener('submit')({ preventDefault() {} });
+        assert.match(page.elements.results.innerHTML, /Results may be incomplete/);
+        assert.doesNotMatch(page.elements.results.innerHTML, /No results found/);
+    });
+}
+
+test('ordinary empty search does not show truncation warning', async () => {
+    const page = createSearchPage({ results: [], truncated: false });
+    await page.elements.searchForm.listener('submit')({ preventDefault() {} });
+    assert.match(page.elements.results.innerHTML, /No results found/);
+    assert.doesNotMatch(page.elements.results.innerHTML, /Results may be incomplete/);
+});
