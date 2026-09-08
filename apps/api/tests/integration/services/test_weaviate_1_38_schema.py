@@ -98,3 +98,55 @@ async def test_weaviate_1_38_creates_separated_collections() -> None:
                 client.collections.delete(page_collection)
             if client.collections.exists(chunk_collection):
                 client.collections.delete(chunk_collection)
+
+
+@pytest.mark.asyncio
+async def test_search_page_id_filter_with_named_vectors(page_repo, set_page_status):
+    """実WeaviateでID事前絞り込みと全named vectorの候補取得を検証する."""
+    from grimoire_api.models.database import PageStatus
+    from grimoire_api.services.search_service import SearchService
+    from weaviate.classes.config import Configure, DataType, Property
+    from weaviate.classes.query import MetadataQuery
+
+    page_id = await page_repo.create_page("https://prefilter.example", "target")
+    await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
+    name = f"SearchPrefilter{uuid.uuid4().hex[:8]}"
+    with _weaviate_client() as client:
+        try:
+            collection = client.collections.create(
+                name,
+                properties=[Property(name="pageId", data_type=DataType.INT)],
+                vector_config=[
+                    Configure.Vectors.self_provided(name=vector)
+                    for vector in ("title_vector", "memo_vector", "content_vector")
+                ],
+            )
+            for identifier in (page_id, page_id + 1000):
+                collection.data.insert(
+                    {"pageId": identifier},
+                    vector={
+                        vector: [1.0, 0.0, 0.0]
+                        for vector in ("title_vector", "memo_vector", "content_vector")
+                    },
+                )
+            service = SearchService(client, page_repo)
+            for vector in ("title_vector", "memo_vector", "content_vector"):
+
+                async def fetch(limit, offset, page_filter):
+                    return collection.query.near_vector(
+                        near_vector=[1.0, 0.0, 0.0],
+                        target_vector=vector,
+                        filters=page_filter,
+                        limit=limit,
+                        offset=offset,
+                        return_metadata=MetadataQuery(certainty=True),
+                    )
+
+                candidates, truncated = await service._collect_searchable_candidates(
+                    fetch, 5, None, None
+                )
+                assert [obj.properties["pageId"] for obj, _ in candidates] == [page_id]
+                assert truncated is False
+        finally:
+            if client.collections.exists(name):
+                client.collections.delete(name)

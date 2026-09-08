@@ -17,6 +17,15 @@ _PAGE_VECTORS = frozenset({"title_vector", "memo_vector"})
 _CONTENT_VECTOR = "content_vector"
 _CANDIDATE_BATCH_SIZE = 100
 _MAX_CANDIDATES = 1000
+_PAGE_ID_BATCH_SIZE = 100
+
+
+class SearchResults(list[SearchResult]):
+    """List-compatible search results with request-local completion metadata."""
+
+    def __init__(self, results: list[SearchResult], truncated: bool = False):
+        super().__init__(results)
+        self.truncated = truncated
 
 
 class SearchService:
@@ -66,29 +75,32 @@ class SearchService:
             settings.WEAVIATE_CHUNK_COLLECTION_NAME
         )
 
-        async def fetch_batch(batch_limit: int, offset: int) -> Any:
+        async def fetch_batch(batch_limit: int, offset: int, page_filter: Any) -> Any:
             return await asyncio.to_thread(
                 collection.query.near_text,
                 query=query,
                 target_vector=_CONTENT_VECTOR,
                 limit=batch_limit,
                 offset=offset,
-                filters=None,
+                filters=page_filter,
                 return_metadata=MetadataQuery(certainty=True),
             )
 
-        candidates = await self._collect_searchable_candidates(
+        candidates, truncated = await self._collect_searchable_candidates(
             fetch_batch, limit, filters, exclude_keywords
         )
-        return [
-            self._result_from_page(
-                page=page,
-                score=self._score(obj),
-                chunk_id=int(obj.properties.get("chunkId", 0)),
-                content=obj.properties.get("content", ""),
-            )
-            for obj, page in candidates
-        ]
+        return SearchResults(
+            [
+                self._result_from_page(
+                    page=page,
+                    score=self._score(obj),
+                    chunk_id=int(obj.properties.get("chunkId", 0)),
+                    content=obj.properties.get("content", ""),
+                )
+                for obj, page in candidates
+            ],
+            truncated,
+        )
 
     async def _page_vector_search(
         self,
@@ -102,24 +114,27 @@ class SearchService:
             settings.WEAVIATE_PAGE_COLLECTION_NAME
         )
 
-        async def fetch_batch(batch_limit: int, offset: int) -> Any:
+        async def fetch_batch(batch_limit: int, offset: int, page_filter: Any) -> Any:
             return await asyncio.to_thread(
                 collection.query.near_text,
                 query=query,
                 target_vector=vector_name,
                 limit=batch_limit,
                 offset=offset,
-                filters=None,
+                filters=page_filter,
                 return_metadata=MetadataQuery(certainty=True),
             )
 
-        candidates = await self._collect_searchable_candidates(
+        candidates, truncated = await self._collect_searchable_candidates(
             fetch_batch, limit, filters, exclude_keywords
         )
-        return [
-            self._result_from_page(page, self._score(obj), 0, "")
-            for obj, page in candidates
-        ]
+        return SearchResults(
+            [
+                self._result_from_page(page, self._score(obj), 0, "")
+                for obj, page in candidates
+            ],
+            truncated,
+        )
 
     async def keyword_search(
         self, keywords: list[str], limit: int = 5
@@ -129,67 +144,86 @@ class SearchService:
             collection = self.weaviate_client.collections.get(
                 settings.WEAVIATE_PAGE_COLLECTION_NAME
             )
-            keyword_filter = Filter.by_property("keywords").contains_any(keywords)
+            if not keywords:
+                raise ValueError("keywords must not be empty")
 
-            async def fetch_batch(batch_limit: int, offset: int) -> Any:
+            async def fetch_batch(
+                batch_limit: int, offset: int, page_filter: Any
+            ) -> Any:
                 return await asyncio.to_thread(
                     collection.query.fetch_objects,
-                    filters=keyword_filter,
+                    filters=page_filter,
                     limit=batch_limit,
                     offset=offset,
                 )
 
-            candidates = await self._collect_searchable_candidates(
+            candidates, truncated = await self._collect_searchable_candidates(
                 fetch_batch,
                 limit,
                 {"keywords": keywords},
                 None,
             )
-            return [
-                self._result_from_page(page, self._score(obj), 0, "")
-                for obj, page in candidates
-            ]
+            return SearchResults(
+                [
+                    self._result_from_page(page, self._score(obj), 0, "")
+                    for obj, page in candidates
+                ],
+                truncated,
+            )
         except Exception as e:
             raise VectorizerError(f"Keyword search error: {str(e)}")
 
     async def _collect_searchable_candidates(
         self,
-        fetch_batch: Callable[[int, int], Awaitable[Any]],
+        fetch_batch: Callable[[int, int, Any], Awaitable[Any]],
         limit: int,
         filters: dict | None,
         exclude_keywords: list[str] | None,
-    ) -> list[tuple[Any, Page]]:
-        """固定サイズで候補を取得し、SQLiteを正として検索可否を判定する."""
+    ) -> tuple[list[tuple[Any, Page]], bool]:
+        """対象IDを分割検索し、各組の上位候補を統合する."""
+        eligible_ids = await self.page_repo.get_searchable_page_ids(
+            filters, exclude_keywords
+        )
         results: list[tuple[Any, Page]] = []
-        offset = 0
-        while len(results) < limit and offset < _MAX_CANDIDATES:
-            batch_limit = min(_CANDIDATE_BATCH_SIZE, _MAX_CANDIDATES - offset)
-            response = await fetch_batch(batch_limit, offset)
-            objects = response.objects
-            if not objects:
-                break
-
-            page_ids = list(
-                dict.fromkeys(
-                    int(obj.properties.get("pageId", 0))
-                    for obj in objects
-                    if obj.properties.get("pageId")
+        truncated = False
+        for start in range(0, len(eligible_ids), _PAGE_ID_BATCH_SIZE):
+            group = eligible_ids[start : start + _PAGE_ID_BATCH_SIZE]
+            page_filter = Filter.any_of(
+                [Filter.by_property("pageId").equal(page_id) for page_id in group]
+            )
+            group_results: list[tuple[Any, Page]] = []
+            offset = 0
+            while len(group_results) < limit:
+                batch_limit = min(_CANDIDATE_BATCH_SIZE, _MAX_CANDIDATES - offset)
+                response = await fetch_batch(batch_limit, offset, page_filter)
+                objects = response.objects
+                page_ids = list(
+                    dict.fromkeys(
+                        int(obj.properties.get("pageId", 0))
+                        for obj in objects
+                        if obj.properties.get("pageId")
+                    )
                 )
-            )
-            pages = await self.page_repo.get_searchable_pages_by_ids(
-                page_ids, filters, exclude_keywords
-            )
-            for obj in objects:
-                page = pages.get(int(obj.properties.get("pageId", 0)))
-                if page is not None:
-                    results.append((obj, page))
-                    if len(results) == limit:
-                        break
-
-            offset += len(objects)
-            if len(objects) < batch_limit:
-                break
-        return results
+                pages = await self.page_repo.get_searchable_pages_by_ids(
+                    page_ids, filters, exclude_keywords
+                )
+                for obj in objects:
+                    page = pages.get(int(obj.properties.get("pageId", 0)))
+                    if page is not None:
+                        group_results.append((obj, page))
+                        if len(group_results) == limit:
+                            break
+                offset += len(objects)
+                if len(group_results) == limit or len(objects) < batch_limit:
+                    break
+                if offset >= _MAX_CANDIDATES:
+                    # A full last batch does not prove exhaustion.
+                    truncated = True
+                    break
+            results.extend(group_results)
+            results.sort(key=lambda item: self._score(item[0]), reverse=True)
+            del results[limit:]
+        return results, truncated
 
     @staticmethod
     def _result_from_page(
