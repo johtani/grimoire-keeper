@@ -225,7 +225,9 @@ WEAVIATE_EMBEDDING_DIMENSIONS=1536
 
 モデルまたは dimensions を変更する場合は、全ベクトルの再インデックスが必要です。
 
-1. worker を停止し、SQLite、JSON キャッシュ、Weaviate 永続ボリュームをバックアップする。
+1. [共通バックアップ・復元手順](../DEPLOY.md#データバックアップ) に従い、web・bot・API・
+   worker、手動更新処理、最後に Weaviate を停止し、SQLite・JSON・Weaviate を同時点で保存する。
+   保存後は再構築に必要な Weaviate のみ起動する。API・worker と他の更新処理は停止を維持する。
 2. 新しい `WEAVIATE_EMBEDDING_MODEL` と `WEAVIATE_EMBEDDING_DIMENSIONS` を `.env` に設定する。
 3. 再構築対象と修復待ちデータを変更なしで確認する。
 
@@ -251,13 +253,14 @@ WEAVIATE_EMBEDDING_DIMENSIONS=1536
      --repair-pending-output data/migration/repair-pending.json
    ```
 
-6. コマンドが `failed=0` で終了したこと、`GET /api/v1/system-info` が各 named vector に
+6. コマンドが `failed=0` で終了したことを確認し、API・web を起動する。
+   `GET /api/v1/system-info` が各 named vector に
    新しい model と dimensions を返すこと、代表的な検索が成功することを確認して worker を
-   再開する。
+   再開し、bot も起動する。
 
-失敗時は worker を停止したまま、旧設定へ戻して Weaviate 永続ボリュームのバックアップを
-復元します。再構築中に SQLite を更新する処理を止めているため、SQLite と JSON の復元は
-通常不要ですが、同時に変更した場合は同じバックアップ時点へ揃えて復元してください。
+失敗時は Weaviate も停止し、旧設定へ戻して
+[共通復元手順](../DEPLOY.md#復元) に従い SQLite・JSON・Weaviate を同じバックアップから
+復元します。所有権確認と起動後検証が完了してから通常運用を再開してください。
 
 worker は `BEGIN IMMEDIATE` のトランザクションで queued ジョブを原子的に claim します。
 停止要求を受けると新規 claim を止め、実行中ジョブを `WEAVIATE_WORKER_STOP_TIMEOUT` 秒まで
@@ -406,8 +409,11 @@ docker build -f apps/bot/Dockerfile.prod -t grimoire-bot:smoke .
 
 現在の実装はアップグレードのみを提供し、down migrationは提供しません。新しい
 スキーマへ移行した後に旧アプリへ戻す場合は、コードだけでなくSQLiteファイルも
-自動バックアップから同じ時点へ戻してください。旧アプリが新しいスキーマを読み書き
-できるとは仮定しません。
+移行前の状態へ戻してください。自動バックアップは SQLite のみであり、移行失敗直後かつ
+JSON・Weaviate に変更がない場合の退避用です。サービス再開後のロールバックには、事前に
+[共通手順](../DEPLOY.md#データバックアップ) で取得した SQLite・JSON・Weaviate の一式を
+同時点へ復元します。既存データの退避、所有権確認、起動後検証も共通手順に従います。
+旧アプリが新しいスキーマを読み書きできるとは仮定しません。
 
 ## Weaviate 1.38.8への移行
 
@@ -627,9 +633,14 @@ bash tools/weaviate_1_38_migration/run.sh rollback-check \
 
 最初に現行サービスを停止し、失敗時のデータを退避します。以下の
 `<timestamp>`、`<backup-file>`、`<old-api-commit>` はロールバック情報の値に
-置き換えます。
+置き換えます。退避先は存在しない名前を選び、復元前に確認してください。
+旧 Weaviate ボリュームが移行後に更新されていないことも、起動前に確認します。
+更新されている場合は、そのまま使用せず移行前時点のバックアップへ戻してください。
 
 ```bash
+# 手動の再インデックス・repair・移行処理も停止する。
+docker compose -f docker-compose.prod.yml stop web bot api worker
+docker compose -f docker-compose.prod.yml stop weaviate
 docker compose -f docker-compose.prod.yml down
 sudo mv /opt/grimoire-keeper-data/database \
   /opt/grimoire-keeper-data/database.failed-<timestamp>
@@ -639,8 +650,14 @@ sudo tar -xzf <backup-file> -C /opt/grimoire-keeper-data
 git checkout <old-api-commit>
 export WEAVIATE_IMAGE=cr.weaviate.io/semitechnologies/weaviate:1.33.1
 export WEAVIATE_DATA_PATH=/opt/grimoire-keeper-data/weaviate
+# 共通復元手順に従い、旧コードの実行 UID/GID と復元先の所有権を照合してから起動する。
 bash scripts/deploy.sh
 ```
+
+復元した SQLite・JSON と旧 Weaviate ボリュームが同じ移行前時点であることを確認します。
+旧ボリュームが移行後に更新されている場合はそのまま使用せず、同時点のバックアップへ戻します。
+[共通手順](../DEPLOY.md#復元) に従って復元先の所有権を旧コードの実行 UID/GID と照合し、
+起動後の DB・ヘルス・本文取得・代表検索も検証します。
 
 ロールバック確認後、#154 のブランチへ戻します。旧・新どちらのWeaviateデータも、
 削除は別途確認してから行います。

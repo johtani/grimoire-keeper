@@ -64,6 +64,9 @@ fi
 
 # 既存コンテナ停止・削除
 echo "既存サービス停止中..."
+# Weaviateを止める前に入口と書き込みプロセスを停止する。
+# ホスト側の再インデックス・repair・移行処理も事前に停止しておくこと。
+docker compose -f docker-compose.prod.yml stop web bot api worker
 docker compose -f docker-compose.prod.yml down --remove-orphans
 
 # ビルド情報を環境変数にセット
@@ -127,6 +130,9 @@ if [ "${backup_required}" = "true" ]; then
     sudo cp -a "${DATA_ROOT}/database/." "${backup_path}/"
     sudo chown -R "${USER}:${USER}" "${backup_path}"
     echo "SQLiteバックアップ作成完了: ${backup_path}"
+    echo "これはSQLite移行前の退避です。JSON・Weaviateは含みません。"
+    echo "サービス再開後の全体復旧には、停止中に保存した同時点のデータ一式が必要です。"
+    echo "保存・復元・所有権確認・起動後検証: DEPLOY.md の「データバックアップ」を参照してください。"
 fi
 
 # APIとworkerの起動前に単独プロセスでSQLiteを移行・検証する。

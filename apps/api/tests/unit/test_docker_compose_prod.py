@@ -229,7 +229,14 @@ def test_deploy_runs_conditional_backup_before_single_process_migration() -> Non
     migration = "init_database.py sqlite"
     services = "docker compose -f docker-compose.prod.yml up -d"
 
-    assert deploy.index(status) < deploy.index(backup)
+    stop = "docker compose -f docker-compose.prod.yml down --remove-orphans"
+    writers = "docker compose -f docker-compose.prod.yml stop web bot api worker"
+    assert (
+        deploy.index(writers)
+        < deploy.index(stop)
+        < deploy.index(status)
+        < deploy.index(backup)
+    )
     assert deploy.index(backup) < deploy.index(migration)
     assert deploy.index(migration) < deploy.index(services)
     assert 'case "${migration_status}"' in deploy
