@@ -401,3 +401,52 @@ async def test_create_page_preserves_other_integrity_error() -> None:
         await repo.create_page("https://example.com", "title")
 
     assert not isinstance(exc_info.value, DuplicateUrlError)
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        ("2026-09-07T00:00:00Z", "2026-09-08T00:00:00Z"),
+        ("2026-09-07T00:00:00+09:00", "2026-09-08T00:00:00+09:00"),
+        ("2026-01-31T00:00:00+09:00", "2026-02-01T00:00:00+09:00"),
+        ("2026-12-31T00:00:00+09:00", "2027-01-01T00:00:00+09:00"),
+        ("2024-02-29T00:00:00Z", "2024-03-01T00:00:00Z"),
+        ("2026-03-08T00:00:00-05:00", "2026-03-09T00:00:00-04:00"),
+        ("2026-11-01T00:00:00-04:00", "2026-11-02T00:00:00-05:00"),
+    ],
+)
+async def test_search_calendar_date_boundaries(page_repo, set_page_status, start, end):
+    from grimoire_api.models.request import SearchFilters
+    from grimoire_api.utils.datetime import as_utc, utc_isoformat
+
+    lower, upper = as_utc(start), as_utc(end)
+    instants = [
+        lower - timedelta(milliseconds=1),
+        lower,
+        lower + timedelta(hours=12),
+        upper - timedelta(milliseconds=1),
+        upper,
+    ]
+    ids = []
+    for index, instant in enumerate(instants):
+        page_id = await page_repo.create_page(
+            f"https://boundary.example/{index}", "Date"
+        )
+        await set_page_status(page_repo, page_id, PageStatus.SUCCEEDED)
+        await page_repo.db.execute(
+            "UPDATE pages SET created_at = ? WHERE id = ?",
+            (utc_isoformat(instant), page_id),
+        )
+        ids.append(page_id)
+
+    for values, expected in [
+        ({"date_from": start, "date_before": end}, ids[1:4]),
+        ({"date_before": end}, ids[:4]),
+        ({"date_from": start}, ids[1:]),
+        ({"date_from": start, "date_to": end}, ids[1:]),
+        ({}, ids),
+    ]:
+        filters = SearchFilters.model_validate(values).model_dump(exclude_none=True)
+        assert await page_repo.get_searchable_page_ids(filters) == expected
+        pages = await page_repo.get_searchable_pages_by_ids(ids, filters)
+        assert set(pages) == set(expected)
