@@ -811,6 +811,18 @@ class TestVectorizerService:
         mock_dependencies["weaviate_client"].is_ready.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_health_check_not_ready(
+        self, vectorizer_service, mock_dependencies: Any
+    ) -> None:
+        """Weaviateが未readyの場合はFalseを返すテスト."""
+        mock_dependencies["weaviate_client"].is_ready.return_value = False
+
+        result = await vectorizer_service.health_check()
+
+        assert result is False
+        mock_dependencies["weaviate_client"].is_ready.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_health_check_failure(
         self, vectorizer_service, mock_dependencies: Any
     ) -> None:
@@ -822,6 +834,7 @@ class TestVectorizerService:
         result = await vectorizer_service.health_check()
 
         assert result is False
+        mock_dependencies["weaviate_client"].is_ready.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ensure_schema_create_new(

@@ -15,10 +15,56 @@ from scripts.init_database import (
     NEW_DATABASE_EXIT_CODE,
     URL_COLLISION_EXIT_CODE,
     check_database_status,
+    initialize_database,
     initialize_sqlite_only,
     migration_status,
     url_collision_report,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("ready", "expected"), [(True, True), (False, False)])
+async def test_initialization_reflects_weaviate_readiness(
+    ready: bool, expected: bool
+) -> None:
+    """Weaviateのready状態を初期化結果へ反映する."""
+    database = MagicMock()
+    database.initialize_tables = AsyncMock()
+    client = MagicMock()
+    vectorizer = MagicMock()
+    vectorizer.health_check = AsyncMock(return_value=ready)
+    vectorizer.ensure_schema = AsyncMock()
+
+    with (
+        patch("scripts.init_database.DatabaseConnection", return_value=database),
+        patch("scripts.init_database.weaviate.connect_to_local", return_value=client),
+        patch("scripts.init_database.VectorizerService", return_value=vectorizer),
+    ):
+        assert await initialize_database() is expected
+
+    database.initialize_tables.assert_awaited_once()
+    vectorizer.health_check.assert_awaited_once()
+    if ready:
+        vectorizer.ensure_schema.assert_awaited_once()
+    else:
+        vectorizer.ensure_schema.assert_not_awaited()
+    client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_initialization_fails_when_weaviate_connection_raises() -> None:
+    """Weaviate接続例外時は初期化失敗を返す."""
+    database = MagicMock()
+    database.initialize_tables = AsyncMock()
+
+    with (
+        patch("scripts.init_database.DatabaseConnection", return_value=database),
+        patch(
+            "scripts.init_database.weaviate.connect_to_local",
+            side_effect=RuntimeError("connection failed"),
+        ),
+    ):
+        assert await initialize_database() is False
 
 
 @pytest.mark.asyncio

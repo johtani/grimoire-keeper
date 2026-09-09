@@ -43,7 +43,8 @@ async def initialize_database() -> bool:
         print("🔧 Initializing Weaviate schema...")
         from unittest.mock import MagicMock
 
-        weaviate_client = weaviate.connect_to_local(
+        weaviate_client = await asyncio.to_thread(
+            weaviate.connect_to_local,
             host=settings.WEAVIATE_HOST,
             port=settings.WEAVIATE_PORT,
             headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
@@ -65,7 +66,7 @@ async def initialize_database() -> bool:
                 print("   docker compose -f docker-compose.prod.yml up -d weaviate")
                 return False
         finally:
-            weaviate_client.close()
+            await asyncio.to_thread(weaviate_client.close)
 
     except Exception as e:
         print(f"❌ Database initialization failed: {str(e)}")
