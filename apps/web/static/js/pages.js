@@ -15,9 +15,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const pageSize = 20;
 
     // Event listeners
-    statusFilter.addEventListener('change', loadPages);
-    sortBy.addEventListener('change', loadPages);
-    sortOrder.addEventListener('change', loadPages);
+    statusFilter.addEventListener('change', resetPageAndLoad);
+    sortBy.addEventListener('change', resetPageAndLoad);
+    sortOrder.addEventListener('change', resetPageAndLoad);
     refreshBtn.addEventListener('click', loadPages);
     repairStatusFilter.addEventListener('change', loadRepairs);
     document.getElementById('importRepairsBtn').addEventListener('click', async () => {
@@ -44,6 +44,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial load
     loadPages();
     loadRepairs();
+
+    function resetPageAndLoad() {
+        currentPage = 0;
+        return loadPages();
+    }
 
     async function loadRepairs() {
         try {
@@ -74,7 +79,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 order: sortOrder.value
             };
 
-            const response = await window.api.getPages(params);
+            let response = await window.api.getPages(params);
+            const lastPage = Math.max(0, Math.ceil(response.total / pageSize) - 1);
+
+            if (currentPage > lastPage) {
+                currentPage = lastPage;
+                response = await window.api.getPages({
+                    ...params,
+                    offset: currentPage * pageSize
+                });
+            }
             displayPages(response);
             displayPagination(response);
 
