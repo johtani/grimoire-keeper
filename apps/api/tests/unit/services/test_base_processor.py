@@ -192,6 +192,24 @@ class TestRunPipelineFrom:
         mock_services["vectorizer"].vectorize_content.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_download_save_failure_propagates(
+        self, base_processor: BaseProcessorService, mock_services: Any
+    ) -> None:
+        """ダウンロード結果の保存失敗時に例外が伝播する."""
+        error = RuntimeError("File save error")
+        mock_services["file_repo"].save_json_file.side_effect = error
+        result = FetchedDocument.from_jina_response(
+            {"data": {"title": "Test Title", "content": "Test content"}},
+            source_url="https://example.com",
+        )
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await base_processor._save_download_result(1, result)
+
+        assert exc_info.value is error
+        mock_services["page_repo"].update_title_and_step.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_llm_failure_propagates(
         self, base_processor: BaseProcessorService, mock_services: Any
     ) -> None:
@@ -209,3 +227,18 @@ class TestRunPipelineFrom:
         mock_services["page_repo"].update_summary_keywords_and_step.assert_not_called()
         mock_services["page_repo"].update_success_step.assert_not_called()
         mock_services["vectorizer"].vectorize_content.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_llm_save_failure_propagates(
+        self, base_processor: BaseProcessorService, mock_services: Any
+    ) -> None:
+        """LLM結果の保存失敗時に例外が伝播する."""
+        error = RuntimeError("Database error")
+        mock_services["page_repo"].update_summary_keywords_and_step.side_effect = error
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await base_processor._save_llm_result(
+                1, SummaryResult(summary="Test summary", keywords=["test"])
+            )
+
+        assert exc_info.value is error
