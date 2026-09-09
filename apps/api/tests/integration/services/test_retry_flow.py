@@ -4,19 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from grimoire_api.models.database import ProcessingStep
-from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.retry_service import RetryService
-
-
-@pytest.fixture
-async def db(tmp_path: object) -> DatabaseConnection:
-    """一時ファイルを使った実 DatabaseConnection."""
-    db_path = str(tmp_path / "test.db")  # type: ignore[operator]
-    conn = DatabaseConnection(db_path=db_path)
-    await conn.initialize_tables()
-    return conn
 
 
 @pytest.fixture
@@ -30,11 +20,10 @@ def mock_file_repo() -> MagicMock:
 
 @pytest.fixture
 async def repos(
-    db: DatabaseConnection, mock_file_repo: MagicMock
+    page_repo: PageRepository, mock_file_repo: MagicMock
 ) -> tuple[PageRepository, LogRepository]:
     """実 PageRepository と LogRepository."""
-    page_repo = PageRepository(db=db, file_repo=mock_file_repo)
-    log_repo = LogRepository(db=db)
+    log_repo = LogRepository(db=page_repo.db)
     return page_repo, log_repo
 
 

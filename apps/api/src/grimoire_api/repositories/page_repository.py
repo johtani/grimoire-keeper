@@ -71,24 +71,6 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get page by URL: {str(e)}")
 
-    async def create_page(self, url: str, title: str, memo: str | None = None) -> int:
-        """Page作成."""
-        try:
-            query = """
-            INSERT INTO pages
-                (url, dedupe_key, title, memo, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'queued', ?, ?)
-            """
-            now = utc_now_isoformat()
-            lastrowid = await self.db.execute(
-                query, (url, self.dedupe_key(url), title, memo, now, now)
-            )
-            return lastrowid or 0
-        except Exception as e:
-            if _is_unique_constraint_error(e):
-                raise DuplicateUrlError("URL already exists") from e
-            raise DatabaseError(f"Failed to create page: {str(e)}") from e
-
     async def create_page_with_initial_job(
         self, url: str, title: str, memo: str | None = None
     ) -> tuple[int, int, int]:
@@ -266,28 +248,6 @@ class PageRepository:
             params.append(keyword)
 
         return conditions, params
-
-    async def update_summary_keywords(
-        self, page_id: int, summary: str, keywords: list[str]
-    ) -> None:
-        """要約・キーワード更新."""
-        try:
-            query = """
-            UPDATE pages
-            SET summary = ?, keywords = ?, updated_at = ?
-            WHERE id = ?
-            """
-            await self.db.execute(
-                query,
-                (
-                    summary,
-                    json.dumps(keywords, ensure_ascii=False),
-                    utc_now_isoformat(),
-                    page_id,
-                ),
-            )
-        except Exception as e:
-            raise DatabaseError(f"Failed to update summary/keywords: {str(e)}")
 
     async def update_weaviate_id(self, page_id: int, weaviate_id: str) -> None:
         """Weaviate ID更新."""

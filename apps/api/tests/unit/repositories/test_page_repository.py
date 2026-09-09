@@ -4,13 +4,15 @@ import asyncio
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock
 
 import aiosqlite
 import pytest
-from grimoire_api.models.database import Page, PageStatus
+from grimoire_api.models.database import Page, PageStatus, ProcessingStep
 from grimoire_api.repositories.cleanup_job_repository import CleanupJobRepository
-from grimoire_api.repositories.page_repository import PageRepository
+from grimoire_api.repositories.page_repository import (
+    PageRepository,
+    _is_unique_constraint_error,
+)
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.utils.exceptions import DatabaseError, DuplicateUrlError
 
@@ -119,17 +121,6 @@ class TestListPages:
 
 class TestPageRepository:
     """PageRepositoryのテストクラス."""
-
-    @pytest.mark.asyncio
-    async def test_create_page(self, page_repo: Any) -> None:
-        """ページ作成テスト."""
-        url = "https://example.com"
-        title = "Test Title"
-        memo = "Test memo"
-
-        page_id = await page_repo.create_page(url, title, memo)
-        assert page_id is not None
-        assert isinstance(page_id, int)
 
     @pytest.mark.asyncio
     async def test_get_page(self, page_repo: Any) -> None:
@@ -264,17 +255,20 @@ class TestPageRepository:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_update_summary_keywords(self, page_repo: Any) -> None:
-        """要約・キーワード更新テスト."""
+    async def test_update_summary_keywords_and_step(self, page_repo: Any) -> None:
+        """要約・キーワードと成功ステップを原子的に更新する."""
         page_id = await page_repo.create_page("https://example.com", "Test Title")
 
         summary = "This is a test summary."
         keywords = ["keyword1", "keyword2", "keyword3"]
-        await page_repo.update_summary_keywords(page_id, summary, keywords)
+        await page_repo.update_summary_keywords_and_step(
+            page_id, summary, keywords, ProcessingStep.LLM_PROCESSED
+        )
 
         page = await page_repo.get_page(page_id)
         assert page.summary == summary
         assert page.keywords == ["keyword1", "keyword2", "keyword3"]
+        assert page.last_success_step == ProcessingStep.LLM_PROCESSED
 
     @pytest.mark.asyncio
     async def test_update_weaviate_id(self, page_repo: Any) -> None:
@@ -331,7 +325,7 @@ class TestConcurrentPageRepository:
 
     @pytest.mark.asyncio
     async def test_concurrent_create_page_same_url(self, page_repo: Any) -> None:
-        """同一 URL への並行 create_page は重複レコードを作らない.
+        """同一 URL への並行登録は重複レコードを作らない.
 
         UNIQUE 制約により一方は成功し、もう一方は DuplicateUrlError になる。
         DB には1件のみ存在することを検証する。
@@ -339,12 +333,12 @@ class TestConcurrentPageRepository:
         url = "https://concurrent.example.com"
 
         results = await asyncio.gather(
-            page_repo.create_page(url, "Title A"),
-            page_repo.create_page(url, "Title B"),
+            page_repo.create_page_with_initial_job(url, "Title A"),
+            page_repo.create_page_with_initial_job(url, "Title B"),
             return_exceptions=True,
         )
 
-        successes = [r for r in results if isinstance(r, int)]
+        successes = [r for r in results if isinstance(r, tuple)]
         errors = [r for r in results if isinstance(r, Exception)]
 
         # 1件だけ成功し、1件は UNIQUE 制約エラーになる
@@ -354,22 +348,17 @@ class TestConcurrentPageRepository:
 
         # DB には重複レコードが存在しない
         page_id = await page_repo.get_page_by_url(url)
-        assert page_id == successes[0]
+        assert page_id == successes[0][0]
         pages = await page_repo.get_pages(limit=100)
         assert sum(1 for p in pages if p.url == url) == 1
 
 
 @pytest.mark.asyncio
-async def test_create_page_classifies_unique_error_by_sqlite_code() -> None:
+async def test_unique_error_is_classified_by_sqlite_code() -> None:
     """SQLiteのメッセージに依存せずURL重複を型付き例外へ変換する."""
     error = aiosqlite.IntegrityError("driver-specific text")
     error.sqlite_errorcode = sqlite3.SQLITE_CONSTRAINT_UNIQUE
-    db = AsyncMock()
-    db.execute.side_effect = error
-    repo = PageRepository(db=db)
-
-    with pytest.raises(DuplicateUrlError):
-        await repo.create_page("https://duplicate.example.com", "title")
+    assert _is_unique_constraint_error(error)
 
 
 @pytest.mark.asyncio
@@ -377,7 +366,7 @@ async def test_repository_deduplicates_canonical_url_and_preserves_original(
     page_repo: PageRepository,
 ) -> None:
     original = "https://example.com:443/article#first"
-    page_id = await page_repo.create_page(original, "title")
+    page_id, _, _ = await page_repo.create_page_with_initial_job(original, "title")
 
     assert (
         await page_repo.get_page_by_url("https://EXAMPLE.com/article#second") == page_id
@@ -389,18 +378,11 @@ async def test_repository_deduplicates_canonical_url_and_preserves_original(
 
 
 @pytest.mark.asyncio
-async def test_create_page_preserves_other_integrity_error() -> None:
+async def test_non_unique_integrity_error_is_not_classified_as_duplicate() -> None:
     """UNIQUE以外のintegrity errorをURL重複として扱わない."""
     error = aiosqlite.IntegrityError("UNIQUE constraint failed: misleading")
     error.sqlite_errorcode = sqlite3.SQLITE_CONSTRAINT_NOTNULL
-    db = AsyncMock()
-    db.execute.side_effect = error
-    repo = PageRepository(db=db)
-
-    with pytest.raises(DatabaseError) as exc_info:
-        await repo.create_page("https://example.com", "title")
-
-    assert not isinstance(exc_info.value, DuplicateUrlError)
+    assert not _is_unique_constraint_error(error)
 
 
 @pytest.mark.parametrize(
