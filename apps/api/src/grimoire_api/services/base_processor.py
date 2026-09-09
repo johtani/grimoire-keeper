@@ -44,25 +44,19 @@ class BaseProcessorService:
         self, page_id: int, result: FetchedDocument
     ) -> None:
         """ダウンロード結果保存."""
-        try:
-            await self.file_repo.save_json_file(page_id, result.raw_response)
-            await self.page_repo.update_title_and_step(
-                page_id, result.title, ProcessingStep.DOWNLOADED
-            )
-        except Exception:
-            raise
+        await self.file_repo.save_json_file(page_id, result.raw_response)
+        await self.page_repo.update_title_and_step(
+            page_id, result.title, ProcessingStep.DOWNLOADED
+        )
 
     async def _save_llm_result(self, page_id: int, result: SummaryResult) -> None:
         """LLM結果保存."""
-        try:
-            await self.page_repo.update_summary_keywords_and_step(
-                page_id=page_id,
-                summary=result.summary,
-                keywords=result.keywords,
-                step=ProcessingStep.LLM_PROCESSED,
-            )
-        except Exception:
-            raise
+        await self.page_repo.update_summary_keywords_and_step(
+            page_id=page_id,
+            summary=result.summary,
+            keywords=result.keywords,
+            step=ProcessingStep.LLM_PROCESSED,
+        )
 
     async def _run_pipeline_from(
         self,

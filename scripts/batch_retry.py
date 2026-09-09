@@ -3,18 +3,12 @@
 
 import argparse
 import asyncio
-import sys
-from pathlib import Path
 
 from grimoire_api.models.database import ProcessingStep
 from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.retry_service import RetryService
-
-# プロジェクトルートをパスに追加
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 
 
 async def batch_retry_from_status(
@@ -37,83 +31,79 @@ async def batch_retry_from_status(
     job_repo = JobRepository(db)
     retry_service = RetryService(page_repo=page_repo, job_repo=job_repo)
 
-    try:
-        # ステップに対応する成功ステータスを取得
-        status_mapping = {
-            "download": ProcessingStep.DOWNLOADED,
-            "llm": ProcessingStep.LLM_PROCESSED,
-            "vectorize": ProcessingStep.VECTORIZED,
-        }
+    # ステップに対応する成功ステータスを取得
+    status_mapping = {
+        "download": ProcessingStep.DOWNLOADED,
+        "llm": ProcessingStep.LLM_PROCESSED,
+        "vectorize": ProcessingStep.VECTORIZED,
+    }
 
-        if from_step not in status_mapping:
-            keys = list(status_mapping.keys())
-            print(f"Error: Invalid from_step '{from_step}'. Must be one of: {keys}")
-            return
+    if from_step not in status_mapping:
+        keys = list(status_mapping.keys())
+        print(f"Error: Invalid from_step '{from_step}'. Must be one of: {keys}")
+        return
 
-        target_status = status_mapping[from_step]
+    target_status = status_mapping[from_step]
 
-        # 対象ページを取得
-        pages = await page_repo.get_pages_by_status(target_status)
+    # 対象ページを取得
+    pages = await page_repo.get_pages_by_status(target_status)
 
-        if not pages:
-            print(f"No pages found with status '{target_status}'")
-            return
+    if not pages:
+        print(f"No pages found with status '{target_status}'")
+        return
 
-        # 処理対象を制限
-        if max_pages:
-            pages = pages[:max_pages]
+    # 処理対象を制限
+    if max_pages:
+        pages = pages[:max_pages]
 
-        print(f"Found {len(pages)} pages with status '{target_status}'")
-        print(f"Will retry from step: {from_step}")
-        print(f"Interval: {interval_seconds} seconds")
+    print(f"Found {len(pages)} pages with status '{target_status}'")
+    print(f"Will retry from step: {from_step}")
+    print(f"Interval: {interval_seconds} seconds")
 
-        if dry_run:
-            print("DRY RUN - No actual processing will be performed")
-            for i, page in enumerate(pages, 1):
-                print(f"  {i}. Page {page.id}: {page.url}")
-            return
-
-        # 確認
-        response = input("Continue? (y/N): ")
-        if response.lower() != "y":
-            print("Cancelled")
-            return
-
-        # バッチ処理実行
-        success_count = 0
-        error_count = 0
-
+    if dry_run:
+        print("DRY RUN - No actual processing will be performed")
         for i, page in enumerate(pages, 1):
-            print(f"\n[{i}/{len(pages)}] Processing page {page.id}: {page.url}")
+            print(f"  {i}. Page {page.id}: {page.url}")
+        return
 
-            try:
-                if page.id is not None:
-                    result = await retry_service.reprocess_page(page.id, from_step)
-                    if result["status"] == "reprocess_started":
-                        print(f"  ✓ Started reprocessing from {result['restart_from']}")
-                        success_count += 1
-                    else:
-                        print(f"  ⚠ {result['message']}")
+    # 確認
+    response = input("Continue? (y/N): ")
+    if response.lower() != "y":
+        print("Cancelled")
+        return
+
+    # バッチ処理実行
+    success_count = 0
+    error_count = 0
+
+    for i, page in enumerate(pages, 1):
+        print(f"\n[{i}/{len(pages)}] Processing page {page.id}: {page.url}")
+
+        try:
+            if page.id is not None:
+                result = await retry_service.reprocess_page(page.id, from_step)
+                if result["status"] == "reprocess_started":
+                    print(f"  ✓ Started reprocessing from {result['restart_from']}")
+                    success_count += 1
                 else:
-                    print("  ✗ Error: Page ID is None")
-                    error_count += 1
-
-            except Exception as e:
-                print(f"  ✗ Error: {str(e)}")
+                    print(f"  ⚠ {result['message']}")
+            else:
+                print("  ✗ Error: Page ID is None")
                 error_count += 1
 
-            # インターバル
-            if i < len(pages) and interval_seconds > 0:
-                print(f"  Waiting {interval_seconds} seconds...")
-                await asyncio.sleep(interval_seconds)
+        except Exception as e:
+            print(f"  ✗ Error: {str(e)}")
+            error_count += 1
 
-        print("\nBatch retry completed:")
-        print(f"  Success: {success_count}")
-        print(f"  Errors: {error_count}")
-        print(f"  Total: {len(pages)}")
-    finally:
-        # DatabaseConnection opens and closes a connection for each operation.
-        pass
+        # インターバル
+        if i < len(pages) and interval_seconds > 0:
+            print(f"  Waiting {interval_seconds} seconds...")
+            await asyncio.sleep(interval_seconds)
+
+    print("\nBatch retry completed:")
+    print(f"  Success: {success_count}")
+    print(f"  Errors: {error_count}")
+    print(f"  Total: {len(pages)}")
 
 
 def main() -> None:
@@ -124,13 +114,13 @@ def main() -> None:
         epilog="""
 Examples:
   # LLM処理が完了したページをベクトル化から再実行
-  python batch_retry.py --from-step vectorize --interval 2.0
+  uv run python scripts/batch_retry.py --from-step vectorize --interval 2.0
 
   # ダウンロード完了ページをLLM処理から再実行（最大10ページ）
-  python batch_retry.py --from-step llm --max-pages 10 --interval 5.0
+  uv run python scripts/batch_retry.py --from-step llm --max-pages 10 --interval 5.0
 
   # ドライラン（実際の処理は行わない）
-  python batch_retry.py --from-step download --dry-run
+  uv run python scripts/batch_retry.py --from-step download --dry-run
         """,
     )
 
