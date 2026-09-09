@@ -30,8 +30,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const keywordsFilter = document.getElementById('keywordsFilter').value.trim();
             const excludeKeywords = document.getElementById('excludeKeywords').value.trim();
 
-            if (dateFrom) filters.date_from = dateFrom;
-            if (dateTo) filters.date_to = dateTo;
+            if (dateFrom && dateTo && dateFrom > dateTo) {
+                throw new Error('Date From must not be later than Date To.');
+            }
+            if (dateFrom) filters.date_from = localDateBoundary(dateFrom);
+            if (dateTo) filters.date_before = localDateBoundary(dateTo, 1);
             if (urlFilter) filters.url = urlFilter;
             if (keywordsFilter) {
                 filters.keywords = keywordsFilter.split(',').map(k => k.trim()).filter(k => k);
@@ -52,6 +55,15 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally {
             searchSpinner.classList.add('d-none');
         }
+    }
+
+    function localDateBoundary(value, dayOffset = 0) {
+        const [year, month, day] = value.split('-').map(Number);
+        // Calendar arithmetic preserves local midnight across DST transitions.
+        const boundary = new Date(0);
+        boundary.setFullYear(year, month - 1, day + dayOffset);
+        boundary.setHours(0, 0, 0, 0);
+        return boundary.toISOString();
     }
 
     function displayResults(response) {

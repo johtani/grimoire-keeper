@@ -87,6 +87,10 @@ class SearchFilters(BaseModel):
     )
     date_from: datetime | None = None
     date_to: datetime | None = None
+    date_before: datetime | None = Field(
+        default=None,
+        description="Exclusive upper bound; cannot be combined with date_to",
+    )
 
     @model_validator(mode="after")
     def validate_date_range(self) -> "SearchFilters":
@@ -95,6 +99,12 @@ class SearchFilters(BaseModel):
             self.date_from = self._as_utc(self.date_from)
         if self.date_to is not None:
             self.date_to = self._as_utc(self.date_to)
+        if self.date_before is not None:
+            self.date_before = self._as_utc(self.date_before)
+            if self.date_to is not None:
+                raise ValueError("date_to and date_before cannot be combined")
+            if self.date_from is not None and self.date_from >= self.date_before:
+                raise ValueError("date_from must be earlier than date_before")
         if (
             self.date_from is not None
             and self.date_to is not None

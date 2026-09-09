@@ -188,7 +188,7 @@ Search processed content using vector similarity search.
 **Request Body Parameters:**
 - `query` (string, required, 1-1000 characters): Search query text; whitespace-only values are rejected
 - `limit` (integer, optional, default=5, range=1-100): Maximum number of results
-- `filters` (object, optional): Search filters. Supported fields are `url` (1-2048 characters), `keywords` (1-20 strings of 1-100 characters), `date_from`, and `date_to`. Unknown fields and reversed date ranges are rejected
+- `filters` (object, optional): Search filters. Supported fields are `url` (1-2048 characters), `keywords` (1-20 strings of 1-100 characters), `date_from` (inclusive), `date_to` (inclusive), and `date_before` (exclusive). `date_to` and `date_before` cannot be combined. Unknown fields, reversed ranges, and `date_from >= date_before` are rejected. Date/time values are normalized to UTC; values without a time zone are interpreted as UTC. Existing `date_to` behavior is unchanged, including date-only values representing UTC midnight. The Web UI interprets calendar dates in the device's time zone and sends local start-of-day as `date_from` and the start of the day after the selected end date as `date_before`, both converted to UTC. This includes the entire end date even across daylight saving transitions.
 - `vector_name` (string, optional, default="content_vector"): Named vector to
   search against. `content_vector` searches body chunks in
   `GrimoireContentChunk`; `title_vector` and `memo_vector` search one

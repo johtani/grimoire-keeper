@@ -290,3 +290,46 @@ def test_search_completion_metadata(truncated, endpoint, method, payload):
     assert response.status_code == 200
     assert response.json()["truncated"] is truncated
     assert response.json()["total"] == 0
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {"date_before": "invalid"},
+        {"date_to": "2026-09-08", "date_before": "2026-09-08"},
+        {"date_from": "2026-09-08", "date_before": "2026-09-08"},
+        {"date_from": "2026-09-09", "date_before": "2026-09-08"},
+        {
+            "date_from": "2026-09-08T00:00:00Z",
+            "date_before": "2026-09-08T00:00:00+09:00",
+        },
+    ],
+)
+def test_search_rejects_invalid_exclusive_date_range(filters):
+    service = AsyncMock()
+    app.dependency_overrides[get_search_service] = lambda: service
+    response = client.post(
+        "/api/v1/search", json={"query": "query", "filters": filters}
+    )
+    assert response.status_code == 422
+    service.vector_search.assert_not_awaited()
+
+
+@pytest.mark.parametrize("include_start", [False, True])
+def test_search_normalizes_exclusive_date_range(include_start):
+    from datetime import UTC, datetime
+
+    service = AsyncMock()
+    service.vector_search.return_value = []
+    app.dependency_overrides[get_search_service] = lambda: service
+    filters = {"date_before": "2026-09-08T00:00:00+09:00"}
+    if include_start:
+        filters["date_from"] = "2026-09-07T00:00:00+09:00"
+    response = client.post(
+        "/api/v1/search", json={"query": "query", "filters": filters}
+    )
+    assert response.status_code == 200
+    passed = service.vector_search.call_args.kwargs["filters"]
+    assert passed["date_before"] == datetime(2026, 9, 7, 15, tzinfo=UTC)
+    if include_start:
+        assert passed["date_from"] == datetime(2026, 9, 6, 15, tzinfo=UTC)

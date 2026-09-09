@@ -248,6 +248,10 @@ class PageRepository:
         if date_to:
             conditions.append("created_at <= ?")
             params.append(utc_isoformat(date_to))
+        date_before = filters.get("date_before")
+        if date_before:
+            conditions.append("created_at < ?")
+            params.append(utc_isoformat(date_before))
 
         valid_excludes = [
             keyword.strip()
