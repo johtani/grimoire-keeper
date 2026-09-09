@@ -90,8 +90,8 @@ test('resets to the first page when a filter or sort changes', async () => {
 });
 
 test('moves to the previous valid page after deleting the last row', async () => {
-    const state = createPagesContext(true, async (params, callNumber) => {
-        if (callNumber >= 3 && params.offset === 40) return { pages: [], total: 40 };
+    const state = createPagesContext(true, async (_params, callNumber) => {
+        if (callNumber >= 3) return { pages: [], total: 40 };
         return { pages: [], total: 41 };
     });
     await state.context.window.changePage(2);
