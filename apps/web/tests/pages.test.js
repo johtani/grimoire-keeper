@@ -10,16 +10,18 @@ const pagesSource = fs.readFileSync(
 );
 
 function createElement() {
+    const listeners = {};
     return {
-        addEventListener() {},
+        addEventListener(event, callback) { listeners[event] = callback; },
         classList: { add() {}, remove() {} },
         dataset: {},
         innerHTML: '',
+        listeners,
         value: 'all'
     };
 }
 
-function createPagesContext(confirmResult) {
+function createPagesContext(confirmResult, getPages = async () => ({ pages: [], total: 0 })) {
     const elements = Object.fromEntries([
         'statusFilter', 'sortBy', 'sortOrder', 'refreshBtn', 'refreshSpinner',
         'pagesTable', 'pagination', 'repairsTable', 'repairStatusFilter',
@@ -29,6 +31,7 @@ function createPagesContext(confirmResult) {
     elements.pageDetailModal.dataset.pageUrl = 'https://example.com/article';
 
     const deleteCalls = [];
+    const getPagesCalls = [];
     const confirmations = [];
     let modalHidden = false;
     const context = {
@@ -55,15 +58,68 @@ function createPagesContext(confirmResult) {
         window: {
             api: {
                 async deletePage(pageId) { deleteCalls.push(pageId); },
-                async getPages() { return { pages: [], total: 0 }; },
+                async getPages(params) {
+                    getPagesCalls.push(params);
+                    return getPages(params, getPagesCalls.length);
+                },
                 async getRepairs() { return { repairs: [] }; }
             }
         }
     };
     vm.createContext(context);
     vm.runInContext(pagesSource, context);
-    return { elements, confirmations, context, deleteCalls, get modalHidden() { return modalHidden; } };
+    return {
+        elements, confirmations, context, deleteCalls, getPagesCalls,
+        get modalHidden() { return modalHidden; }
+    };
 }
+
+test('resets to the first page when a filter or sort changes', async () => {
+    for (const elementId of ['statusFilter', 'sortBy', 'sortOrder']) {
+        let narrowed = false;
+        const state = createPagesContext(true, async () => ({
+            pages: [],
+            total: narrowed ? 5 : 60
+        }));
+        await state.context.window.changePage(2);
+        narrowed = true;
+        await state.elements[elementId].listeners.change();
+        assert.equal(state.getPagesCalls.at(-1).offset, 0);
+        assert.equal(state.elements.pagination.innerHTML, '');
+    }
+});
+
+test('moves to the previous valid page after deleting the last row', async () => {
+    const state = createPagesContext(true, async (params, callNumber) => {
+        if (callNumber >= 3 && params.offset === 40) return { pages: [], total: 40 };
+        return { pages: [], total: 41 };
+    });
+    await state.context.window.changePage(2);
+
+    await state.context.window.deletePage(267);
+
+    assert.deepEqual(
+        state.getPagesCalls.slice(-2).map(call => call.offset),
+        [40, 20]
+    );
+    assert.match(state.elements.pagination.innerHTML, />2</);
+    assert.doesNotMatch(state.elements.pagination.innerHTML, />3</);
+});
+
+test('returns to page zero and hides pagination when the result becomes empty', async () => {
+    let empty = false;
+    const state = createPagesContext(true, async () => ({
+        pages: [],
+        total: empty ? 0 : 41
+    }));
+    await state.context.window.changePage(2);
+    empty = true;
+
+    await state.elements.statusFilter.listeners.change();
+
+    assert.equal(state.getPagesCalls.at(-1).offset, 0);
+    assert.equal(state.elements.pagination.innerHTML, '');
+});
 
 test('confirms URL and all affected stores before deleting a page', async () => {
     const state = createPagesContext(true);
