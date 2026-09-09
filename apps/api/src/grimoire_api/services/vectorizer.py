@@ -480,8 +480,7 @@ class VectorizerService:
 
     async def health_check(self) -> bool:
         try:
-            self.weaviate_client.is_ready()
-            return True
+            return await asyncio.to_thread(self.weaviate_client.is_ready)
         except Exception:
             return False
 
