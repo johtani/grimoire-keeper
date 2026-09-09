@@ -1,6 +1,7 @@
 """Test configuration and fixtures."""
 
 import asyncio
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -15,6 +16,33 @@ from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.log_repository import LogRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.utils.datetime import utc_now_isoformat
+
+
+class PageRepositoryFixture(PageRepository):
+    """Test-only repository helpers for arranging page records."""
+
+    async def create_page(self, url: str, title: str, memo: str | None = None) -> int:
+        now = utc_now_isoformat()
+        page_id = await self.db.execute(
+            """INSERT INTO pages
+            (url, dedupe_key, title, memo, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'queued', ?, ?)""",
+            (url, self.dedupe_key(url), title, memo, now, now),
+        )
+        return page_id or 0
+
+    async def update_summary_keywords(
+        self, page_id: int, summary: str, keywords: list[str]
+    ) -> None:
+        await self.db.execute(
+            """UPDATE pages SET summary=?, keywords=?, updated_at=? WHERE id=?""",
+            (
+                summary,
+                json.dumps(keywords, ensure_ascii=False),
+                utc_now_isoformat(),
+                page_id,
+            ),
+        )
 
 
 class ResponsiveEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
@@ -65,9 +93,9 @@ def file_repo(temp_storage: str) -> FileRepository:
 @pytest_asyncio.fixture
 async def page_repo(
     temp_db: DatabaseConnection,
-) -> PageRepository:
+) -> PageRepositoryFixture:
     """ページリポジトリフィクスチャ."""
-    return PageRepository(db=temp_db)
+    return PageRepositoryFixture(db=temp_db)
 
 
 @pytest_asyncio.fixture

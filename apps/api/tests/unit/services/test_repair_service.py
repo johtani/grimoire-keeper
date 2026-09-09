@@ -18,7 +18,6 @@ from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.file_repository import FileRepository
 from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.log_repository import LogRepository
-from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.repositories.repair_repository import RepairRepository
 from grimoire_api.services.repair_service import RepairService
 from grimoire_api.utils.exceptions import DuplicateUrlError
@@ -26,10 +25,10 @@ from grimoire_api.utils.exceptions import DuplicateUrlError
 
 @pytest.fixture
 def repair_service(
-    temp_db: DatabaseConnection, temp_storage: str, tmp_path: Path
+    temp_db: DatabaseConnection, page_repo, temp_storage: str, tmp_path: Path
 ) -> RepairService:
     return RepairService(
-        PageRepository(temp_db),
+        page_repo,
         RepairRepository(temp_db),
         FileRepository(temp_storage),
         LogRepository(temp_db),

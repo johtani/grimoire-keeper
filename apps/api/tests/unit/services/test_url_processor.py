@@ -24,7 +24,6 @@ class TestUrlProcessorService:
         """モックサービス群."""
         page_repo = AsyncMock()
         page_repo.get_page_by_url = AsyncMock()
-        page_repo.create_page = AsyncMock()
         page_repo.create_page_with_initial_job = AsyncMock()
 
         return {"page_repo": page_repo}
@@ -132,7 +131,6 @@ class TestUrlProcessorService:
         mock_services["page_repo"].get_page_by_url.assert_called_once_with(url)
 
         # 新規作成が呼ばれないことを確認
-        mock_services["page_repo"].create_page.assert_not_called()
         mock_services["page_repo"].create_page_with_initial_job.assert_not_called()
 
     @pytest.mark.asyncio
