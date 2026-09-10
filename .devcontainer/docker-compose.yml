@@ -5,54 +5,26 @@ services:
       - seccomp=unconfined
     volumes:
       - ..:/workspace:cached
-      - bash_history:/root
-      - ~/.aws:/root/.aws:ro
+      - bash_history:/commandhistory
     working_dir: /workspace
     command: sleep infinity
     environment:
-      - PYTHONPATH=/workspace
-    networks:
-      - grimoire-network
-
-  bot:
-    build:
-      context: ../apps/bot
-      dockerfile: Dockerfile
-    volumes:
-      - ..:/workspace:cached
-    working_dir: /workspace/apps/bot
-    environment:
-      - PYTHONPATH=/workspace
-      - BACKEND_API_URL=http://api:8000
-    profiles:
-      - production
-    networks:
-      - grimoire-network
-
-  api:
-    build:
-      context: ../apps/api
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      - ..:/workspace:cached
-      - sqlite_data:/data
-    working_dir: /workspace/apps/api
-    environment:
-      - PYTHONPATH=/workspace
-      - WEAVIATE_HOST=weaviate
-      - WEAVIATE_PORT=8080
-      - DATABASE_PATH=/data/grimoire.db
-    profiles:
-      - production
+      PYTHONPATH: /workspace
+      DATABASE_PATH: /workspace/grimoire.db
+      JSON_STORAGE_PATH: /workspace/apps/api/data/json
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: 8080
+      LLM_API_BASE: http://host.docker.internal:8080/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - grimoire-network
 
   weaviate:
-    image: cr.weaviate.io/semitechnologies/weaviate:1.33.1
+    image: cr.weaviate.io/semitechnologies/weaviate:1.38.8
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8089:8080"
+      - "127.0.0.1:50051:50051"
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
@@ -61,13 +33,18 @@ services:
       ENABLE_MODULES: 'text2vec-openai'
       CLUSTER_HOSTNAME: 'node1'
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - weaviate_1_38_8_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     networks:
       - grimoire-network
 
 volumes:
-  weaviate_data:
-  sqlite_data:
+  weaviate_1_38_8_data:
   bash_history:
 
 networks:
