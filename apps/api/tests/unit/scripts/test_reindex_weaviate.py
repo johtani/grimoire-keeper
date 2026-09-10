@@ -8,12 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from grimoire_api.models.database import Page
+from grimoire_api.services.source_validation import RepairPendingPage, RepairReason
 
 from scripts.reindex_weaviate import _positive_int, reindex
-from tools.weaviate_1_38_migration.source_validation import (
-    RepairPendingPage,
-    RepairReason,
-)
 
 
 @pytest.mark.asyncio
@@ -26,7 +23,7 @@ async def test_dry_run_targets_all_completed_pages() -> None:
     with (
         patch("scripts.reindex_weaviate.DatabaseConnection") as database_connection,
         patch(
-            "scripts.reindex_weaviate.MigrationPageRepository",
+            "scripts.reindex_weaviate.PageRepository",
             return_value=page_repo,
         ),
     ):
@@ -44,9 +41,7 @@ async def test_dry_run_respects_max_pages() -> None:
     page_repo.count_completed_pages = AsyncMock(return_value=100)
     page_repo.get_completed_pages = AsyncMock(return_value=[])
 
-    with patch(
-        "scripts.reindex_weaviate.MigrationPageRepository", return_value=page_repo
-    ):
+    with patch("scripts.reindex_weaviate.PageRepository", return_value=page_repo):
         result = await reindex(max_pages=5, dry_run=True)
 
     assert result == 0
@@ -87,7 +82,7 @@ async def test_dry_run_reports_and_excludes_repair_pending_page(
 
     with (
         patch(
-            "scripts.reindex_weaviate.MigrationPageRepository",
+            "scripts.reindex_weaviate.PageRepository",
             return_value=page_repo,
         ),
         patch("scripts.reindex_weaviate.classify_stored_source", return_value=pending),
