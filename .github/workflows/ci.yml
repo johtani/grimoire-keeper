@@ -186,6 +186,8 @@ jobs:
       - name: Run Weaviate integration tests
         env:
           WEAVIATE_INTEGRATION: "1"
+          WEAVIATE_EMBEDDING_MODEL: text-embedding-3-small
+          WEAVIATE_EMBEDDING_DIMENSIONS: "1536"
         run: >-
           uv run pytest apps/api/tests/integration/ -v
           -m weaviate
