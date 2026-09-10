@@ -325,6 +325,20 @@ def test_deploy_prepares_only_application_data_for_fixed_uid() -> None:
     subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
 
 
+def test_deploy_writes_collision_report_through_dedicated_rw_mount() -> None:
+    """read-onlyのAPI用mountと競合しない宛先へ衝突レポートを書き込む."""
+    deploy = (PROJECT_ROOT / "scripts" / "deploy.sh").read_text()
+
+    assert (
+        "-e URL_COLLISION_REPORT_PATH=/collision-report/url-collisions.json" in deploy
+    )
+    assert '-v "${DATA_ROOT}/migration:/collision-report:rw" api' in deploy
+    assert (
+        '-v "${DATA_ROOT}/migration:/app/apps/api/data/migration:rw" api' not in deploy
+    )
+    subprocess.run(["bash", "-n", "scripts/deploy.sh"], check=True)
+
+
 def test_production_compose_renders(tmp_path: Path) -> None:
     if shutil.which("docker") is None:
         pytest.skip("docker CLI is not installed")

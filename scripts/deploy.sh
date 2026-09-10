@@ -106,7 +106,8 @@ esac
 echo "URL canonicalization衝突確認中..."
 collision_status=0
 bws run -- docker compose -f docker-compose.prod.yml run --rm --no-deps \
-    -v "${DATA_ROOT}/migration:/app/apps/api/data/migration:rw" api \
+    -e URL_COLLISION_REPORT_PATH=/collision-report/url-collisions.json \
+    -v "${DATA_ROOT}/migration:/collision-report:rw" api \
     python ../../scripts/init_database.py url-collision-report || \
     collision_status=$?
 if [ "${collision_status}" -ne 0 ]; then
