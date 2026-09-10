@@ -17,12 +17,12 @@ uv sync --all-packages
 # リント & 型チェック
 uv run ruff check .
 uv run ruff format .
-uv run mypy .          # mypy 設定により apps/bot と apps/api/tests は除外
+uv run mypy .          # apps/api/tests と apps/bot/tests は除外。Bot 本体と shared は対象
 
-# 全テストを実行 (pyproject.toml の [tool.pytest.ini_options] により apps/api/tests と apps/bot/tests が対象)
+# 全テストを実行 (API、Bot、shared が対象)
 uv run pytest
 
-# ユニットテストのみ実行
+# API ユニットテストを実行
 uv run pytest apps/api/tests/unit/ -v
 
 # インテグレーションテストを実行 (Weaviate の起動が必要)
@@ -31,14 +31,16 @@ uv run pytest apps/api/tests/integration/ -v
 # 単一テストファイルを実行
 uv run pytest apps/api/tests/unit/services/test_vectorizer.py -v
 
-# カバレッジ付きで実行
-uv run pytest --cov=apps --cov-report=html --cov-report=term-missing
+# サービス別のカバレッジコマンドは docs/development.md を参照
 
-# API を起動 (bws run がシークレットを自動注入)
+# API を起動 (API のみ。BWS の展開と worker 起動は別途行う)
 bash scripts/dev.sh
 
+# ジョブ worker を別ターミナルで起動
+uv run --package grimoire-api python -m grimoire_api.worker
+
 # Weaviate を起動 (インテグレーションテストと API に必要)
-docker compose up -d weaviate
+docker compose -f docker-compose.prod.yml up -d weaviate
 
 # データベーススキーマを初期化
 uv run python scripts/init_database.py init
@@ -78,6 +80,15 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 - **Weaviate** (`WEAVIATE_HOST:WEAVIATE_PORT`): `GrimoirePage` — `pageId`, URL, title, memo, summary, keywords, createdAt と `title_vector` / `memo_vector`; `GrimoireContentChunk` — `pageId`, `chunkId`, content と `content_vector`。Vectorizer と再インデックスは両方、検索は指定 vector 側、repair の登録確認は `GrimoirePage`、削除 cleanup は両方を対象とする
 - **JSON ファイル** (`JSON_STORAGE_PATH`): Jina の生コンテンツをページごとにキャッシュ (`data/json/{page_id}.json`)
 
+### SQLiteスキーマ変更の規約
+
+- スキーマ変更は `apps/api/src/grimoire_api/repositories/migrations.py` の `MIGRATIONS` 末尾に新しい連番として追加する
+- リリース済みのマイグレーションは変更・並べ替え・削除せず、`LATEST_SCHEMA_VERSION` と期待スキーマ検証を同時に更新する
+- DDL、データ変換、履歴追加は同じトランザクションで実行し、例外文字列によるエラーの握りつぶしや手動DDLを行わない
+- 新規DB、対応する各旧バージョン、再実行、データ保持、ロールバック、未知・破損・将来スキーマの拒否をユニットテストに含める
+- 本番移行前にSQLiteをバックアップし、旧コードへ戻す場合はDBも同じ時点へ復元する
+- 詳細は `docs/development.md` の「SQLiteスキーマの変更」を参照する
+
 ### 重要ファイル
 
 | パス | 役割 |
@@ -91,41 +102,17 @@ Docker Compose サービスのポート: API `8000`、Weaviate `8089→8080`、W
 
 ## 設定とシークレット
 
-環境変数は `.env` (テスト時は `.env.test`) から読み込まれます。必要な API キー:
-- `JINA_API_KEY` — Jina AI Reader
-- `LLM_API_KEY` — LiteLLM 経由のクラウド LLM (ローカル LLM では `dummy` 可)
-- `OPENAI_API_KEY` — Weaviate text2vec-openai 埋め込み。モデルは `WEAVIATE_EMBEDDING_MODEL` (既定 `text-embedding-ada-002`) で指定
-
-`BWS_ACCESS_TOKEN` は `~/.config/bws.env` に保存します (リポジトリ外)。その他のシークレットは起動時に `bws run` が Bitwarden Secrets Manager から取得してサブプロセスに注入します (キーのプレフィックスは `GRIMOIRE_KEEPER_`)。`.env` には非秘密の設定値のみ記載します。開発は `scripts/dev.sh`、本番は `scripts/start.sh` を使用します。
-
-### bws CLI のインストール
-
-devcontainer 起動時に `.devcontainer/setup.sh` が自動インストールします。手動インストールの場合:
-
-```bash
-# macOS
-brew install bitwarden/tools/bws
-
-# Linux
-BWS_VERSION=$(curl -s https://api.github.com/repos/bitwarden/sdk-sm/releases/latest | jq -r '.tag_name')
-curl -fsSL "https://github.com/bitwarden/sdk-sm/releases/download/${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION#v}.zip" -o /tmp/bws.zip
-sudo unzip -o /tmp/bws.zip bws -d /usr/local/bin/ && sudo chmod +x /usr/local/bin/bws && rm /tmp/bws.zip
-```
-
-Bitwarden Secrets Manager に登録するシークレット (プレフィックス `GRIMOIRE_KEEPER_`):
-- `GRIMOIRE_KEEPER_OPENAI_API_KEY`
-- `GRIMOIRE_KEEPER_JINA_API_KEY`
-- `GRIMOIRE_KEEPER_SLACK_BOT_TOKEN` / `GRIMOIRE_KEEPER_SLACK_SIGNING_SECRET` / `GRIMOIRE_KEEPER_SLACK_APP_TOKEN` (Slack bot 用)
-- `GRIMOIRE_KEEPER_LLM_API_KEY` (クラウド LLM 使用時のみ)
-
-Compose はこれらを各プロセスの prefix なし環境変数へ変換します。API の起動には SQLite 設定、ベクトル検索には OpenAI キーが必要です。API コンテナでの再インデックスにも同じキーを渡します。Worker は Jina・OpenAI・クラウド構成時の LLM、Bot は Slack の各キーを必要とします。Weaviate の model または dimensions を変更した場合は全ベクトルの再インデックスが必要です。schema を変更した際は、このファイルと `AGENTS.md` の collection・property・named vector の説明も同時に確認します。
+環境変数は `.env` (テスト時は `.env.test`) から読み込まれます。`.env` には非秘密の
+設定値だけを置き、シークレットをコミットしないでください。開発時の API と worker の
+起動、BWS、必要な API キー、埋め込みモデル変更時の再インデックスについては
+`docs/development.md` を参照してください。`scripts/dev.sh` 自体は BWS を呼び出しません。
 
 ## テストの注意事項
 
-- `pyproject.toml` の `[tool.pytest.ini_options]` で `testpaths = apps/api/tests`、`asyncio_mode = auto`、`ENV_FILE=.env.test` を設定
+- `pyproject.toml` の `[tool.pytest.ini_options]` で API、Bot、shared のテストを収集し、`asyncio_mode = auto`、`ENV_FILE=.env.test` を設定
 - ユニットテストは外部依存をモック化; インテグレーションテストは Weaviate の起動が必要
 - `.env.test` にはユニットテストに十分なダミー API キーが含まれる
-- カバレッジは `apps/` ディレクトリのみ対象
+- サービス別のテスト・カバレッジコマンドは `docs/development.md` を参照
 
 ## Git ワークフロー
 
@@ -153,7 +140,7 @@ uv run pytest apps/api/tests/unit/ -v
   ```bash
   uv run pytest apps/api/tests/unit/ -v
   ```
-- インテグレーションテストは Weaviate の起動が必要 (`docker compose up -d weaviate`)
+- インテグレーションテストは Weaviate の起動が必要 (`docker compose -f docker-compose.prod.yml up -d weaviate`)
 - 変更に関連するテストがない場合は新規作成する
 
 ## ワークスペース構成

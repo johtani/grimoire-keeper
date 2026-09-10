@@ -9,6 +9,10 @@ bash scripts/dev.sh
 uv run --package grimoire-api python -m grimoire_api.worker
 ```
 
+`scripts/dev.sh` が起動するのは reload を有効にした API だけです。BWS によるシークレットの
+展開、Weaviate、worker、Bot は起動しません。worker に必要な環境変数を設定したうえで、上記の
+worker コマンドを別途実行してください。
+
 API はジョブを SQLite の `jobs` テーブルへ登録するだけなので複数プロセスで実行できます。
 worker は同じ SQLite に対して必ず1プロセスだけ起動してください。本番 Compose でも
 `worker` サービスを scale せず、replica 数を1に保ちます。
@@ -20,6 +24,49 @@ APIプロセスに必須なのはSQLiteの `DATABASE_PATH` だけです。Jina�
 `GRIMOIRE_KEEPER_OPENAI_API_KEY` を API と Worker に渡し、API コンテナでの再インデックスも
 同じ設定を使用します。移行スクリプトはサービス停止前に BWS のキーが空でないことを確認します。
 検索などWeaviateを直接利用するAPIは、Weaviate停止中は縮退応答または503を返します。
+
+## 開発ツールと検証範囲
+
+依存関係と開発ツールはルートの `pyproject.toml` で管理します。コマンドはリポジトリルートで
+実行してください。
+
+```bash
+uv sync --all-packages
+uv run ruff format .
+uv run ruff check .
+uv run mypy .
+uv run pytest
+```
+
+`uv run pytest` の既定の収集対象は `apps/api/tests`、`apps/bot/tests`、`shared/tests` です。
+mypy は `apps/api/tests` と `apps/bot/tests` を除外しますが、`apps/api`、Bot 本体の
+`apps/bot/src`、`shared` は型チェック対象です。
+
+変更に応じてサービス別に実行する場合は次のコマンドを使用します。Python の実装を変更した
+場合、コミット前には少なくとも全 API ユニットテストを実行してください。
+
+```bash
+# API ユニットテスト (コミット前に必須)
+uv run pytest apps/api/tests/unit/ -v
+
+# Bot テスト
+uv run pytest apps/bot/tests/ -v
+
+# shared テスト
+uv run pytest shared/tests/ -v
+
+# API インテグレーションテスト (Weaviate が必要なテストを含む)
+uv run pytest apps/api/tests/integration/ -v
+```
+
+カバレッジは各 production package を明示して計測します。テストコードはカバレッジ対象から
+除外されます。CI と同じ閾値を使うコマンドは次のとおりです。
+
+```bash
+uv run pytest apps/api/tests/unit/ -v --cov=grimoire_api --cov-fail-under=80
+uv run pytest apps/bot/tests/ -v --cov=grimoire_bot --cov-fail-under=65
+uv run pytest shared/tests/ -v --cov=grimoire_shared --cov-fail-under=90
+```
 
 ### URL 処理メトリクス
 

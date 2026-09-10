@@ -93,7 +93,7 @@ async def main() -> None:
         print("🎉 全てのサービスが正常に動作しています!")
     else:
         print("⚠️  一部のサービスに問題があります。")
-        print("詳細は SETUP_API.md を確認してください。")
+        print("詳細は docs/development.md を確認してください。")
         sys.exit(1)
 
 
