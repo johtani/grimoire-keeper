@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Batch retry script for processing pages from specific status."""
+"""Batch retry script for processing pages from a selected pipeline step."""
 
 import argparse
 import asyncio
@@ -9,6 +9,7 @@ from grimoire_api.repositories.database import DatabaseConnection
 from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.retry_service import RetryService
+from grimoire_api.utils.exceptions import ResourceConflictError
 
 
 async def batch_retry_from_status(
@@ -17,7 +18,7 @@ async def batch_retry_from_status(
     max_pages: int | None = None,
     dry_run: bool = False,
 ) -> None:
-    """特定のステータスからバッチリトライ.
+    """指定した処理ステップからバッチリトライ.
 
     Args:
         from_step: 開始ステップ ("download", "llm", "vectorize")
@@ -31,32 +32,36 @@ async def batch_retry_from_status(
     job_repo = JobRepository(db)
     retry_service = RetryService(page_repo=page_repo, job_repo=job_repo)
 
-    # ステップに対応する成功ステータスを取得
-    status_mapping = {
-        "download": ProcessingStep.DOWNLOADED,
-        "llm": ProcessingStep.LLM_PROCESSED,
-        "vectorize": ProcessingStep.VECTORIZED,
+    # 再開ステップの直前に成功しているべきステップを取得
+    previous_step_mapping = {
+        "download": None,
+        "llm": ProcessingStep.DOWNLOADED,
+        "vectorize": ProcessingStep.LLM_PROCESSED,
     }
 
-    if from_step not in status_mapping:
-        keys = list(status_mapping.keys())
+    if from_step not in previous_step_mapping:
+        keys = list(previous_step_mapping.keys())
         print(f"Error: Invalid from_step '{from_step}'. Must be one of: {keys}")
         return
 
-    target_status = status_mapping[from_step]
+    previous_step = previous_step_mapping[from_step]
 
-    # 対象ページを取得
-    pages = await page_repo.get_pages_by_status(target_status)
+    # アクティブなジョブがない対象ページを取得
+    pages = await page_repo.get_reprocess_candidates(previous_step)
 
     if not pages:
-        print(f"No pages found with status '{target_status}'")
+        print(f"No pages found eligible to restart from '{from_step}'")
         return
 
     # 処理対象を制限
     if max_pages:
         pages = pages[:max_pages]
 
-    print(f"Found {len(pages)} pages with status '{target_status}'")
+    previous_step_label = previous_step.value if previous_step else "none"
+    print(
+        f"Found {len(pages)} pages with last successful step "
+        f"'{previous_step_label}' and no active job"
+    )
     print(f"Will retry from step: {from_step}")
     print(f"Interval: {interval_seconds} seconds")
 
@@ -75,6 +80,7 @@ async def batch_retry_from_status(
     # バッチ処理実行
     success_count = 0
     error_count = 0
+    skipped_count = 0
 
     for i, page in enumerate(pages, 1):
         print(f"\n[{i}/{len(pages)}] Processing page {page.id}: {page.url}")
@@ -91,6 +97,10 @@ async def batch_retry_from_status(
                 print("  ✗ Error: Page ID is None")
                 error_count += 1
 
+        except ResourceConflictError as e:
+            # 候補取得後に別プロセスがジョブを登録した競合は安全にスキップする
+            print(f"  ⚠ Skipped: {str(e)}")
+            skipped_count += 1
         except Exception as e:
             print(f"  ✗ Error: {str(e)}")
             error_count += 1
@@ -102,6 +112,7 @@ async def batch_retry_from_status(
 
     print("\nBatch retry completed:")
     print(f"  Success: {success_count}")
+    print(f"  Skipped: {skipped_count}")
     print(f"  Errors: {error_count}")
     print(f"  Total: {len(pages)}")
 
@@ -119,7 +130,7 @@ Examples:
   # ダウンロード完了ページをLLM処理から再実行（最大10ページ）
   uv run python scripts/batch_retry.py --from-step llm --max-pages 10 --interval 5.0
 
-  # ドライラン（実際の処理は行わない）
+  # 未ダウンロードかつ処理中ジョブがないページを確認するドライラン
   uv run python scripts/batch_retry.py --from-step download --dry-run
         """,
     )
@@ -128,7 +139,10 @@ Examples:
         "--from-step",
         choices=["download", "llm", "vectorize"],
         required=True,
-        help="Starting step for retry (download/llm/vectorize)",
+        help=(
+            "Pipeline step to restart from; selects pages whose last successful "
+            "step immediately precedes it and excludes active jobs"
+        ),
     )
 
     parser.add_argument(

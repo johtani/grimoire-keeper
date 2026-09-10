@@ -531,22 +531,33 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to list pages: {str(e)}")
 
-    async def get_pages_by_status(
-        self, last_success_step: ProcessingStep
+    async def get_reprocess_candidates(
+        self, last_success_step: ProcessingStep | None
     ) -> list[Page]:
-        """最後の成功ステップでページを取得."""
+        """最後の成功ステップで再処理候補を取得."""
         try:
-            query = """
+            step_condition = (
+                "pages.last_success_step IS NULL"
+                if last_success_step is None
+                else "pages.last_success_step = ?"
+            )
+            query = f"""
             SELECT id, url, dedupe_key, title, memo, summary, keywords, weaviate_id,
                    last_success_step, status, created_at, updated_at
             FROM pages
-            WHERE last_success_step = ?
-            ORDER BY created_at ASC
+            WHERE {step_condition}
+              AND NOT EXISTS (
+                  SELECT 1 FROM jobs
+                  WHERE jobs.page_id = pages.id
+                    AND jobs.status IN ('queued', 'running')
+              )
+            ORDER BY pages.created_at ASC
             """
-            results = await self.db.fetch_all(query, (last_success_step,))
+            params = () if last_success_step is None else (last_success_step,)
+            results = await self.db.fetch_all(query, params)
             return [self._row_to_page(row) for row in results]
         except Exception as e:
-            raise DatabaseError(f"Failed to get pages by status: {str(e)}")
+            raise DatabaseError(f"Failed to get reprocess candidates: {str(e)}")
 
     def _status_where_clause(self, status_filter: str | None) -> str:
         """ステータスフィルター用SQL WHERE句を生成."""

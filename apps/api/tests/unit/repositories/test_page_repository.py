@@ -253,6 +253,47 @@ class TestPageRepository:
         page = await page_repo.get_page(999)
         assert page is None
 
+    @pytest.mark.parametrize(
+        "last_success_step",
+        [None, ProcessingStep.DOWNLOADED, ProcessingStep.LLM_PROCESSED],
+    )
+    async def test_get_reprocess_candidates_matches_last_success_step(
+        self,
+        page_repo: Any,
+        last_success_step: ProcessingStep | None,
+    ) -> None:
+        page_id = await page_repo.create_page(
+            f"https://{last_success_step or 'none'}.example.com", "Title"
+        )
+        if last_success_step is not None:
+            await page_repo.update_success_step(page_id, last_success_step)
+
+        candidates = await page_repo.get_reprocess_candidates(last_success_step)
+
+        assert [page.id for page in candidates] == [page_id]
+
+    async def test_get_reprocess_candidates_excludes_active_jobs(
+        self, temp_db: Any, page_repo: Any
+    ) -> None:
+        active_id = await page_repo.create_page("https://active.example.com", "Active")
+        finished_id = await page_repo.create_page(
+            "https://finished.example.com", "Finished"
+        )
+        await temp_db.execute(
+            "INSERT INTO jobs (page_id, kind, status, start_step) "
+            "VALUES (?, 'reprocess', 'queued', 'download')",
+            (active_id,),
+        )
+        await temp_db.execute(
+            "INSERT INTO jobs (page_id, kind, status, start_step) "
+            "VALUES (?, 'reprocess', 'succeeded', 'download')",
+            (finished_id,),
+        )
+
+        candidates = await page_repo.get_reprocess_candidates(None)
+
+        assert [page.id for page in candidates] == [finished_id]
+
     @pytest.mark.asyncio
     async def test_get_page_by_url(self, page_repo: Any) -> None:
         """URLでページIDを取得するテスト."""
