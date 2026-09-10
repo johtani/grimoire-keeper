@@ -12,10 +12,13 @@ import weaviate
 from grimoire_api.config import settings
 from grimoire_api.services.weaviate_schema import WeaviateSchemaService
 
-pytestmark = pytest.mark.skipif(
-    os.getenv("WEAVIATE_INTEGRATION") != "1",
-    reason="set WEAVIATE_INTEGRATION=1 to run against Weaviate 1.38.8",
-)
+pytestmark = [
+    pytest.mark.weaviate,
+    pytest.mark.skipif(
+        os.getenv("WEAVIATE_INTEGRATION") != "1",
+        reason="set WEAVIATE_INTEGRATION=1 to run against Weaviate 1.38.8",
+    ),
+]
 
 
 @contextmanager

@@ -58,6 +58,10 @@ addopts = [
     "-q",
     "--import-mode=importlib",
 ]
+markers = [
+    "integration: tests that combine multiple application layers",
+    "weaviate: integration tests that require a running Weaviate instance",
+]
 env = [
     "ENV_FILE=.env.test",
 ]
