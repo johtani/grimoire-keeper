@@ -1,271 +1,113 @@
-"""Integration tests for RetryService retry flow."""
+"""Integration tests for persistent retry job registration."""
 
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-from grimoire_api.models.database import ProcessingStep
-from grimoire_api.repositories.log_repository import LogRepository
+from grimoire_api.models.database import (
+    JobKind,
+    JobStatus,
+    PageStatus,
+    PipelineStartStep,
+    ProcessingStep,
+)
+from grimoire_api.repositories.database import DatabaseConnection
+from grimoire_api.repositories.job_repository import JobRepository
 from grimoire_api.repositories.page_repository import PageRepository
 from grimoire_api.services.retry_service import RetryService
 
 
-@pytest.fixture
-def mock_file_repo() -> MagicMock:
-    """ファイルシステム書き込みを避けるためのモック FileRepository."""
-    repo = MagicMock()
-    repo.save_json_file = AsyncMock(return_value=None)
-    repo.get_existing_page_ids = AsyncMock(return_value=set())
-    return repo
-
-
-@pytest.fixture
-async def repos(
-    page_repo: PageRepository, mock_file_repo: MagicMock
-) -> tuple[PageRepository, LogRepository]:
-    """実 PageRepository と LogRepository."""
-    log_repo = LogRepository(db=page_repo.db)
-    return page_repo, log_repo
-
-
-@pytest.fixture
-def mock_external_services() -> tuple[AsyncMock, AsyncMock, AsyncMock]:
-    """外部サービス (JinaClient / LLMService / VectorizerService) のモック."""
-    jina_client = AsyncMock()
-    jina_client.fetch_content = AsyncMock(
-        return_value={"data": {"title": "Test Title", "content": "Test content"}}
-    )
-
-    llm_service = AsyncMock()
-    llm_service.generate_summary_keywords = AsyncMock(
-        return_value={"summary": "Test summary", "keywords": ["keyword1", "keyword2"]}
-    )
-
-    vectorizer = AsyncMock()
-    vectorizer.vectorize_content = AsyncMock(return_value=None)
-
-    return jina_client, llm_service, vectorizer
-
-
-@pytest.fixture
-async def retry_service(
-    repos: tuple[PageRepository, LogRepository],
-    mock_external_services: tuple[AsyncMock, AsyncMock, AsyncMock],
-) -> RetryService:
-    """RetryService フィクスチャ."""
-    page_repo, log_repo = repos
-    jina_client, llm_service, vectorizer = mock_external_services
-    return RetryService(
-        jina_client=jina_client,
-        llm_service=llm_service,
-        vectorizer=vectorizer,
-        page_repo=page_repo,
-        log_repo=log_repo,
-    )
-
-
-async def setup_page_with_failed_log(
+async def _failed_page(
     page_repo: PageRepository,
-    log_repo: LogRepository,
+    set_page_status,
     url: str,
     last_success_step: ProcessingStep | None,
-) -> tuple[int, int]:
-    """テスト用ページと失敗ログをセットアップするヘルパー."""
+) -> int:
     page_id = await page_repo.create_page(url=url, title="Test Page")
-    if last_success_step:
+    if last_success_step is not None:
         await page_repo.update_success_step(page_id, last_success_step)
-    log_id = await log_repo.create_log(url=url, status="failed", page_id=page_id)
-    return page_id, log_id
+    await set_page_status(page_repo, page_id, PageStatus.FAILED)
+    return page_id
 
 
-class TestRetryFromDownloadedState:
-    """downloaded 状態からのリトライテスト."""
+async def test_retry_from_downloaded_enqueues_llm_job(
+    page_repo: PageRepository,
+    temp_db: DatabaseConnection,
+    set_page_status,
+) -> None:
+    page_id = await _failed_page(
+        page_repo,
+        set_page_status,
+        "https://example.com/downloaded",
+        ProcessingStep.DOWNLOADED,
+    )
+    job_repo = JobRepository(temp_db)
+    service = RetryService(page_repo, job_repo)
 
-    async def test_llm_and_vectorize_run_but_not_jina(
-        self,
-        retry_service: RetryService,
-        repos: tuple[PageRepository, LogRepository],
-        mock_external_services: tuple[AsyncMock, AsyncMock, AsyncMock],
-    ) -> None:
-        """last_success_step='downloaded' の場合、LLM とベクトル化のみ実行される."""
-        page_repo, log_repo = repos
-        jina_client, llm_service, vectorizer = mock_external_services
+    result = await service.retry_single_page(page_id)
 
-        page_id, _ = await setup_page_with_failed_log(
+    job = await job_repo.get_latest_for_page(page_id)
+    assert result["status"] == "retry_started"
+    assert result["restart_from"] == PipelineStartStep.LLM.value
+    assert job is not None
+    assert job.kind == JobKind.RETRY
+    assert job.status == JobStatus.QUEUED
+    assert job.start_step == PipelineStartStep.LLM
+
+
+async def test_retry_from_llm_processed_enqueues_vectorize_job(
+    page_repo: PageRepository,
+    temp_db: DatabaseConnection,
+    set_page_status,
+) -> None:
+    page_id = await _failed_page(
+        page_repo,
+        set_page_status,
+        "https://example.com/llm-processed",
+        ProcessingStep.LLM_PROCESSED,
+    )
+    job_repo = JobRepository(temp_db)
+
+    result = await RetryService(page_repo, job_repo).retry_single_page(page_id)
+
+    job = await job_repo.get_latest_for_page(page_id)
+    assert result["restart_from"] == PipelineStartStep.VECTORIZE.value
+    assert job is not None and job.start_step == PipelineStartStep.VECTORIZE
+
+
+async def test_retry_without_completed_step_enqueues_download_job(
+    page_repo: PageRepository,
+    temp_db: DatabaseConnection,
+    set_page_status,
+) -> None:
+    page_id = await _failed_page(
+        page_repo, set_page_status, "https://example.com/new", None
+    )
+    job_repo = JobRepository(temp_db)
+
+    result = await RetryService(page_repo, job_repo).retry_single_page(page_id)
+
+    job = await job_repo.get_latest_for_page(page_id)
+    assert result["restart_from"] == PipelineStartStep.DOWNLOAD.value
+    assert job is not None and job.start_step == PipelineStartStep.DOWNLOAD
+
+
+async def test_retry_all_failed_persists_one_job_per_page(
+    page_repo: PageRepository,
+    temp_db: DatabaseConnection,
+    set_page_status,
+) -> None:
+    page_ids = [
+        await _failed_page(
             page_repo,
-            log_repo,
-            "https://example.com/downloaded",
+            set_page_status,
+            f"https://example.com/failed-{index}",
             ProcessingStep.DOWNLOADED,
         )
+        for index in range(2)
+    ]
+    job_repo = JobRepository(temp_db)
 
-        result = await retry_service.retry_single_page(page_id)
+    result = await RetryService(page_repo, job_repo).retry_all_failed()
 
-        assert result["status"] == "retry_started"
-        assert result["restart_from"] == "llm"
-
-        # Jina は呼ばれない
-        jina_client.fetch_content.assert_not_called()
-        # LLM とベクトル化は呼ばれる
-        llm_service.generate_summary_keywords.assert_called_once_with(page_id)
-        vectorizer.vectorize_content.assert_called_once_with(page_id)
-
-        # DB の last_success_step が "completed" になっている
-        page = await page_repo.get_page(page_id)
-        assert page is not None
-        assert page.last_success_step == ProcessingStep.COMPLETED
-
-
-class TestRetryFromLlmProcessedState:
-    """llm_processed 状態からのリトライテスト."""
-
-    async def test_only_vectorize_runs(
-        self,
-        retry_service: RetryService,
-        repos: tuple[PageRepository, LogRepository],
-        mock_external_services: tuple[AsyncMock, AsyncMock, AsyncMock],
-    ) -> None:
-        """last_success_step='llm_processed' の場合、ベクトル化のみ実行される."""
-        page_repo, log_repo = repos
-        jina_client, llm_service, vectorizer = mock_external_services
-
-        page_id, _ = await setup_page_with_failed_log(
-            page_repo,
-            log_repo,
-            "https://example.com/llm-processed",
-            ProcessingStep.LLM_PROCESSED,
-        )
-
-        result = await retry_service.retry_single_page(page_id)
-
-        assert result["status"] == "retry_started"
-        assert result["restart_from"] == "vectorize"
-
-        # Jina も LLM も呼ばれない
-        jina_client.fetch_content.assert_not_called()
-        llm_service.generate_summary_keywords.assert_not_called()
-        # ベクトル化のみ呼ばれる
-        vectorizer.vectorize_content.assert_called_once_with(page_id)
-
-        page = await page_repo.get_page(page_id)
-        assert page is not None
-        assert page.last_success_step == ProcessingStep.COMPLETED
-
-
-class TestRetryFromVectorizedState:
-    """vectorized 状態からのリトライテスト."""
-
-    async def test_returns_already_completed(
-        self,
-        retry_service: RetryService,
-        repos: tuple[PageRepository, LogRepository],
-        mock_external_services: tuple[AsyncMock, AsyncMock, AsyncMock],
-    ) -> None:
-        """last_success_step='vectorized' の場合、already_completed が返りサービスは呼ばれない."""  # noqa: E501
-        page_repo, log_repo = repos
-        jina_client, llm_service, vectorizer = mock_external_services
-
-        page_id, _ = await setup_page_with_failed_log(
-            page_repo,
-            log_repo,
-            "https://example.com/vectorized",
-            ProcessingStep.VECTORIZED,
-        )
-
-        result = await retry_service.retry_single_page(page_id)
-
-        assert result["status"] == "already_completed"
-        assert result["page_id"] == page_id
-
-        # どのサービスも呼ばれない
-        jina_client.fetch_content.assert_not_called()
-        llm_service.generate_summary_keywords.assert_not_called()
-        vectorizer.vectorize_content.assert_not_called()
-
-
-class TestRetryMixedSuccessFailure:
-    """一部成功・一部失敗の混在パターンテスト."""
-
-    async def test_continues_after_single_page_failure(
-        self,
-        repos: tuple[PageRepository, LogRepository],
-        mock_external_services: tuple[AsyncMock, AsyncMock, AsyncMock],
-    ) -> None:
-        """一部ページのリトライが失敗しても残りが処理されること."""
-        page_repo, log_repo = repos
-        jina_client, llm_service, vectorizer = mock_external_services
-
-        # ページ1: ベクトル化で失敗させる
-        page_id1, _ = await setup_page_with_failed_log(
-            page_repo,
-            log_repo,
-            "https://example.com/fail",
-            ProcessingStep.LLM_PROCESSED,
-        )
-        # ページ2: 成功させる
-        page_id2, _ = await setup_page_with_failed_log(
-            page_repo,
-            log_repo,
-            "https://example.com/success",
-            ProcessingStep.LLM_PROCESSED,
-        )
-
-        async def vectorize_side_effect(pid: int) -> None:
-            if pid == page_id1:
-                raise Exception("vectorize failed")
-
-        vectorizer.vectorize_content = AsyncMock(side_effect=vectorize_side_effect)
-
-        retry_svc = RetryService(
-            jina_client=jina_client,
-            llm_service=llm_service,
-            vectorizer=vectorizer,
-            page_repo=page_repo,
-            log_repo=log_repo,
-        )
-
-        result = await retry_svc.retry_all_failed()
-
-        assert result["status"] == "batch_retry_started"
-        assert result["total_failed_pages"] == 2
-        assert result["retry_count"] == 1
-
-        # 成功ページは completed になっている
-        page2 = await page_repo.get_page(page_id2)
-        assert page2 is not None
-        assert page2.last_success_step == ProcessingStep.COMPLETED
-
-        # 失敗ページは completed になっていない
-        page1 = await page_repo.get_page(page_id1)
-        assert page1 is not None
-        assert page1.last_success_step != ProcessingStep.COMPLETED
-
-
-class TestRetryLogGeneration:
-    """リトライ中のログ生成確認テスト."""
-
-    async def test_retry_creates_completed_log(
-        self,
-        retry_service: RetryService,
-        repos: tuple[PageRepository, LogRepository],
-        get_process_logs,
-    ) -> None:
-        """リトライ実行後に completed ログが生成されること."""
-        page_repo, log_repo = repos
-
-        page_id, _ = await setup_page_with_failed_log(
-            page_repo,
-            log_repo,
-            "https://example.com/log-test",
-            ProcessingStep.DOWNLOADED,
-        )
-
-        await retry_service.retry_single_page(page_id)
-
-        # 全ログを取得し、このページのログを確認
-        page_logs = await get_process_logs(log_repo, page_id=page_id, limit=50)
-
-        # 失敗ログ (事前挿入) + リトライログ の 2 件が存在する
-        assert len(page_logs) == 2
-
-        statuses = {log["status"] for log in page_logs}
-        assert "failed" in statuses  # 元の失敗ログ
-        assert "completed" in statuses  # リトライ完了ログ
+    assert result["status"] == "batch_retry_started"
+    assert result["total_failed_pages"] == 2
+    assert result["retry_count"] == 2
+    jobs = [await job_repo.get_latest_for_page(page_id) for page_id in page_ids]
+    assert all(job is not None and job.status == JobStatus.QUEUED for job in jobs)

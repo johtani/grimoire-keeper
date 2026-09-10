@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages
 
+      - name: Collect all Python tests together
+        run: uv run pytest --collect-only -q
+
       - name: ruff format check
         run: uv run ruff format --check .
 
@@ -118,6 +121,74 @@ jobs:
           --cov-report=term-missing
           --cov-report=xml:coverage-shared.xml
           --cov-fail-under=90
+
+  api-integration-test:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run integration tests without external services
+        run: >-
+          uv run pytest apps/api/tests/integration/ -v
+          -m "integration and not weaviate"
+
+  weaviate-integration-test:
+    name: Weaviate Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      weaviate:
+        image: cr.weaviate.io/semitechnologies/weaviate:1.38.8
+        ports:
+          - 8080:8080
+          - 50051:50051
+        env:
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          DEFAULT_VECTORIZER_MODULE: text2vec-openai
+          ENABLE_MODULES: text2vec-openai
+          CLUSTER_HOSTNAME: node1
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://localhost:8080/v1/.well-known/ready"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run Weaviate integration tests
+        env:
+          WEAVIATE_INTEGRATION: "1"
+        run: >-
+          uv run pytest apps/api/tests/integration/ -v
+          -m weaviate
 
   production-image-test:
     name: Production Image Smoke Tests
