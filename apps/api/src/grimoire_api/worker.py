@@ -30,6 +30,7 @@ from .services.job_worker import JobWorker
 from .services.llm_service import LLMService
 from .services.vectorizer import VectorizerService
 from .services.weaviate_connection import WeaviateConnectionManager
+from .services.weaviate_schema import WeaviateSchemaService
 from .utils.database_init import ensure_database_initialized
 from .worker_health import WorkerHealth
 from .worker_lock import WorkerLock
@@ -134,6 +135,7 @@ async def _locked_worker_lifespan() -> AsyncIterator[asyncio.Future[None]]:
 
     async def start_job_worker_now(weaviate_client: Any) -> None:
         nonlocal job_worker, monitor_task, health_task
+        await WeaviateSchemaService(weaviate_client).ensure_schema()
         worker = build_job_worker(weaviate_client, health.record_claim)
         await worker.start()
         job_worker = worker

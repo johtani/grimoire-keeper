@@ -9,15 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from grimoire_api.config import settings
 from grimoire_api.models.database import Page, ProcessingStep
-from grimoire_api.services.vectorizer import (
-    EXPECTED_PROPERTIES,
-    VectorizerService,
-    _insert_objects_sync,
-    validate_weaviate_schema,
-)
+from grimoire_api.services.vectorizer import VectorizerService, _insert_objects_sync
 from grimoire_api.utils.exceptions import VectorizerError
 from grimoire_api.utils.retry import RetryPolicy
-from weaviate.classes.config import DataType
 
 
 def _estimated_object_bytes(properties: dict[str, Any], object_uuid: str) -> int:
@@ -154,33 +148,6 @@ class TestVectorizerService:
         )
         mock_collection.batch.failed_objects = []
         mock_page_collection.batch.failed_objects = []
-
-        def schema_config(*vector_names: str) -> SimpleNamespace:
-            vector_config = {
-                name: SimpleNamespace(
-                    vectorizer=SimpleNamespace(
-                        vectorizer="text2vec-openai",
-                        model={
-                            "model": settings.WEAVIATE_EMBEDDING_MODEL,
-                            "dimensions": settings.WEAVIATE_EMBEDDING_DIMENSIONS,
-                        },
-                    )
-                )
-                for name in vector_names
-            }
-            properties = [
-                SimpleNamespace(name=name, data_type=data_type)
-                for name, data_type in {
-                    **EXPECTED_PROPERTIES["page"],
-                    **EXPECTED_PROPERTIES["chunk"],
-                }.items()
-            ]
-            return SimpleNamespace(properties=properties, vector_config=vector_config)
-
-        mock_page_collection.config.get.return_value = schema_config(
-            "title_vector", "memo_vector"
-        )
-        mock_collection.config.get.return_value = schema_config("content_vector")
 
         mock_collections = MagicMock()
         mock_collections.get.side_effect = lambda name: (
@@ -797,182 +764,6 @@ class TestVectorizerService:
 
         with pytest.raises(VectorizerError, match="Failed to save page to Weaviate"):
             await vectorizer_service._save_page_to_weaviate(mock_page, ["chunk1"])
-
-    @pytest.mark.asyncio
-    async def test_health_check_success(
-        self, vectorizer_service, mock_dependencies: Any
-    ) -> None:
-        """ヘルスチェック成功テスト."""
-        mock_dependencies["weaviate_client"].is_ready.return_value = True
-
-        result = await vectorizer_service.health_check()
-
-        assert result is True
-        mock_dependencies["weaviate_client"].is_ready.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_health_check_not_ready(
-        self, vectorizer_service, mock_dependencies: Any
-    ) -> None:
-        """Weaviateが未readyの場合はFalseを返すテスト."""
-        mock_dependencies["weaviate_client"].is_ready.return_value = False
-
-        result = await vectorizer_service.health_check()
-
-        assert result is False
-        mock_dependencies["weaviate_client"].is_ready.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_health_check_failure(
-        self, vectorizer_service, mock_dependencies: Any
-    ) -> None:
-        """ヘルスチェック失敗テスト."""
-        mock_dependencies["weaviate_client"].is_ready.side_effect = Exception(
-            "Connection error"
-        )
-
-        result = await vectorizer_service.health_check()
-
-        assert result is False
-        mock_dependencies["weaviate_client"].is_ready.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_ensure_schema_create_new(
-        self, vectorizer_service, mock_dependencies
-    ):
-        """新規スキーマ作成テスト."""
-        # モック設定（既存コレクションなし）
-        mock_dependencies["weaviate_client"].collections.exists.return_value = False
-
-        # 処理実行
-        await vectorizer_service.ensure_schema()
-
-        # コレクション作成が呼ばれたことを確認
-        assert mock_dependencies["weaviate_client"].collections.create.call_count == 2
-
-        names = {
-            call.kwargs["name"]
-            for call in mock_dependencies[
-                "weaviate_client"
-            ].collections.create.call_args_list
-        }
-        assert names == {
-            settings.WEAVIATE_PAGE_COLLECTION_NAME,
-            settings.WEAVIATE_CHUNK_COLLECTION_NAME,
-        }
-
-    @pytest.mark.asyncio
-    async def test_ensure_schema_already_exists(
-        self, vectorizer_service, mock_dependencies
-    ):
-        """既存スキーマ確認テスト."""
-        # モック設定（既存コレクションあり）
-        mock_dependencies["weaviate_client"].collections.exists.return_value = True
-
-        # 処理実行
-        await vectorizer_service.ensure_schema()
-
-        # コレクション作成が呼ばれないことを確認
-        mock_dependencies["weaviate_client"].collections.create.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_ensure_schema_with_named_vectors(
-        self, vectorizer_service, mock_dependencies
-    ):
-        """Named vectorsを含むスキーマ作成テスト."""
-        # モック設定（既存コレクションなし）
-        mock_dependencies["weaviate_client"].collections.exists.return_value = False
-
-        # 処理実行
-        await vectorizer_service.ensure_schema()
-
-        # コレクション作成が呼ばれたことを確認
-        calls = mock_dependencies["weaviate_client"].collections.create.call_args_list
-        assert len(calls) == 2
-        vectors_by_name = {
-            call.kwargs["name"]: call.kwargs["vector_config"] for call in calls
-        }
-        assert len(vectors_by_name[settings.WEAVIATE_PAGE_COLLECTION_NAME]) == 2
-        assert len(vectors_by_name[settings.WEAVIATE_CHUNK_COLLECTION_NAME]) == 1
-        for vector_configs in vectors_by_name.values():
-            for vector_config in vector_configs:
-                assert (
-                    vector_config.vectorizer.model == settings.WEAVIATE_EMBEDDING_MODEL
-                )
-                assert (
-                    vector_config.vectorizer.dimensions
-                    == settings.WEAVIATE_EMBEDDING_DIMENSIONS
-                )
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("field", "value"),
-        [
-            ("vectorizer", "text2vec-cohere"),
-            ("model", "text-embedding-3-small"),
-            ("dimensions", 3072),
-        ],
-    )
-    async def test_ensure_schema_rejects_incompatible_vectorizer(
-        self, vectorizer_service, mock_dependencies, field: str, value: object
-    ) -> None:
-        """既存schemaのprovider/model/dimensions不一致を拒否する."""
-        mock_dependencies["weaviate_client"].collections.exists.return_value = True
-        config = mock_dependencies["mock_page_collection"].config.get.return_value
-        vectorizer = config.vector_config["title_vector"].vectorizer
-        if field == "vectorizer":
-            vectorizer.vectorizer = value
-        else:
-            vectorizer.model[field] = value
-
-        with pytest.raises(VectorizerError, match="reindex_weaviate.py"):
-            await vectorizer_service.ensure_schema()
-
-    @pytest.mark.asyncio
-    async def test_ensure_schema_rejects_incompatible_named_vectors(
-        self, vectorizer_service, mock_dependencies
-    ) -> None:
-        """既存schemaのnamed vector構成不一致を拒否する."""
-        mock_dependencies["weaviate_client"].collections.exists.return_value = True
-        config = mock_dependencies["mock_page_collection"].config.get.return_value
-        del config.vector_config["memo_vector"]
-
-        with pytest.raises(VectorizerError, match="named vectors"):
-            await vectorizer_service.ensure_schema()
-
-    def test_validate_schema_rejects_missing_collection(
-        self, mock_dependencies: Any
-    ) -> None:
-        """readiness 用検証は必須 collection の不在を拒否する."""
-        mock_dependencies["weaviate_client"].collections.exists.return_value = False
-
-        with pytest.raises(VectorizerError, match="collection is missing"):
-            validate_weaviate_schema(mock_dependencies["weaviate_client"])
-
-    @pytest.mark.parametrize(
-        ("mutation", "message"),
-        [
-            ("missing", "required property 'pageId' is missing"),
-            ("wrong_type", "property 'pageId' type is 'text', expected 'int'"),
-        ],
-    )
-    def test_validate_schema_rejects_incompatible_property(
-        self, mock_dependencies: Any, mutation: str, message: str
-    ) -> None:
-        """readiness 用検証は必須 property の不足と型不一致を拒否する."""
-        mock_dependencies["weaviate_client"].collections.exists.return_value = True
-        config = mock_dependencies["mock_page_collection"].config.get.return_value
-        if mutation == "missing":
-            config.properties = [
-                prop for prop in config.properties if prop.name != "pageId"
-            ]
-        else:
-            next(
-                prop for prop in config.properties if prop.name == "pageId"
-            ).data_type = DataType.TEXT
-
-        with pytest.raises(VectorizerError, match=message):
-            validate_weaviate_schema(mock_dependencies["weaviate_client"])
 
     @pytest.mark.asyncio
     async def test_save_retries_transient_weaviate_timeout(

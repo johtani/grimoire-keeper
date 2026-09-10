@@ -10,8 +10,8 @@ from pydantic import BaseModel
 from ..config import settings
 from ..dependencies import get_db_connection
 from ..models.response import COMMON_ERROR_RESPONSES
-from ..services.vectorizer import validate_weaviate_schema
-from ..utils.exceptions import ServiceUnavailableError, VectorizerError
+from ..services.weaviate_schema import WeaviateSchemaService
+from ..utils.exceptions import ServiceUnavailableError, WeaviateSchemaError
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ async def _readiness_check(request: Request) -> HealthResponse:
     schema_reason: str | None = None
     if weaviate_client is not None:
         try:
-            await asyncio.to_thread(validate_weaviate_schema, weaviate_client)
-        except VectorizerError as exc:
+            await asyncio.to_thread(WeaviateSchemaService(weaviate_client).validate)
+        except WeaviateSchemaError as exc:
             schema_error = str(exc)
             schema_reason = "schema_incompatible"
             weaviate_ready = False

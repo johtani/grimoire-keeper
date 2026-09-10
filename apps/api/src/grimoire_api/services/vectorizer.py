@@ -3,13 +3,11 @@
 import asyncio
 import json
 import logging
-from enum import Enum
 from time import monotonic
-from typing import Any, NoReturn
+from typing import Any
 
 import weaviate
 from pydantic import ValidationError
-from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
 from weaviate.exceptions import (
     WeaviateConnectionError,
@@ -30,120 +28,6 @@ from ..utils.retry import RetryPolicy, retry_external_call
 from .chunking_service import ChunkingService
 
 logger = logging.getLogger(__name__)
-
-EXPECTED_NAMED_VECTORS = {
-    "page": {"title_vector", "memo_vector"},
-    "chunk": {"content_vector"},
-}
-EXPECTED_PROPERTIES = {
-    "page": {
-        "pageId": DataType.INT,
-        "url": DataType.TEXT,
-        "title": DataType.TEXT,
-        "memo": DataType.TEXT,
-        "summary": DataType.TEXT,
-        "keywords": DataType.TEXT_ARRAY,
-        "createdAt": DataType.DATE,
-    },
-    "chunk": {
-        "pageId": DataType.INT,
-        "chunkId": DataType.INT,
-        "content": DataType.TEXT,
-    },
-}
-
-
-def _raise_incompatible_schema(collection_name: str, detail: str) -> NoReturn:
-    raise VectorizerError(
-        f"Incompatible Weaviate schema for {collection_name}: {detail}. "
-        "Recreate the collections and run scripts/reindex_weaviate.py."
-    )
-
-
-def _validate_collection_schema(
-    client: weaviate.WeaviateClient,
-    collection_name: str,
-    expected_properties: dict[str, DataType],
-    expected_vector_names: set[str],
-) -> None:
-    """Reject a collection whose properties or vectors are incompatible."""
-    config = client.collections.get(collection_name).config.get()
-    actual_properties = {prop.name: prop.data_type for prop in config.properties}
-    for property_name, expected_type in expected_properties.items():
-        actual_type = actual_properties.get(property_name)
-        if actual_type is None:
-            _raise_incompatible_schema(
-                collection_name, f"required property {property_name!r} is missing"
-            )
-        if actual_type != expected_type:
-            _raise_incompatible_schema(
-                collection_name,
-                f"property {property_name!r} type is {actual_type.value!r}, "
-                f"expected {expected_type.value!r}",
-            )
-
-    vector_config = config.vector_config
-    if vector_config is None:
-        _raise_incompatible_schema(
-            collection_name, "named vector configuration is missing"
-        )
-    actual_names = set(vector_config)
-    if actual_names != expected_vector_names:
-        _raise_incompatible_schema(
-            collection_name,
-            f"named vectors are {sorted(actual_names)}, expected "
-            f"{sorted(expected_vector_names)}",
-        )
-
-    for vector_name in sorted(expected_vector_names):
-        vectorizer = vector_config[vector_name].vectorizer
-        provider = vectorizer.vectorizer
-        if isinstance(provider, Enum):
-            provider = provider.value
-        model_config = dict(vectorizer.model)
-        actual_model = model_config.get("model")
-        actual_dimensions = model_config.get("dimensions")
-        if provider != settings.WEAVIATE_EMBEDDING_PROVIDER:
-            _raise_incompatible_schema(
-                collection_name,
-                f"{vector_name} provider is {provider!r}, expected "
-                f"{settings.WEAVIATE_EMBEDDING_PROVIDER!r}",
-            )
-        if actual_model != settings.WEAVIATE_EMBEDDING_MODEL:
-            _raise_incompatible_schema(
-                collection_name,
-                f"{vector_name} model is {actual_model!r}, expected "
-                f"{settings.WEAVIATE_EMBEDDING_MODEL!r}",
-            )
-        if actual_dimensions != settings.WEAVIATE_EMBEDDING_DIMENSIONS:
-            _raise_incompatible_schema(
-                collection_name,
-                f"{vector_name} dimensions are {actual_dimensions!r}, expected "
-                f"{settings.WEAVIATE_EMBEDDING_DIMENSIONS!r}",
-            )
-
-
-def validate_weaviate_schema(client: weaviate.WeaviateClient) -> None:
-    """Validate all collections required by registration and search."""
-    schemas = (
-        (
-            "page",
-            settings.WEAVIATE_PAGE_COLLECTION_NAME,
-        ),
-        (
-            "chunk",
-            settings.WEAVIATE_CHUNK_COLLECTION_NAME,
-        ),
-    )
-    for schema_name, collection_name in schemas:
-        if not client.collections.exists(collection_name):
-            _raise_incompatible_schema(collection_name, "collection is missing")
-        _validate_collection_schema(
-            client,
-            collection_name,
-            EXPECTED_PROPERTIES[schema_name],
-            EXPECTED_NAMED_VECTORS[schema_name],
-        )
 
 
 def _insert_objects_sync(
@@ -478,12 +362,6 @@ class VectorizerService:
             current = current.__cause__
         return False, "permanent", None
 
-    async def health_check(self) -> bool:
-        try:
-            return await asyncio.to_thread(self.weaviate_client.is_ready)
-        except Exception:
-            return False
-
     async def is_page_registered(self, page_id: int) -> bool:
         """ページ代表オブジェクトがWeaviateに存在するか確認する."""
         collection = self.weaviate_client.collections.get(
@@ -495,84 +373,3 @@ class VectorizerService:
             limit=1,
         )
         return bool(response.objects)
-
-    async def ensure_schema(self) -> None:
-        """ページ用・本文チャンク用スキーマを作成し、互換性を検証する."""
-        try:
-            if not self.weaviate_client.collections.exists(
-                settings.WEAVIATE_PAGE_COLLECTION_NAME
-            ):
-                self.weaviate_client.collections.create(
-                    name=settings.WEAVIATE_PAGE_COLLECTION_NAME,
-                    description="Grimoire Keeperのページ代表検索データ",
-                    properties=[
-                        Property(name="pageId", data_type=DataType.INT),
-                        Property(name="url", data_type=DataType.TEXT),
-                        Property(name="title", data_type=DataType.TEXT),
-                        Property(name="memo", data_type=DataType.TEXT),
-                        Property(name="summary", data_type=DataType.TEXT),
-                        Property(name="keywords", data_type=DataType.TEXT_ARRAY),
-                        Property(name="createdAt", data_type=DataType.DATE),
-                    ],
-                    vector_config=[
-                        Configure.Vectors.text2vec_openai(
-                            name="title_vector",
-                            source_properties=["title", "summary"],
-                            model=settings.WEAVIATE_EMBEDDING_MODEL,
-                            dimensions=settings.WEAVIATE_EMBEDDING_DIMENSIONS,
-                        ),
-                        Configure.Vectors.text2vec_openai(
-                            name="memo_vector",
-                            source_properties=["memo"],
-                            model=settings.WEAVIATE_EMBEDDING_MODEL,
-                            dimensions=settings.WEAVIATE_EMBEDDING_DIMENSIONS,
-                        ),
-                    ],
-                )
-
-            if not self.weaviate_client.collections.exists(
-                settings.WEAVIATE_CHUNK_COLLECTION_NAME
-            ):
-                self.weaviate_client.collections.create(
-                    name=settings.WEAVIATE_CHUNK_COLLECTION_NAME,
-                    description="Grimoire Keeperの本文チャンク",
-                    properties=[
-                        Property(name="pageId", data_type=DataType.INT),
-                        Property(name="chunkId", data_type=DataType.INT),
-                        Property(name="content", data_type=DataType.TEXT),
-                    ],
-                    vector_config=[
-                        Configure.Vectors.text2vec_openai(
-                            name="content_vector",
-                            source_properties=["content"],
-                            model=settings.WEAVIATE_EMBEDDING_MODEL,
-                            dimensions=settings.WEAVIATE_EMBEDDING_DIMENSIONS,
-                        )
-                    ],
-                )
-
-            self._validate_collection_schema(
-                settings.WEAVIATE_PAGE_COLLECTION_NAME,
-                EXPECTED_PROPERTIES["page"],
-                EXPECTED_NAMED_VECTORS["page"],
-            )
-            self._validate_collection_schema(
-                settings.WEAVIATE_CHUNK_COLLECTION_NAME,
-                EXPECTED_PROPERTIES["chunk"],
-                EXPECTED_NAMED_VECTORS["chunk"],
-            )
-        except Exception as e:
-            raise VectorizerError(f"Failed to ensure schema: {str(e)}")
-
-    def _validate_collection_schema(
-        self,
-        collection_name: str,
-        expected_properties: dict[str, DataType],
-        expected_vector_names: set[str],
-    ) -> None:
-        _validate_collection_schema(
-            self.weaviate_client,
-            collection_name,
-            expected_properties,
-            expected_vector_names,
-        )

@@ -18,7 +18,7 @@ from grimoire_api.repositories.migrations import (  # noqa: E402
     inspect_database_schema,
     validate_database_schema,
 )
-from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
+from grimoire_api.services.weaviate_schema import WeaviateSchemaService  # noqa: E402
 from grimoire_api.utils.url import find_url_collisions  # noqa: E402
 
 MIGRATION_PENDING_EXIT_CODE = 10
@@ -41,8 +41,6 @@ async def initialize_database() -> bool:
 
         # Weaviateスキーマ初期化
         print("🔧 Initializing Weaviate schema...")
-        from unittest.mock import MagicMock
-
         weaviate_client = await asyncio.to_thread(
             weaviate.connect_to_local,
             host=settings.WEAVIATE_HOST,
@@ -50,16 +48,11 @@ async def initialize_database() -> bool:
             headers={"X-OpenAI-Api-Key": settings.OPENAI_API_KEY},
         )
         try:
-            vectorizer = VectorizerService(
-                MagicMock(),  # type: ignore
-                MagicMock(),  # type: ignore
-                MagicMock(),  # type: ignore
-                weaviate_client,
-            )  # スキーマ作成のみなのでリポジトリはダミーオブジェクト
+            schema_service = WeaviateSchemaService(weaviate_client)
 
             # Weaviate接続確認
-            if await vectorizer.health_check():
-                await vectorizer.ensure_schema()
+            if await schema_service.health_check():
+                await schema_service.ensure_schema()
                 print("✅ Weaviate schema created successfully!")
             else:
                 print("⚠️  Weaviate is not running. Please start Weaviate first:")

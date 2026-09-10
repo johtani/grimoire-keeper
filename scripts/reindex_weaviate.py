@@ -20,6 +20,7 @@ from grimoire_api.services.source_validation import (  # noqa: E402
     write_repair_report,
 )
 from grimoire_api.services.vectorizer import VectorizerService  # noqa: E402
+from grimoire_api.services.weaviate_schema import WeaviateSchemaService  # noqa: E402
 
 
 async def reindex(
@@ -79,7 +80,7 @@ async def reindex(
     succeeded = 0
     failed = 0
     try:
-        await vectorizer.ensure_schema()
+        await WeaviateSchemaService(client).ensure_schema()
         for pending in repair_pending:
             await vectorizer.delete_page_from_index(pending.page_id)
         for index, page in enumerate(migration_pages, 1):
