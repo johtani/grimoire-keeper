@@ -5,12 +5,12 @@ import tempfile
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import weaviate
 from grimoire_api.config import settings
-from grimoire_api.services.vectorizer import VectorizerService
+from grimoire_api.services.weaviate_schema import WeaviateSchemaService
 
 pytestmark = pytest.mark.skipif(
     os.getenv("WEAVIATE_INTEGRATION") != "1",
@@ -60,12 +60,7 @@ async def test_weaviate_1_38_creates_separated_collections() -> None:
         try:
             assert client.is_ready()
             assert client.get_meta()["version"] == "1.38.8"
-            vectorizer = VectorizerService(
-                page_repo=MagicMock(),
-                file_repo=MagicMock(),
-                chunking_service=MagicMock(),
-                weaviate_client=client,
-            )
+            schema_service = WeaviateSchemaService(client)
             with (
                 patch.object(
                     settings, "WEAVIATE_PAGE_COLLECTION_NAME", page_collection
@@ -76,7 +71,7 @@ async def test_weaviate_1_38_creates_separated_collections() -> None:
                     chunk_collection,
                 ),
             ):
-                await vectorizer.ensure_schema()
+                await schema_service.ensure_schema()
 
             assert client.collections.exists(page_collection)
             assert client.collections.exists(chunk_collection)

@@ -59,6 +59,12 @@ class VectorizerError(GrimoireAPIError):
     pass
 
 
+class WeaviateSchemaError(GrimoireAPIError):
+    """Weaviate schema creation or compatibility validation failed."""
+
+    pass
+
+
 class DatabaseError(GrimoireAPIError):
     """Database operation error."""
 

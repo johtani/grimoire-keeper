@@ -17,6 +17,14 @@ def worker_database_path(tmp_path, monkeypatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def worker_schema_service():
+    """Avoid real schema access and expose the worker's schema dependency."""
+    with patch("grimoire_api.worker.WeaviateSchemaService") as service_class:
+        service_class.return_value.ensure_schema = AsyncMock()
+        yield service_class
+
+
 async def test_worker_lifespan_does_not_initialize_when_lock_is_held() -> None:
     """二重起動時はDB初期化や外部接続へ進まない."""
     lock = MagicMock()
@@ -38,7 +46,9 @@ async def test_worker_lifespan_does_not_initialize_when_lock_is_held() -> None:
     manager_class.assert_not_called()
 
 
-async def test_worker_lifespan_starts_and_stops_dedicated_worker() -> None:
+async def test_worker_lifespan_starts_and_stops_dedicated_worker(
+    worker_schema_service: MagicMock,
+) -> None:
     """Weaviate 接続中だけ専用 worker を稼働させる."""
     client = object()
     job_worker = MagicMock()
@@ -78,9 +88,50 @@ async def test_worker_lifespan_starts_and_stops_dedicated_worker() -> None:
             job_worker.start.assert_awaited_once()
 
     initialize.assert_awaited_once()
+    worker_schema_service.assert_called_once_with(client)
+    worker_schema_service.return_value.ensure_schema.assert_awaited_once()
     job_worker.stop.assert_awaited_once()
     manager.stop.assert_awaited_once()
     jina_client.close.assert_awaited_once()
+
+
+async def test_worker_does_not_start_when_schema_initialization_fails(
+    worker_schema_service: MagicMock,
+) -> None:
+    """Incompatible schema prevents the job worker from accepting jobs."""
+    client = object()
+    job_worker = MagicMock()
+    job_worker.start = AsyncMock()
+    manager = MagicMock()
+    manager_callbacks: dict[str, object] = {}
+    worker_schema_service.return_value.ensure_schema.side_effect = RuntimeError(
+        "incompatible schema"
+    )
+
+    async def start_manager() -> None:
+        await manager_callbacks["on_connected"](client)
+
+    manager.start = AsyncMock(side_effect=start_manager)
+    manager.stop = AsyncMock()
+
+    def make_manager(**kwargs: object) -> MagicMock:
+        manager_callbacks.update(kwargs)
+        return manager
+
+    with (
+        patch("grimoire_api.worker.ensure_database_initialized", new=AsyncMock()),
+        patch(
+            "grimoire_api.worker.WeaviateConnectionManager", side_effect=make_manager
+        ),
+        patch("grimoire_api.worker.build_job_worker", return_value=job_worker),
+        patch("grimoire_api.worker.get_jina_client") as jina_client,
+    ):
+        jina_client.return_value.close = AsyncMock()
+        with pytest.raises(RuntimeError, match="incompatible schema"):
+            async with worker_lifespan():
+                raise AssertionError("worker lifespan must not start")
+
+    job_worker.start.assert_not_awaited()
 
 
 async def test_worker_lifespan_reports_claim_loop_failure() -> None:

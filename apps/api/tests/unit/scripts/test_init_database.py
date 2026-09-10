@@ -31,23 +31,27 @@ async def test_initialization_reflects_weaviate_readiness(
     database = MagicMock()
     database.initialize_tables = AsyncMock()
     client = MagicMock()
-    vectorizer = MagicMock()
-    vectorizer.health_check = AsyncMock(return_value=ready)
-    vectorizer.ensure_schema = AsyncMock()
+    schema_service = MagicMock()
+    schema_service.health_check = AsyncMock(return_value=ready)
+    schema_service.ensure_schema = AsyncMock()
 
     with (
         patch("scripts.init_database.DatabaseConnection", return_value=database),
         patch("scripts.init_database.weaviate.connect_to_local", return_value=client),
-        patch("scripts.init_database.VectorizerService", return_value=vectorizer),
+        patch(
+            "scripts.init_database.WeaviateSchemaService",
+            return_value=schema_service,
+        ) as schema_service_class,
     ):
         assert await initialize_database() is expected
 
     database.initialize_tables.assert_awaited_once()
-    vectorizer.health_check.assert_awaited_once()
+    schema_service_class.assert_called_once_with(client)
+    schema_service.health_check.assert_awaited_once()
     if ready:
-        vectorizer.ensure_schema.assert_awaited_once()
+        schema_service.ensure_schema.assert_awaited_once()
     else:
-        vectorizer.ensure_schema.assert_not_awaited()
+        schema_service.ensure_schema.assert_not_awaited()
     client.close.assert_called_once()
 
 

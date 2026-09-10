@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 from grimoire_api.main import app
-from grimoire_api.utils.exceptions import VectorizerError
+from grimoire_api.utils.exceptions import WeaviateSchemaError
 
 client = TestClient(app)
 
@@ -22,9 +22,10 @@ class TestHealthRouter:
             patch(
                 "grimoire_api.routers.health.get_db_connection", return_value=database
             ),
-            patch("grimoire_api.routers.health.validate_weaviate_schema"),
+            patch("grimoire_api.routers.health.WeaviateSchemaService") as schema,
         ):
             response = client.get("/api/v1/health")
+        schema.return_value.validate.assert_called_once()
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
@@ -67,7 +68,7 @@ class TestHealthRouter:
             patch(
                 "grimoire_api.routers.health.get_db_connection", return_value=database
             ),
-            patch("grimoire_api.routers.health.validate_weaviate_schema"),
+            patch("grimoire_api.routers.health.WeaviateSchemaService"),
         ):
             response = client.get("/api/v1/health/ready")
 
@@ -101,7 +102,7 @@ class TestHealthRouter:
             patch(
                 "grimoire_api.routers.health.get_db_connection", return_value=database
             ),
-            patch("grimoire_api.routers.health.validate_weaviate_schema"),
+            patch("grimoire_api.routers.health.WeaviateSchemaService"),
         ):
             response = client.get("/api/v1/health")
         assert response.status_code == 200
@@ -125,11 +126,9 @@ class TestHealthRouter:
             patch(
                 "grimoire_api.routers.health.get_db_connection", return_value=database
             ),
-            patch(
-                "grimoire_api.routers.health.validate_weaviate_schema",
-                side_effect=VectorizerError(schema_error),
-            ),
+            patch("grimoire_api.routers.health.WeaviateSchemaService") as schema,
         ):
+            schema.return_value.validate.side_effect = WeaviateSchemaError(schema_error)
             response = client.get("/api/v1/health/ready")
 
         assert response.status_code == 503
@@ -153,11 +152,11 @@ class TestHealthRouter:
             patch(
                 "grimoire_api.routers.health.get_db_connection", return_value=database
             ),
-            patch(
-                "grimoire_api.routers.health.validate_weaviate_schema",
-                side_effect=RuntimeError("secret SDK failure"),
-            ),
+            patch("grimoire_api.routers.health.WeaviateSchemaService") as schema,
         ):
+            schema.return_value.validate.side_effect = RuntimeError(
+                "secret SDK failure"
+            )
             response = client.get("/api/v1/health/ready")
 
         assert response.status_code == 503
