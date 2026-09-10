@@ -134,10 +134,22 @@ curl http://localhost:8000/api/v1/health
 curl http://localhost:8089/v1/meta
 ```
 
-Web (`8001`)、API (`8000`)、Weaviate HTTP (`8089`) および gRPC (`50051`) は、
-すべてホストの `127.0.0.1` にだけ bind されます。デプロイ先ホスト以外から直接接続
-できる状態は想定していません。管理画面はデプロイ先ホスト上で
-`http://localhost:8001` を開いて利用します。
+既定では Web (`8001`)、API (`8000`)、Weaviate HTTP (`8089`) および gRPC (`50051`) は、
+すべてホストの `127.0.0.1` にだけ bind されます。管理画面はデプロイ先ホスト上で
+`http://localhost:8001` を開いて利用します。Web UI だけを信頼済みネットワークへ
+公開する場合は、`.env` で待受addressとportを明示します。
+
+```dotenv
+WEB_BIND_ADDRESS=192.168.1.100
+WEB_PORT=8001
+```
+
+ホストのaddressが固定されていない環境では `WEB_BIND_ADDRESS=0.0.0.0` も指定できますが、
+Web経由で認証のないAPIへアクセスできるため、必ずホストのfirewallや上位networkで
+接続元を信頼済み端末に限定してください。インターネットへの直接公開はサポートしません。
+設定変更は `docker compose -f docker-compose.prod.yml up -d --force-recreate web` で反映し、
+`docker compose -f docker-compose.prod.yml port web 80` で公開先を確認します。API と
+Weaviate のbind addressはこの設定では変更されません。
 
 Slack Bot は Socket Mode で Slack へ outbound 接続し、外部からの inbound port を
 必要としません。Bot から API への通信には、公開portではなく Compose 内部networkの
@@ -146,7 +158,8 @@ Slack Bot は Socket Mode で Slack へ outbound 接続し、外部からの inb
 
 ### 6. 公開範囲の確認
 
-デプロイ後、待受addressが `127.0.0.1` に限定されていることを確認します。
+デプロイ後、待受addressが既定の `127.0.0.1` または意図した信頼済みinterfaceに
+限定されていることを確認します。
 
 ```bash
 # Dockerが公開するportとHost IPを確認
@@ -165,17 +178,17 @@ curl -f http://127.0.0.1:8089/v1/.well-known/ready
 sudo ufw status numbered
 ```
 
-`ss` の Local Address:Port は `127.0.0.1:8000`、`127.0.0.1:8001`、
+既定では `ss` の Local Address:Port は `127.0.0.1:8000`、`127.0.0.1:8001`、
 `127.0.0.1:8089`、`127.0.0.1:50051` である必要があります。`0.0.0.0`、`[::]`、
-またはホストの外部向けIPで待ち受けている場合は、運用を開始せず Compose 設定と
-firewall ruleを見直してください。これらのportを ufw などで外部向けに許可しないで
-ください。
+またはホストの外部向けIPで待ち受けている場合は、明示したWebの設定であることと
+firewall ruleを確認してください。APIとWeaviateがloopback以外で待ち受けている場合は、
+運用を開始せずCompose設定を見直してください。
 
 ### 7. リモートから管理する場合（明示的な opt-in）
 
-リモート管理が必要な場合も Compose の bind address は変更せず、アクセスを許可した
-管理者だけが利用できる SSH tunnel または VPN を別途構成します。例えば Web UI だけを
-SSH tunnel 経由で利用する場合は、管理端末で次を実行します。
+リモート管理には、アクセスを許可した管理者だけが利用できる SSH tunnel または VPN を
+推奨します。例えば既定のbind addressを変更せず、Web UIだけをSSH tunnel経由で利用する
+場合は、管理端末で次を実行します。
 
 ```bash
 ssh -N -L 8001:127.0.0.1:8001 <user>@<deploy-host>

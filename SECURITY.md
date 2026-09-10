@@ -13,7 +13,7 @@ Grimoire Keeper は、個人または少人数の信頼された利用者が管�
 - API には利用者認証・認可がありません。API に到達できる利用者は、URL の登録、保存済みデータの閲覧・変更、再処理などの操作を実行できます。
 - 現行 FastAPI には CORS middleware がなく、Web は nginx が `/api/` を同一 origin の API へ proxy します。別 origin のブラウザ UI はサポートしません。
 - 本番用 Compose の Weaviate は匿名アクセスが有効です。ホストへ公開される HTTP ポート `8089` と gRPC ポート `50051` に到達できる利用者は、Weaviate を直接操作できる可能性があります。
-- 本番用 Compose は Web (`127.0.0.1:8001`)、API (`127.0.0.1:8000`)、Weaviate HTTP (`127.0.0.1:8089`) と gRPC (`127.0.0.1:50051`) を loopback のみに公開します。Slack Socket Mode の Bot は Slack への outbound 接続だけを使用します。
+- 本番用 Compose は既定で Web (`127.0.0.1:8001`)、API (`127.0.0.1:8000`)、Weaviate HTTP (`127.0.0.1:8089`) と gRPC (`127.0.0.1:50051`) を loopback のみに公開します。Webだけは `WEB_BIND_ADDRESS` と `WEB_PORT` による明示的な変更が可能ですが、APIに利用者認証・認可がないため、信頼済みネットワークと接続元に限定してください。Slack Socket Mode の Bot は Slack への outbound 接続だけを使用します。
 - ページ内容は外部の Jina AI Reader、LLM プロバイダー、埋め込みプロバイダーへ送信されます。各サービスのデータ処理・保持方針も確認してください。
 - 取得したページは信頼できない入力です。ページ本文、タイトル、要約、キーワード、メモ、外部サービスの応答を、命令や安全な HTML として信用しないでください。
 

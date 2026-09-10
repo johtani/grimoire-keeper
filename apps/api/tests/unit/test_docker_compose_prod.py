@@ -21,15 +21,15 @@ def test_weaviate_healthcheck_only_blocks_worker_startup() -> None:
     assert '"-O", "/dev/null"' in compose
 
 
-def test_host_ports_are_loopback_only_and_internal_connections_are_preserved() -> None:
-    """ホスト公開をloopbackに限定し、コンテナ間通信は内部DNSを使う."""
+def test_host_ports_have_safe_defaults_and_internal_connections_are_preserved() -> None:
+    """既定のホスト公開をloopbackに限定し、内部通信は内部DNSを使う."""
     compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
     web_section = compose.split("  web:", 1)[1].split("  bot:", 1)[0]
     bot_section = compose.split("  bot:", 1)[1].split("  api:", 1)[0]
     api_section = compose.split("  api:", 1)[1].split("  worker:", 1)[0]
     weaviate_section = compose.rsplit("  weaviate:", 1)[1].split("networks:", 1)[0]
 
-    assert '"127.0.0.1:8001:80"' in web_section
+    assert '"${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8001}:80"' in web_section
     assert '"127.0.0.1:8000:8000"' in api_section
     assert '"127.0.0.1:8089:8080"' in weaviate_section
     assert '"127.0.0.1:50051:50051"' in weaviate_section
@@ -44,6 +44,63 @@ def test_host_ports_are_loopback_only_and_internal_connections_are_preserved() -
         "0.0.0.0:",
     )
     assert all(binding not in compose for binding in unrestricted_bindings)
+
+
+@pytest.mark.parametrize(
+    ("bind_address", "port", "expected_address", "expected_port"),
+    [
+        (None, None, "127.0.0.1", "8001"),
+        ("192.0.2.10", "18001", "192.0.2.10", "18001"),
+    ],
+)
+def test_web_binding_environment_interpolation(
+    tmp_path: Path,
+    bind_address: str | None,
+    port: str | None,
+    expected_address: str,
+    expected_port: str,
+) -> None:
+    """Webの安全な既定値と明示的な公開先の上書きを検証する."""
+    import json
+    import os
+
+    if shutil.which("docker") is None:
+        pytest.skip("docker CLI is not installed")
+
+    compose = (PROJECT_ROOT / "docker-compose.prod.yml").read_text()
+    (tmp_path / "compose.yml").write_text(compose)
+    (tmp_path / ".env").touch()
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in {"WEB_BIND_ADDRESS", "WEB_PORT"}
+    }
+    if bind_address is not None:
+        env["WEB_BIND_ADDRESS"] = bind_address
+    if port is not None:
+        env["WEB_PORT"] = port
+
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(tmp_path / "compose.yml"),
+            "config",
+            "--format",
+            "json",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    web_port = json.loads(result.stdout)["services"]["web"]["ports"][0]
+    assert web_port["host_ip"] == expected_address
+    assert web_port["published"] == expected_port
+    assert web_port["target"] == 80
 
 
 def test_deploy_documentation_preserves_local_only_access_policy() -> None:
