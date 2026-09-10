@@ -97,6 +97,22 @@ Worker 再起動時に回収した running attempt は `outcome=interrupted` と
 同一オリジン構成です。FastAPI と nginx は CORS レスポンスヘッダーを付与せず、
 別オリジンで配信される Web UI から API ポートへ直接アクセスする構成は許可しません。
 
+### Web UI の Bootstrap
+
+Web UI は Bootstrap 5.3.0 の CSS と bundle JS を
+`apps/web/static/vendor/bootstrap-5.3.0/` に同梱し、nginx から配信します。
+ブラウザは外部 CDN にアクセスしないため、管理画面はオフラインでも表示できます。
+
+Bootstrap を更新する場合は、公式配布物の `bootstrap.min.css`、
+`bootstrap.bundle.min.js`、`LICENSE` を新しいバージョン名のディレクトリへ配置し、
+全 HTML の参照先と `apps/web/tests/assets.test.js` の期待バージョンを同じ PR で
+更新してください。その後、次のテストで外部参照がないこと、参照先が存在すること、
+配布物のバージョンが一致することを確認します。
+
+```bash
+node --test apps/web/tests/*.test.js
+```
+
 将来、外部オリジンからのブラウザアクセスが必要になった場合は、ワイルドカードではなく
 必要なオリジン、メソッド、ヘッダーを明示した許可リストを設計してください。
 認証情報の許可は実際に Cookie などを使用する場合に限ります。CORS はブラウザの制約であり、
