@@ -13,12 +13,10 @@ sys.path.insert(0, str(project_root / "apps" / "api" / "src"))
 import weaviate  # noqa: E402
 from grimoire_api.config import settings  # noqa: E402
 from grimoire_api.repositories.database import DatabaseConnection  # noqa: E402
+from grimoire_api.services.source_validation import load_repair_report  # noqa: E402
 
 from tools.weaviate_1_38_migration.page_repository import (  # noqa: E402
     MigrationPageRepository,
-)
-from tools.weaviate_1_38_migration.source_validation import (  # noqa: E402
-    load_repair_report,
 )
 
 

@@ -7,13 +7,16 @@ Weaviate `1.33.1` から `1.38.8` への本番移行を補助する一時ツー�
 
 - `preflight.py`: 停止作業前の環境、データ、容量、baseline、readiness確認
 - `migrate.sh`: バックアップ、新環境起動、再インデックスの実行
+- `reindex.py`: 旧SQLiteスキーマ互換リポジトリを使う再インデックス入口
 - `check_counts.py`: SQLiteと新Weaviateコレクションの件数確認
-- `source_validation.py`: 修復待ちデータの分類とJSONレポート生成
 - `rollback_check.py`: ロールバック情報、旧ボリューム、バックアップ内容とSHA-256の確認
 - `docker-compose.yml`: Python依存を含む一時ツールコンテナ
 - `run.sh`: ホストの前提確認とコンテナ実行をまとめたエントリーポイント
 
 代表検索の採取と比較には、汎用の `tools/search_regression/` を使用します。
+通常の再インデックスと修復待ちデータの分類・レポート処理は、APIパッケージの
+`PageRepository` と `services/source_validation.py` を使用します。このディレクトリには
+旧SQLiteスキーマの互換処理だけを残します。
 
 具体的な実行順とコマンドは `docs/development.md` を参照してください。
 

@@ -1,4 +1,4 @@
-"""Classify stored source data that must be repaired after migration."""
+"""Classify stored source data and manage repair-pending reports."""
 
 from __future__ import annotations
 
@@ -8,10 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from grimoire_api.models.database import Page
-from grimoire_api.models.external import FetchedDocument
-from grimoire_api.services.chunking_service import ChunkingService
 from pydantic import ValidationError
+
+from ..models.database import Page
+from ..models.external import FetchedDocument
+from .chunking_service import ChunkingService
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,7 @@ def write_repair_report(
     migration_targets: int,
     repair_pending: list[RepairPendingPage],
 ) -> None:
-    """Write the deterministic repair-pending migration report."""
+    """Write the deterministic repair-pending report."""
     path.parent.mkdir(parents=True, exist_ok=True)
     document: dict[str, Any] = {
         "schema_version": 1,

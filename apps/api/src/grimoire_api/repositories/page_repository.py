@@ -134,6 +134,35 @@ class PageRepository:
         except Exception as e:
             raise DatabaseError(f"Failed to get page: {str(e)}")
 
+    async def _completed_page_schema_expressions(self) -> tuple[str, str, str]:
+        """Return select and filter expressions for the current pages schema."""
+        return "dedupe_key", "status", "status = 'succeeded'"
+
+    async def count_completed_pages(self) -> int:
+        """成功済みページ数を返す."""
+        _, _, completed = await self._completed_page_schema_expressions()
+        result = await self.db.fetch_one(
+            f"SELECT COUNT(*) AS total FROM pages WHERE {completed}"
+        )
+        return int(result["total"]) if result else 0
+
+    async def get_completed_pages(self, limit: int) -> list[Page]:
+        """成功済みページをID順で返す."""
+        dedupe_key, status, completed = await self._completed_page_schema_expressions()
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT id, url, {dedupe_key} AS dedupe_key, title, memo, summary,
+                   keywords, weaviate_id, last_success_step,
+                   {status} AS status, created_at, updated_at
+            FROM pages
+            WHERE {completed}
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return [self._row_to_page(row) for row in rows]
+
     async def get_pages_by_ids(self, page_ids: list[int]) -> dict[int, Page]:
         """複数ページをIDで一括取得する."""
         if not page_ids:

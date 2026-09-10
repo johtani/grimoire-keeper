@@ -110,13 +110,13 @@ done
 echo "再インデックス対象を確認します。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
     --volume "${MIGRATION_DIR}:/migration" api \
-    python ../../scripts/reindex_weaviate.py --dry-run \
+    python -m tools.weaviate_1_38_migration.reindex --dry-run \
     --repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 echo "空のWeaviate 1.38.8へ再インデックスします。"
 bws run -- docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
     --volume "${MIGRATION_DIR}:/migration" api \
-    python ../../scripts/reindex_weaviate.py \
+    python -m tools.weaviate_1_38_migration.reindex \
     --repair-pending-output "${CONTAINER_REPAIR_PENDING_REPORT}"
 
 echo "再構築したコレクション件数を検証します。"

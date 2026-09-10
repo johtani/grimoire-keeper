@@ -138,6 +138,24 @@ class TestPageRepository:
         assert page.memo == memo
 
     @pytest.mark.asyncio
+    async def test_get_completed_pages(
+        self, page_repo: Any, set_page_status: Any
+    ) -> None:
+        """成功済みページだけをID順で取得する."""
+        first_id = await page_repo.create_page("https://one.example", "One")
+        second_id = await page_repo.create_page("https://two.example", "Two")
+        await set_page_status(page_repo, second_id, PageStatus.SUCCEEDED)
+        await set_page_status(page_repo, first_id, PageStatus.SUCCEEDED)
+        await page_repo.create_page("https://queued.example", "Queued")
+
+        assert await page_repo.count_completed_pages() == 2
+        pages = await page_repo.get_completed_pages(limit=1)
+
+        assert [page.id for page in pages] == [first_id]
+        assert pages[0].status == PageStatus.SUCCEEDED
+        assert pages[0].dedupe_key is not None
+
+    @pytest.mark.asyncio
     async def test_get_pages_by_ids(self, page_repo: Any) -> None:
         """複数ページを一括取得し、IDをキーに返す."""
         first_id = await page_repo.create_page("https://one.example", "One")

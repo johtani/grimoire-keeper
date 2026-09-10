@@ -5,14 +5,12 @@ import json
 import sqlite3
 import tarfile
 from contextlib import closing
-from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
 import pytest
-from grimoire_api.models.database import Page
 from grimoire_api.repositories.database import DatabaseConnection
 
 from tools.weaviate_1_38_migration import preflight, rollback_check
@@ -20,7 +18,6 @@ from tools.weaviate_1_38_migration.check_counts import verify_migration
 from tools.weaviate_1_38_migration.page_repository import MigrationPageRepository
 from tools.weaviate_1_38_migration.preflight import run_preflight
 from tools.weaviate_1_38_migration.rollback_check import run_rollback_check
-from tools.weaviate_1_38_migration.source_validation import classify_stored_source
 
 
 def test_migration_compose_allows_sqlite_wal_locking() -> None:
@@ -161,74 +158,6 @@ async def test_verify_migration_uses_repair_pending_target_count(
 
     assert result == 0
     client.close.assert_called_once()
-
-
-def test_classify_stored_source_reports_malformed_404(tmp_path: Path) -> None:
-    """%3E URLとJina 404を複数理由として保持する."""
-    page = Page(
-        id=56,
-        url="https://example.com/page%3E",
-        title="broken",
-        memo=None,
-        summary="summary",
-        keywords=[],
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        weaviate_id="old-id",
-    )
-    (tmp_path / "56.json").write_text(
-        json.dumps(
-            {
-                "code": 200,
-                "data": {
-                    "title": "",
-                    "content": "404 body",
-                    "httpStatus": 404,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    pending = classify_stored_source(page, tmp_path)
-
-    assert pending is not None
-    assert {reason.code for reason in pending.reasons} == {
-        "malformed_url_suffix",
-        "jina_http_error",
-        "missing_title",
-    }
-
-
-def test_classify_stored_source_accepts_jina_status_20000(tmp_path: Path) -> None:
-    """Jina独自の正常status=20000をHTTPエラー扱いしない."""
-    page = Page(
-        id=1,
-        url="https://example.com/page",
-        title="title",
-        memo=None,
-        summary="summary",
-        keywords=[],
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-        weaviate_id="old-id",
-    )
-    (tmp_path / "1.json").write_text(
-        json.dumps(
-            {
-                "code": 200,
-                "status": 20000,
-                "data": {
-                    "title": "title",
-                    "content": "valid content",
-                    "httpStatus": 200,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert classify_stored_source(page, tmp_path) is None
 
 
 @pytest.mark.asyncio
@@ -694,4 +623,4 @@ def test_migration_reindex_commands_inherit_api_environment() -> None:
         assert command[:3] == ["bws", "run", "--"]
         assert command[command.index("api") + 1] == "python"
         assert "--env" not in command and "-e" not in command
-    assert sum("../../scripts/reindex_weaviate.py" in cmd for cmd in commands) == 2
+    assert sum("tools.weaviate_1_38_migration.reindex" in cmd for cmd in commands) == 2
