@@ -3,6 +3,12 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "workspace",
   "workspaceFolder": "/workspace",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Grimoire Keeper API"
+    }
+  },
   "customizations": {
     "vscode": {
       "extensions": [
@@ -14,12 +20,11 @@
     }
   },
   "postCreateCommand": "bash .devcontainer/setup.sh",
-	"onCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.codex",
-  "postStartCommand": "echo 'export HISTFILE=~/.bash_history' >> ~/.bashrc",
+  "onCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.codex /commandhistory",
+  "postStartCommand": "echo 'export HISTFILE=/commandhistory/.bash_history' >> ~/.bashrc",
   "remoteUser": "vscode",
   "mounts": [
-    "source=${localEnv:HOME}/.aws,target=/root/.aws,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.config/bws.env,target=/home/vscode/.config/bws.env,type=bind,readonly",
     "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,consistency=cached",
     "source=grimoire-keeper-codex,target=/home/vscode/.codex,type=volume"
   ]
