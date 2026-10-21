@@ -447,6 +447,23 @@ FORCE_SQLITE_BACKUP=true bash scripts/deploy.sh
 
 ### Production Docker image の更新
 
+#### LiteLLM のバージョン制約
+
+API の LiteLLM 依存は、2026年3月の侵害版 `1.82.7`・`1.82.8` を除外し、
+2026年10月21日の再侵害版 `1.107.0` 以降を暫定的に禁止しています。
+`uv.lock` の `1.77.7` は維持します。この制約は侵害版の取り込み防止を目的とし、
+許可範囲内のすべての版の安全性を保証するものではありません。
+
+- [3月の公式報告](https://github.com/BerriAI/litellm-docs/blob/main/blog/security_update_march_2026/index.md)
+- [10月の解析記事](https://blog.flatt.tech/entry/litellm_2nd_compromise)
+
+上限を引き上げる際は、公式の調査結果と更新候補の配布物の安全性を確認し、
+依存制約・`uv.lock`・`test_dependency_policy.py` を同じ PR で更新してください。
+ロックファイルの更新は `uv lock` で行い、意図しない依存更新がないことを確認した後に
+`uv lock --check` と全ユニットテストを実行します。
+
+#### イメージのビルドと検証
+
 API と Bot の production image は、`uv lock --check` で workspace metadata との
 一致を検査したルートの `uv.lock` を使い、`uv sync --frozen --no-dev` で構築します。
 Python base image と uv image は tag と
