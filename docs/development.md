@@ -109,7 +109,13 @@ Bootstrap を更新する場合は、公式配布物の `bootstrap.min.css`、
 更新してください。その後、次のテストで外部参照がないこと、参照先が存在すること、
 配布物のバージョンが一致することを確認します。
 
+Web テストには Node.js 22.23.4 以上の 22 系を使用してください。
+CI は同じ範囲の最新リリースを毎回確認し、キャッシュされた旧版の使用を避けます。
+最低バージョンは [2026-10-21 のセキュリティ更新](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases)
+に対応しています。ローカル環境の Node.js も最新の 22 系へ更新してください。
+
 ```bash
+node --version
 node --test apps/web/tests/*.test.js
 ```
 
