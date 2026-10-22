@@ -243,7 +243,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          # 2026-10-21 security release; keep receiving fixes within Node.js 22.
+          node-version: ">=22.23.4 <23"
+          check-latest: true
 
       - name: Run web tests
         run: node --test apps/web/tests/*.test.js
