@@ -12,7 +12,9 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "weaviate-client>=4.22.0,<4.23.0",
     "httpx>=0.25.0",
-    "litellm>=1.0.0",
+    # Exclude compromised March releases; review October's incident before raising
+    # the temporary upper bound. See docs/development.md.
+    "litellm>=1.0.0,!=1.82.7,!=1.82.8,<1.107.0",
     "aiosqlite>=0.22.1",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
